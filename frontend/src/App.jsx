@@ -18,6 +18,7 @@ import ReturnsPage from './pages/ReturnsPage';
 import LabelPrinterPage from './pages/LabelPrinterPage';
 import StatsPage from './pages/StatsPage';
 import CategoriesPage from './pages/CategoriesPage';
+import ReservationsPage from './pages/ReservationsPage';
 
 
 function App() {
@@ -45,6 +46,7 @@ function App() {
                 <Route path="/etiquetas" element={<LabelPrinterPage />} />
                 <Route path="/reportes" element={<StatsPage />} />
                 <Route path="/categorias" element={<CategoriesPage />} />
+                <Route path="/reservas" element={<ReservationsPage />} />
               </Route>
             </Route>
 

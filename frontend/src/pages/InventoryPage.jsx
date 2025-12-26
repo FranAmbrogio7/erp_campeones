@@ -3,11 +3,13 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import {
     Package, QrCode, AlertTriangle, Search, Edit,
-    ChevronLeft, ChevronRight, Shirt, Image as ImageIcon, Filter, XCircle
+    ChevronLeft, ChevronRight, Shirt, Image as ImageIcon, Filter, XCircle, Cloud, CloudOff, UploadCloud
 } from 'lucide-react';
 import ModalBarcode from '../components/ModalBarcode';
 import EditProductModal from '../components/EditProductModal';
 import { api } from '../context/AuthContext';
+import { toast } from 'react-hot-toast';
+
 
 const InventoryPage = () => {
     // --- Estados de Datos ---
@@ -114,6 +116,22 @@ const InventoryPage = () => {
         setIsEditModalOpen(true);
     };
 
+    const handlePublish = async (product) => {
+        if (!window.confirm(`¿Publicar "${product.nombre}" en Tienda Nube?`)) return;
+
+        const toastId = toast.loading("Subiendo a la nube...");
+        try {
+            await axios.post(`http://localhost:5000/api/products/${product.id}/publish`, {}, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            toast.success("¡Publicado exitosamente!", { id: toastId });
+            fetchProducts(page); // Recargar para ver el icono verde
+        } catch (error) {
+            console.error(error);
+            toast.error(error.response?.data?.msg || "Error al publicar", { id: toastId });
+        }
+    };
+
     const getStockColor = (stock) => {
         if (stock === 0) return "bg-red-100 text-red-700 border-red-200 hover:bg-red-200";
         if (stock < 3) return "bg-orange-100 text-orange-700 border-orange-200 hover:bg-orange-200";
@@ -210,6 +228,7 @@ const InventoryPage = () => {
                                 <th className="px-4 py-3 w-32">Precio</th>
                                 <th className="px-4 py-3">Variantes (Clic para ver código)</th>
                                 <th className="px-4 py-3 text-right w-24">Editar</th>
+                                <th className="px-4 py-3 text-center">Web</th>
                             </tr>
                         </thead>
                         <tbody className="bg-white divide-y divide-gray-100">
@@ -220,6 +239,23 @@ const InventoryPage = () => {
                             ) : (
                                 products.map((product) => (
                                     <tr key={product.id} className="hover:bg-slate-50 transition-colors group">
+
+                                        {/* 0. COLUMNA ESTADO WEB */}
+                                        <td className="px-4 py-3 text-center">
+                                            {product.tiendanube_id ? (
+                                                <span className="inline-flex items-center justify-center p-2 bg-green-100 text-green-600 rounded-full" title="Sincronizado">
+                                                    <Cloud size={18} />
+                                                </span>
+                                            ) : (
+                                                <button
+                                                    onClick={() => handlePublish(product)}
+                                                    className="inline-flex items-center justify-center p-2 bg-gray-100 text-gray-400 rounded-full hover:bg-blue-100 hover:text-blue-600 transition-colors"
+                                                    title="Subir a Tienda Nube"
+                                                >
+                                                    <UploadCloud size={18} />
+                                                </button>
+                                            )}
+                                        </td>
 
                                         {/* 1. IMAGEN */}
                                         <td className="px-4 py-3 text-center">

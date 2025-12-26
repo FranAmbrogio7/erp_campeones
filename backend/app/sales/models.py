@@ -84,3 +84,31 @@ class SesionCaja(db.Model):
     
     estado = db.Column(db.String(20), default='abierta') # 'abierta' o 'cerrada'
     usuario_id = db.Column(db.Integer, nullable=True) # Quién abrió la caja
+
+
+class Reserva(db.Model):
+    __tablename__ = 'reservas'
+    id_reserva = db.Column(db.Integer, primary_key=True)
+    cliente_nombre = db.Column(db.String(100), nullable=False)
+    telefono = db.Column(db.String(50))
+    total = db.Column(db.Numeric(10, 2))
+    monto_sena = db.Column(db.Numeric(10, 2))
+    saldo_restante = db.Column(db.Numeric(10, 2))
+    fecha_reserva = db.Column(db.DateTime, default=datetime.now)
+    fecha_vencimiento = db.Column(db.DateTime)
+    estado = db.Column(db.Enum('pendiente', 'retirada', 'cancelada'), default='pendiente')
+
+    # Relación
+    detalles = db.relationship('DetalleReserva', backref='reserva', lazy=True)
+
+class DetalleReserva(db.Model):
+    __tablename__ = 'detalle_reserva'
+    id_detalle = db.Column(db.Integer, primary_key=True)
+    id_reserva = db.Column(db.Integer, db.ForeignKey('reservas.id_reserva'), nullable=False)
+    id_variante = db.Column(db.Integer, db.ForeignKey('producto_variantes.id_variante'), nullable=False)
+    cantidad = db.Column(db.Integer, nullable=False)
+    precio_historico = db.Column(db.Numeric(10, 2))
+    subtotal = db.Column(db.Numeric(10, 2))
+
+    # Relación para acceder al nombre del producto
+    variante = db.relationship('ProductoVariante')

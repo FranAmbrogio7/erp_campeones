@@ -3,11 +3,12 @@ from io import StringIO
 from flask import Blueprint, jsonify, request, Response
 from app.extensions import db
 # IMPORTAMOS DESDE TUS ARCHIVOS SEPARADOS
-from app.sales.models import Venta, DetalleVenta, MetodoPago, SesionCaja, MovimientoCaja
+from app.sales.models import Venta, DetalleVenta, MetodoPago, SesionCaja, MovimientoCaja, Reserva, DetalleReserva
 from app.products.models import Producto, ProductoVariante, Inventario
 from flask_jwt_extended import jwt_required
 from sqlalchemy import desc, func, extract
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from app.services.tiendanube_service import tn_service
 
 bp = Blueprint('sales', __name__)
 
@@ -188,6 +189,14 @@ def checkout():
 
             # Restar stock
             variante_db.inventario.stock_actual -= item['cantidad']
+
+            # Actualizar stock en Tienda Nube
+            if variante_db.tiendanube_variant_id and variante_db.producto.tiendanube_id and variante_db.producto.sincronizado_web:
+                tn_service.update_variant_stock(
+                    tn_product_id=variante_db.producto.tiendanube_id,
+                    tn_variant_id=variante_db.tiendanube_variant_id,
+                    new_stock=variante_db.inventario.stock_actual
+                )
 
             # Crear detalle
             detalle = DetalleVenta(
@@ -600,3 +609,189 @@ def get_product_stats_detail():
     except Exception as e:
         print(f"Error detalle productos: {e}")
         return jsonify({"msg": str(e)}), 500
+
+
+# --- MÓDULO DE RESERVAS ---
+
+@bp.route('/reservas', methods=['GET'])
+@jwt_required()
+def get_reservas():
+    # Traemos las pendientes primero
+    reservas = Reserva.query.order_by(
+        Reserva.estado == 'pendiente', 
+        desc(Reserva.fecha_reserva)
+    ).all()
+    
+    resultado = []
+    for r in reservas:
+        items = []
+        for d in r.detalles:
+            items.append({
+                "producto": d.variante.producto.nombre,
+                "talle": d.variante.talla,
+                "cantidad": d.cantidad,
+                "precio": float(d.precio_historico)
+            })
+        
+        resultado.append({
+            "id": r.id_reserva,
+            "cliente": r.cliente_nombre,
+            "telefono": r.telefono,
+            "fecha": r.fecha_reserva.strftime('%d/%m/%Y'),
+            "vencimiento": r.fecha_vencimiento.strftime('%d/%m/%Y'),
+            "total": float(r.total),
+            "sena": float(r.monto_sena),
+            "saldo": float(r.saldo_restante),
+            "estado": r.estado,
+            "items": items,
+            "is_vencida": r.estado == 'pendiente' and r.fecha_vencimiento < datetime.now()
+        })
+    return jsonify(resultado), 200
+
+@bp.route('/reservas/crear', methods=['POST'])
+@jwt_required()
+def create_reserva():
+    data = request.get_json()
+    items = data.get('items', [])
+    cliente = data.get('cliente', 'Anónimo')
+    telefono = data.get('telefono', '')
+    sena = float(data.get('sena', 0))
+    total_calculado = float(data.get('total', 0))
+    id_metodo_pago = data.get('id_metodo_pago') # Recibimos el método
+    
+    if not items: return jsonify({"msg": "Sin items"}), 400
+
+    # 1. Crear Reserva (Lógica de stock y apartada)
+    saldo = total_calculado - sena
+    fecha_vencimiento = datetime.now() + timedelta(days=30)
+
+    nueva_reserva = Reserva(
+        cliente_nombre=cliente,
+        telefono=telefono,
+        total=total_calculado,
+        monto_sena=sena,
+        saldo_restante=saldo,
+        fecha_vencimiento=fecha_vencimiento,
+        estado='pendiente'
+    )
+    db.session.add(nueva_reserva)
+    db.session.flush()
+
+    # 2. REGISTRAR LA SEÑA COMO UNA VENTA (Para que impacte en caja y reportes)
+    if sena > 0:
+        if not id_metodo_pago:
+             # Rollback si hay plata pero no método (seguridad)
+             db.session.rollback()
+             return jsonify({"msg": "Falta el medio de pago para la seña"}), 400
+
+        # Creamos una venta por el monto de la seña
+        venta_sena = Venta(
+            total=sena,
+            subtotal=sena,
+            descuento=0,
+            id_metodo_pago=id_metodo_pago,
+            fecha_venta=datetime.now()
+        )
+        db.session.add(venta_sena)
+        db.session.flush()
+
+        # Creamos un detalle de venta simbólico para que el sistema sepa qué es
+        # Usamos el primer artículo de la reserva como referencia visual, 
+        # pero con cantidad 1 y precio = seña.
+        # IMPORTANTE: No descontamos stock aquí (ya se descuenta en el paso 3)
+        primer_item = items[0]
+        detalle_v = DetalleVenta(
+            id_venta=venta_sena.id_venta,
+            id_variante=primer_item['id_variante'],
+            cantidad=1, 
+            precio_unitario=sena, # El precio es el valor de la seña
+            subtotal=sena
+        )
+        db.session.add(detalle_v)
+
+    # 3. Procesar Items y DESCONTAR STOCK FÍSICO
+    for item in items:
+        variante = ProductoVariante.query.get(item['id_variante'])
+        
+        if variante.inventario.stock_actual < item['cantidad']:
+            db.session.rollback()
+            return jsonify({"msg": f"Sin stock suficiente: {variante.producto.nombre}"}), 400
+
+        # Descuento real del inventario
+        variante.inventario.stock_actual -= item['cantidad']
+
+        # SYNC TIENDA NUBE
+        if variante.tiendanube_variant_id and variante.producto.tiendanube_id:
+            tn_service.update_variant_stock(
+                tn_product_id=variante.producto.tiendanube_id,
+                tn_variant_id=variante.tiendanube_variant_id,
+                new_stock=variante.inventario.stock_actual
+            )
+
+        # Detalle de la reserva (guardamos qué productos son realmente)
+        detalle_r = DetalleReserva(
+            id_reserva=nueva_reserva.id_reserva,
+            id_variante=variante.id_variante,
+            cantidad=item['cantidad'],
+            precio_historico=item['precio'],
+            subtotal=item['subtotal']
+        )
+        db.session.add(detalle_r)
+
+    db.session.commit()
+    return jsonify({"msg": "Reserva creada exitosamente", "id": nueva_reserva.id_reserva}), 201
+
+    
+@bp.route('/reservas/<int:id>/retirar', methods=['POST'])
+@jwt_required()
+def retirar_reserva(id):
+    reserva = Reserva.query.get_or_404(id)
+    if reserva.estado != 'pendiente':
+        return jsonify({"msg": "La reserva no está pendiente"}), 400
+
+    # Registrar el ingreso del SALDO RESTANTE en caja
+    if reserva.saldo_restante > 0:
+        sesion = SesionCaja.query.filter_by(estado='abierta').first()
+        if not sesion: return jsonify({"msg": "Debe abrir caja para cobrar el saldo"}), 400
+        
+        mov = MovimientoCaja(
+            id_sesion=sesion.id_sesion,
+            tipo='ingreso',
+            monto=reserva.saldo_restante,
+            descripcion=f"Saldo retiro Reserva #{reserva.id_reserva}"
+        )
+        db.session.add(mov)
+
+        # Opcional: Aquí podrías crear una "Venta" formal si quieres que figure en reportes de ventas
+        # y no solo como movimiento de caja. Para simplificar, lo dejamos como movimiento de caja.
+
+    reserva.estado = 'retirada'
+    db.session.commit()
+    return jsonify({"msg": "Reserva retirada y saldo cobrado"}), 200
+
+@bp.route('/reservas/<int:id>/cancelar', methods=['POST'])
+@jwt_required()
+def cancelar_reserva(id):
+    reserva = Reserva.query.get_or_404(id)
+    if reserva.estado != 'pendiente':
+        return jsonify({"msg": "Solo se pueden cancelar reservas pendientes"}), 400
+
+    # DEVOLVER STOCK
+    for det in reserva.detalles:
+        variante = det.variante
+        variante.inventario.stock_actual += det.cantidad
+        
+        # SYNC TIENDA NUBE (Devolvemos el stock a la web)
+        if variante.tiendanube_variant_id and variante.producto.tiendanube_id:
+            tn_service.update_variant_stock(
+                tn_product_id=variante.producto.tiendanube_id,
+                tn_variant_id=variante.tiendanube_variant_id,
+                new_stock=variante.inventario.stock_actual
+            )
+
+    # Nota: La seña NO se devuelve automáticamente de la caja. 
+    # Si se devuelve dinero, el cajero debe hacer un "Retiro" manual en caja.
+    
+    reserva.estado = 'cancelada'
+    db.session.commit()
+    return jsonify({"msg": "Reserva cancelada y stock restaurado"}), 200

@@ -15,6 +15,7 @@ from reportlab.graphics import renderPDF
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
 from reportlab.lib.pagesizes import A4
+from app.services.tiendanube_service import tn_service # <--- SERVICIO IMPORTADO
 
 
 # ==========================================
@@ -60,7 +61,7 @@ def delete_category(id):
         return jsonify({"msg": "No se puede eliminar: Hay productos usando esta categoría"}), 400
 
 # ==========================================
-# 3. CRUD DE CATEGORÍAS ESPECÍFICAS (LIGAS)
+# 2. CRUD DE CATEGORÍAS ESPECÍFICAS (LIGAS)
 # ==========================================
 
 @bp.route('/specific-categories', methods=['GET'])
@@ -124,9 +125,7 @@ def get_products():
     # 3. Aplicar Filtros
     if search:
         search_term = f"%{search}%"
-        # IMPORTANTE: Unimos con variantes explícitamente para buscar por SKU
         query = query.join(ProductoVariante)
-        
         query = query.filter(
             or_(
                 Producto.nombre.ilike(search_term),
@@ -134,8 +133,6 @@ def get_products():
                 ProductoVariante.codigo_sku.ilike(search_term)
             )
         )
-        # IMPORTANTE: Agrupamos por ID de producto para evitar duplicados
-        # Si un producto tiene 5 variantes que coinciden, solo devuelve 1 fila
         query = query.group_by(Producto.id_producto)
     
     if cat_id:
@@ -151,8 +148,6 @@ def get_products():
         query = query.filter(Producto.precio <= max_price)
 
     # 4. Paginación
-    # Usamos count=False en paginate si group_by da problemas de conteo, 
-    # pero generalmente con SQLAlchemy moderno funciona bien.
     paginated_data = query.order_by(Producto.id_producto.desc()).paginate(page=page, per_page=per_page, error_out=False)
 
     resultado = []
@@ -180,7 +175,9 @@ def get_products():
             "categoria_especifica_id": prod.id_categoria_especifica,
             "categoria": prod.categoria.nombre if prod.categoria else "-", 
             "liga": prod.categoria_especifica.nombre if prod.categoria_especifica else "-", 
-            "variantes": lista_variantes
+            "variantes": lista_variantes,
+            "tiendanube_id": prod.tiendanube_id,
+            "sincronizado_web": prod.sincronizado_web
         })
 
     return jsonify({
@@ -189,7 +186,6 @@ def get_products():
             "total_items": paginated_data.total,
             "total_pages": paginated_data.pages,
             "current_page": paginated_data.page,
-
         }
     }), 200
 
@@ -200,9 +196,6 @@ def get_products():
 @bp.route('', methods=['POST'])
 @jwt_required()
 def create_product():
-    # NOTA: Al enviar archivos, ya no usamos request.get_json()
-    # Usamos request.form para textos y request.files para archivos
-    
     try:
         # 1. Validar datos obligatorios
         if not request.form.get('nombre') or not request.form.get('precio'):
@@ -213,20 +206,18 @@ def create_product():
         if 'imagen' in request.files:
             file = request.files['imagen']
             if file.filename != '':
-                # Limpiamos el nombre (ej: "foto boca.jpg" -> "foto_boca.jpg")
                 filename = secure_filename(file.filename)
-                # Guardamos en la carpeta static/uploads
                 file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], filename))
                 nombre_imagen = filename
 
         # 3. Crear Producto Base
         nuevo_prod = Producto(
-            nombre=request.form['nombre'], # Usamos request.form['key']
+            nombre=request.form['nombre'],
             descripcion=request.form.get('descripcion', ''),
             precio=request.form['precio'],
             id_categoria=request.form.get('categoria_id'),
             id_categoria_especifica=request.form.get('categoria_especifica_id'),
-            imagen=nombre_imagen # <--- Guardamos el nombre del archivo
+            imagen=nombre_imagen
         )
         db.session.add(nuevo_prod)
         db.session.flush()
@@ -273,9 +264,9 @@ def delete_product(id):
         if not prod:
             return jsonify({"msg": "No encontrado"}), 404
         
-        # Al borrar producto, el 'cascade' de SQLAlchemy debería borrar variantes e inventario
-        # Si no tienes cascade configurado en models, fallará. 
-        # Intentamos borrarlo manual por seguridad:
+        if prod.tiendanube_id:
+            tn_service.delete_product_in_cloud(prod.tiendanube_id)
+
         for var in prod.variantes:
             if var.inventario: db.session.delete(var.inventario)
             db.session.delete(var)
@@ -314,36 +305,61 @@ def update_product(id):
     if not prod: return jsonify({"msg": "Producto no encontrado"}), 404
     
     try:
-        # NOTA: Ahora usamos request.form y request.files porque el frontend enviará FormData
+        # A. ACTUALIZACIÓN LOCAL -------------------------
         
-        # 1. Actualizar datos de texto si vienen
+        # 1. Datos de texto (FormData)
         if 'nombre' in request.form: prod.nombre = request.form['nombre']
         if 'precio' in request.form: prod.precio = request.form['precio']
-        # Si el select envía cadena vacía "", lo convertimos a None para la DB
         if 'categoria_id' in request.form: 
             prod.id_categoria = request.form['categoria_id'] or None
         if 'categoria_especifica_id' in request.form:
             prod.id_categoria_especifica = request.form['categoria_especifica_id'] or None
 
-        # 2. Procesar NUEVA Imagen si viene
+        # 2. Imagen
         if 'imagen' in request.files:
             file = request.files['imagen']
             if file.filename != '':
-                # a. Borrar imagen vieja si existía (Opcional, para ahorrar espacio)
                 if prod.imagen:
                     ruta_vieja = os.path.join(current_app.config['UPLOAD_FOLDER'], prod.imagen)
                     if os.path.exists(ruta_vieja):
                         os.remove(ruta_vieja)
                 
-                # b. Guardar imagen nueva
                 filename = secure_filename(file.filename)
                 file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], filename))
-                
-                # c. Actualizar base de datos
                 prod.imagen = filename
 
+        # 3. Actualización de Variantes (Si vienen como JSON string en el FormData o se maneja aparte)
+        # Nota: Normalmente la edición de stock específica se hace vía el modal que llama a endpoints específicos
+        # o el usuario envía JSON. En tu implementación actual de EditProductModal, parece que solo editas info base
+        # y usas endpoints de variantes separados para el stock. 
+        # PERO, si quieres asegurar la sincronización, verificaremos los cambios guardados.
+
         db.session.commit()
-        return jsonify({"msg": "Producto actualizado correctamente"}), 200
+
+        # B. SINCRONIZACIÓN CON TIENDA NUBE ------------
+        # Si el producto está vinculado, enviamos los cambios.
+        if prod.tiendanube_id:
+            print(f"🔄 Sincronizando '{prod.nombre}' con Tienda Nube...")
+
+            tn_service.update_product_data(
+                tn_product_id=prod.tiendanube_id,
+                nombre=prod.nombre,
+                descripcion=prod.descripcion
+            )
+            
+            # Recorremos todas las variantes para asegurar que el stock esté igualado
+            # (Esto es útil si se modificó el stock en otro lado y queremos forzar sync)
+            for var in prod.variantes:
+                if var.tiendanube_variant_id and var.inventario:
+                    tn_service.update_variant_stock(
+                        tn_product_id=prod.tiendanube_id,
+                        tn_variant_id=var.tiendanube_variant_id,
+                        new_stock=var.inventario.stock_actual
+                    )
+                    # Aquí también podrías agregar lógica para actualizar precio si Tienda Nube lo requiere por variante
+        
+        return jsonify({"msg": "Producto actualizado y sincronizado"}), 200
+
     except Exception as e:
         db.session.rollback()
         print(f"Error update: {e}")
@@ -351,7 +367,7 @@ def update_product(id):
 
 
 # ==========================================
-# 9. Editar stock y SKU de una variante
+# 9. Editar stock y SKU de una variante (Sincronizado)
 # ==========================================
 @bp.route('/variants/<int:id>', methods=['PUT'])
 @jwt_required()
@@ -361,19 +377,31 @@ def update_variant(id):
     
     data = request.get_json()
     try:
-        # Actualizar SKU si viene
+        # Actualizar SKU
         if 'sku' in data: var.codigo_sku = data['sku']
         
-        # Actualizar STOCK (Tabla Inventario)
+        # Actualizar STOCK
+        stock_cambio = False
         if 'stock' in data:
             if not var.inventario:
-                # Si por error no tenía inventario, lo creamos
                 nuevo_inv = Inventario(id_variante=var.id_variante, stock_actual=int(data['stock']))
                 db.session.add(nuevo_inv)
             else:
                 var.inventario.stock_actual = int(data['stock'])
+            stock_cambio = True
         
         db.session.commit()
+
+        # --- SYNC TIENDA NUBE ---
+        if stock_cambio and var.tiendanube_variant_id and var.producto.tiendanube_id:
+            print(f"🔄 Sincronizando variante {var.codigo_sku}...")
+            tn_service.update_variant_stock(
+                tn_product_id=var.producto.tiendanube_id,
+                tn_variant_id=var.tiendanube_variant_id,
+                new_stock=int(data['stock'])
+            )
+        # ------------------------
+
         return jsonify({"msg": "Variante actualizada"}), 200
     except Exception as e:
         db.session.rollback()
@@ -381,7 +409,7 @@ def update_variant(id):
 
 
 # ==========================================
-# 10. Agregar una nueva variante (talle)
+# 10. Agregar una nueva variante
 # ==========================================
 @bp.route('/variants', methods=['POST'])
 @jwt_required()
@@ -391,11 +419,9 @@ def add_variant():
         prod_id = data.get('id_producto')
         talla = data.get('talla')
         
-        # Verificar duplicados
         existe = ProductoVariante.query.filter_by(id_producto=prod_id, talla=talla).first()
         if existe: return jsonify({"msg": "Ese talle ya existe"}), 400
 
-        # Crear Variante
         nueva_var = ProductoVariante(
             id_producto=prod_id,
             talla=talla,
@@ -405,7 +431,6 @@ def add_variant():
         db.session.add(nueva_var)
         db.session.flush()
 
-        # Crear su Inventario
         nuevo_inv = Inventario(
             id_variante=nueva_var.id_variante,
             stock_actual=int(data.get('stock', 0))
@@ -413,6 +438,11 @@ def add_variant():
         db.session.add(nuevo_inv)
         
         db.session.commit()
+        
+        # NOTA: Si agregas una variante localmente a un producto vinculado, 
+        # idealmente deberías crearla también en Tienda Nube. 
+        # Por ahora lo dejamos simple, pero tenlo en cuenta para el futuro.
+        
         return jsonify({"msg": "Variante agregada"}), 201
     except Exception as e:
         db.session.rollback()
@@ -428,7 +458,6 @@ def delete_variant(id):
         var = ProductoVariante.query.get(id)
         if not var: return jsonify({"msg": "No encontrada"}), 404
         
-        # Borrar inventario asociado primero
         if var.inventario: db.session.delete(var.inventario)
         db.session.delete(var)
         
@@ -442,50 +471,36 @@ def delete_variant(id):
 @jwt_required()
 def bulk_update_price():
     data = request.get_json()
-    
-    # 1. Filtros: ¿Qué productos vamos a tocar?
-    target_type = data.get('target_type') # 'all', 'category', 'specific_category'
-    target_id = data.get('target_id')     # ID de la categoría seleccionada
-    
-    # 2. Acción: ¿Qué les vamos a hacer?
-    action = data.get('action') # 'percent_inc' (%), 'fixed_inc' (+), 'set_value' (=)
+    target_type = data.get('target_type')
+    target_id = data.get('target_id')
+    action = data.get('action')
     value = float(data.get('value', 0))
 
     if not action or value < 0:
         return jsonify({"msg": "Datos inválidos"}), 400
 
     try:
-        # Construir la Query
         query = Producto.query
-        
         if target_type == 'category':
             query = query.filter_by(id_categoria=target_id)
         elif target_type == 'specific_category':
             query = query.filter_by(id_categoria_especifica=target_id)
-        # Si es 'all', no filtramos nada
         
         products = query.all()
         count = 0
 
-        # Aplicar cambios
         for prod in products:
             current_price = float(prod.precio)
+            if action == 'percent_inc': new_price = current_price * (1 + value / 100)
+            elif action == 'fixed_inc': new_price = current_price + value
+            elif action == 'set_value': new_price = value
+            else: continue
             
-            if action == 'percent_inc':
-                # Ejemplo: 10000 + 10% = 11000
-                new_price = current_price * (1 + value / 100)
-            elif action == 'fixed_inc':
-                # Ejemplo: 10000 + 500 = 10500
-                new_price = current_price + value
-            elif action == 'set_value':
-                # Ejemplo: = 20000
-                new_price = value
-            else:
-                continue
-
-            # Redondear (opcional, para evitar decimales feos)
             prod.precio = round(new_price, 2)
             count += 1
+            
+            # AQUÍ PODRÍAS AGREGAR SINCRONIZACIÓN DE PRECIOS SI LO DESEAS
+            # (Requiere lógica adicional para actualizar precios en todas las variantes en Nube)
 
         db.session.commit()
         return jsonify({"msg": f"Precios actualizados en {count} productos"}), 200
@@ -502,24 +517,27 @@ def bulk_update_price():
 @jwt_required()
 def bulk_stock_update():
     data = request.get_json()
-    items = data.get('items', []) # Lista de { sku: '...', cantidad: 10 }
+    items = data.get('items', []) 
     
     if not items: return jsonify({"msg": "Lista vacía"}), 400
 
     try:
         updated_count = 0
         for item in items:
-            # Buscamos por SKU
             variante = ProductoVariante.query.filter_by(codigo_sku=item['sku']).first()
             
             if variante and variante.inventario:
-                # OPCIÓN A: Reemplazar stock (lo que contaste es la verdad absoluta)
                 variante.inventario.stock_actual = int(item['cantidad'])
-                
-                # OPCIÓN B: Sumar al stock (si estás agregando mercadería nueva)
-                # variante.inventario.stock_actual += int(item['cantidad'])
-                
                 updated_count += 1
+                
+                # --- SYNC TIENDA NUBE (IMPORTANTE PARA CARGA MASIVA) ---
+                if variante.tiendanube_variant_id and variante.producto.tiendanube_id:
+                    tn_service.update_variant_stock(
+                        tn_product_id=variante.producto.tiendanube_id,
+                        tn_variant_id=variante.tiendanube_variant_id,
+                        new_stock=variante.inventario.stock_actual
+                    )
+                # -------------------------------------------------------
         
         db.session.commit()
         return jsonify({"msg": f"Stock actualizado en {updated_count} productos"}), 200
@@ -535,58 +553,81 @@ def bulk_stock_update():
 @bp.route('/labels/batch-pdf', methods=['POST'])
 @jwt_required()
 def generate_batch_labels_pdf():
-    """
-    Recibe una lista de { sku, nombre, talle, precio, cantidad }
-    Genera un PDF con todas las etiquetas secuenciales.
-    Configurado para impresora térmica (ej: 50mm x 25mm).
-    """
     data = request.get_json()
     items = data.get('items', [])
 
-    if not items:
-        return jsonify({"msg": "Lista vacía"}), 400
+    if not items: return jsonify({"msg": "Lista vacía"}), 400
 
-    # Configuración de Etiqueta (Ajustar según tu rollo de etiquetas)
-    # Ejemplo estándar: 50mm ancho x 25mm alto
     LABEL_WIDTH = 50 * mm
     LABEL_HEIGHT = 25 * mm
-    
-    # Buffer en memoria
     buffer = io.BytesIO()
-    
-    # Creamos el canvas con el tamaño exacto de la etiqueta
     c = canvas.Canvas(buffer, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
 
     for item in items:
         cantidad = int(item.get('cantidad', 1))
-        
-        # Repetimos la etiqueta según la cantidad solicitada
         for _ in range(cantidad):
-            # 1. Nombre del Producto (Arriba, pequeño)
             c.setFont("Helvetica-Bold", 6)
-            c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT - 5*mm, f"{item['nombre'][:25]}") # Recortar nombre largo
+            c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT - 5*mm, f"{item['nombre'][:25]}")
             c.setFont("Helvetica", 6)
             c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT - 7.5*mm, f"Talle: {item['talle']} - $ {float(item['precio']):,.0f}")
 
-            # 2. Código de Barras (Centro)
-            barcode = code128.Code128(item['sku'], barHeight=8*mm, barWidth=0.9) # Ajustar barWidth para densidad
+            barcode = code128.Code128(item['sku'], barHeight=8*mm, barWidth=0.9)
+            barcode.drawOn(c, 2*mm, 3*mm)
             
-            # Dibujamos el código
-            barcode.drawOn(c, 2*mm, 3*mm) # Posición X, Y
-            
-            # 3. Texto del SKU (Abajo)
             c.setFont("Helvetica", 5)
             c.drawCentredString(LABEL_WIDTH / 2, 1*mm, item['sku'])
 
-            c.showPage() # Termina esta etiqueta y pasa a la siguiente (corte de página)
+            c.showPage()
 
     c.save()
     buffer.seek(0)
     
-    return send_file(
-        buffer, 
-        mimetype='application/pdf', 
-        as_attachment=True, 
-        download_name='etiquetas_lote.pdf'
-    )
+    return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name='etiquetas_lote.pdf')
 
+# ==========================================
+# TIENDA NUBE: TEST Y PUBLICACIÓN
+# ==========================================
+
+@bp.route('/tiendanube/test', methods=['GET'])
+def test_cloud_connection():
+    result = tn_service.check_connection()
+    if result['success']:
+        tienda = result['data']
+        return jsonify({
+            "msg": f"✅ Conexión Exitosa con: {tienda.get('name', 'Tienda')}",
+            "url": tienda.get('url_with_protocol'),
+            "products_count": "Conexión operativa"
+        }), 200
+    else:
+        return jsonify({"msg": "❌ Falló la conexión", "error": result.get('error')}), 400
+
+@bp.route('/<int:id>/publish', methods=['POST'])
+@jwt_required()
+def publish_product_to_cloud(id):
+    prod = Producto.query.get_or_404(id)
+
+    if prod.tiendanube_id:
+        return jsonify({"msg": "Este producto ya está vinculado con la web"}), 400
+
+    result = tn_service.create_product_in_cloud(prod)
+
+    if not result['success']:
+        return jsonify({"msg": "Error al subir a Tienda Nube", "error": result['error']}), 500
+
+    tn_data = result['tn_data']
+    prod.tiendanube_id = tn_data['id']
+    prod.sincronizado_web = True
+
+    tn_variants = tn_data.get('variants', [])
+    for tn_var in tn_variants:
+        sku_nube = tn_var.get('sku')
+        local_var = next((v for v in prod.variantes if v.codigo_sku == sku_nube), None)
+        if local_var:
+            local_var.tiendanube_variant_id = tn_var['id']
+
+    try:
+        db.session.commit()
+        return jsonify({"msg": "Producto publicado y vinculado exitosamente"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"msg": "Se subió pero falló al guardar IDs locales", "error": str(e)}), 500

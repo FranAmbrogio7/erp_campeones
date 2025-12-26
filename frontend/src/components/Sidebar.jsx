@@ -10,6 +10,7 @@ import {
   PackageCheck,
   Truck,
   BarChart3,
+  CalendarClock,
   Tags
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -28,7 +29,7 @@ const Sidebar = () => {
         { path: '/caja', name: 'Nueva Venta', icon: ShoppingCart },
         { path: '/caja-control', name: 'Cierre de Caja', icon: DollarSign },
         { path: '/cambios', name: 'Cambio/ Devolucion', icon: DollarSign },
-
+        { path: '/reservas', name: 'Reservas', icon: CalendarClock },
       ],
     },
     {

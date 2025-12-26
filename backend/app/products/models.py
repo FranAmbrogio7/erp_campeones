@@ -33,6 +33,8 @@ class Producto(db.Model):
     categoria_especifica = db.relationship('CategoriaEspecifica', backref='productos')
     
     variantes = db.relationship('ProductoVariante', backref='producto', lazy=True)
+    tiendanube_id = db.Column(db.String(50), nullable=True)
+    sincronizado_web = db.Column(db.Boolean, default=False)
 
 class ProductoVariante(db.Model):
     __tablename__ = 'producto_variantes'
@@ -43,6 +45,8 @@ class ProductoVariante(db.Model):
     codigo_sku = db.Column(db.String(50), unique=True)
     
     inventario = db.relationship('Inventario', backref='variante', uselist=False, lazy=True)
+    tiendanube_variant_id = db.Column(db.String(50), nullable=True)
+    
 
 class Inventario(db.Model):
     __tablename__ = 'inventario'
