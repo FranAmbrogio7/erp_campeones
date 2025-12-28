@@ -76,6 +76,23 @@ const POSPage = () => {
     } catch (error) { console.error("Error historial", error); }
   };
 
+
+  const handleVoidSale = async (ventaId) => {
+    if (!window.confirm(`¿Error en cobro? \n\nEsto eliminará la Venta #${ventaId} y devolverá los productos al stock.`)) return;
+
+    const toastId = toast.loading("Anulando venta...");
+    try {
+      await api.delete(`/sales/${ventaId}/anular`);
+
+      toast.success("Venta anulada correctamente", { id: toastId });
+      playSound('beep');
+      fetchRecentSales(); // Refrescar la lista
+    } catch (error) {
+      toast.error("No se pudo anular", { id: toastId });
+      playSound('error');
+    }
+  };
+
   useEffect(() => {
     const init = async () => {
       if (!token) return;
@@ -438,6 +455,15 @@ const POSPage = () => {
                         title="Imprimir Ticket"
                       >
                         <Printer size={16} />
+                      </button>
+
+                      {/* --- NUEVO BOTÓN ANULAR (Visible solo al pasar el mouse o siempre) --- */}
+                      <button
+                        onClick={() => handleVoidSale(v.id)}
+                        className="text-red-300 hover:text-red-600 p-1 hover:bg-red-50 rounded transition-colors"
+                        title="ANULAR VENTA (Devolver Stock)"
+                      >
+                        <Trash2 size={16} />
                       </button>
                     </td>
                   </tr>

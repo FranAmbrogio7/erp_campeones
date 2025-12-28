@@ -858,3 +858,50 @@ def create_budget():
         "id": nuevo_presupuesto.id_presupuesto,
         "total": total_final
     }), 201
+
+
+@bp.route('/<int:id_venta>/anular', methods=['DELETE'])
+@jwt_required()
+def anular_venta(id_venta):
+    try:
+        venta = Venta.query.get_or_404(id_venta)
+        
+        # Validación de seguridad
+        if getattr(venta, 'estado', None) == 'anulada': 
+             return jsonify({"msg": "Esta venta ya está anulada"}), 400
+
+        detalles = DetalleVenta.query.filter_by(id_venta=id_venta).all()
+        
+        # --- BUCLE DE DEVOLUCIÓN ---
+        for d in detalles:
+            variante = ProductoVariante.query.get(d.id_variante)
+            
+            if variante and variante.inventario:
+                # A. Devolver Stock Local (ERP)
+                variante.inventario.stock_actual += d.cantidad
+                
+                # B. Sincronizar con Tienda Nube (NUEVO)
+                # Verificamos si el producto está conectado a la nube
+                if variante.tiendanube_variant_id and variante.producto.tiendanube_id:
+                    try:
+                        tn_service.update_variant_stock(
+                            tn_product_id=variante.producto.tiendanube_id,
+                            tn_variant_id=variante.tiendanube_variant_id,
+                            new_stock=variante.inventario.stock_actual
+                        )
+                        print(f"✅ TN Sync: Stock restaurado para {variante.producto.nombre}")
+                    except Exception as tn_error:
+                        # Si falla internet o la API, lo logueamos pero NO rompemos la anulación local
+                        print(f"⚠️ Error sincronizando Tienda Nube al anular: {tn_error}")
+
+        # Borrado físico de la venta (o cambio de estado)
+        for d in detalles:
+            db.session.delete(d)
+        db.session.delete(venta)
+
+        db.session.commit()
+        return jsonify({"msg": f"Venta #{id_venta} anulada, stock local y nube actualizados."}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"msg": "Error al anular", "error": str(e)}), 500
