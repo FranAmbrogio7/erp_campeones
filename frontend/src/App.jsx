@@ -20,7 +20,7 @@ import StatsPage from './pages/StatsPage';
 import CategoriesPage from './pages/CategoriesPage';
 import ReservationsPage from './pages/ReservationsPage';
 import BudgetPage from './pages/BudgetPage';
-
+import RegisterPage from './pages/RegisterPage';
 
 function App() {
   return (
@@ -29,7 +29,7 @@ function App() {
         <LabelProvider>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
-
+            <Route path="/register" element={<RegisterPage />} />
             {/* Rutas Protegidas dentro del Layout Principal */}
             <Route element={<ProtectedRoute />}>
               <Route element={<MainLayout />}>

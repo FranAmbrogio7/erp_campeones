@@ -201,7 +201,7 @@ def create_product():
         if not request.form.get('nombre') or not request.form.get('precio'):
              return jsonify({"msg": "Faltan datos obligatorios"}), 400
 
-        # 2. Procesar la Imagen (Si viene)
+        # 2. Procesar la Imagen
         nombre_imagen = None
         if 'imagen' in request.files:
             file = request.files['imagen']
@@ -210,7 +210,7 @@ def create_product():
                 file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], filename))
                 nombre_imagen = filename
 
-        # 3. Crear Producto Base
+        # 3. Crear Producto Base (Padre)
         nuevo_prod = Producto(
             nombre=request.form['nombre'],
             descripcion=request.form.get('descripcion', ''),
@@ -220,37 +220,45 @@ def create_product():
             imagen=nombre_imagen
         )
         db.session.add(nuevo_prod)
-        db.session.flush()
+        db.session.flush() # Obtenemos el ID del producto nuevo
 
-        # 4. Crear Variante Inicial
-        talle = request.form.get('talle', 'U')
-        sku = request.form.get('sku') or f"P{nuevo_prod.id_producto}-{talle}"
+        # 4. GENERACIÓN DE VARIANTES (Lógica de Curva de Talles)
+        # Recibimos un string tipo "S,M,L,XL" o "4,6,8,10"
+        talles_input = request.form.get('talle', 'U') 
+        stock_por_talle = int(request.form.get('stock', 0))
+        
+        # Convertimos "S,M,L" en una lista ['S', 'M', 'L']
+        lista_talles = [t.strip() for t in talles_input.split(',')]
 
-        nueva_variante = ProductoVariante(
-            id_producto=nuevo_prod.id_producto,
-            talla=talle,
-            codigo_sku=sku,
-            color=request.form.get('color', 'Standard')
-        )
-        db.session.add(nueva_variante)
-        db.session.flush()
+        for talle in lista_talles:
+            # Generamos SKU automático único: P{ID}-{TALLE}
+            # Ej: P105-XL, P105-4
+            sku_auto = f"P{nuevo_prod.id_producto}-{talle}"
 
-        # 5. Crear Inventario
-        nuevo_inv = Inventario(
-            id_variante=nueva_variante.id_variante,
-            stock_actual=int(request.form.get('stock', 0)),
-            stock_minimo=2
-        )
-        db.session.add(nuevo_inv)
+            nueva_variante = ProductoVariante(
+                id_producto=nuevo_prod.id_producto,
+                talla=talle,
+                codigo_sku=sku_auto,
+                color=request.form.get('color', 'Standard')
+            )
+            db.session.add(nueva_variante)
+            db.session.flush() # Necesitamos el ID de la variante
+
+            # Crear Inventario para esta variante
+            nuevo_inv = Inventario(
+                id_variante=nueva_variante.id_variante,
+                stock_actual=stock_por_talle, # Asignamos el mismo stock inicial a cada talle
+                stock_minimo=2
+            )
+            db.session.add(nuevo_inv)
 
         db.session.commit()
-        return jsonify({"msg": "Producto creado con imagen"}), 201
+        return jsonify({"msg": f"Producto creado con {len(lista_talles)} variantes"}), 201
 
     except Exception as e:
         db.session.rollback()
-        print(f"ERROR SUBIDA: {e}")
+        print(f"ERROR CREACIÓN: {e}")
         return jsonify({"msg": str(e)}), 500
-
 
 
 # ==========================================

@@ -39,7 +39,7 @@ class DetalleVenta(db.Model):
     id_variante = db.Column(db.Integer, db.ForeignKey('producto_variantes.id_variante'), nullable=False)
     cantidad = db.Column(db.Integer, nullable=False)
     precio_unitario = db.Column(db.Numeric(10, 2), nullable=False)
-    subtotal = db.Column(db.Numeric(10, 2), nullable=False)
+    subtotal = db.Column(db.Numeric(10, 2), nullable=False) 
 
     # Relación para poder saber qué camiseta vendimos al ver el detalle
     variante = db.relationship('ProductoVariante')
@@ -67,15 +67,6 @@ class Venta(db.Model):
     metodo = db.relationship('MetodoPago', backref='ventas')
     
     detalles = db.relationship(DetalleVenta, backref='venta', lazy=True, cascade="all, delete-orphan")
-
-
-class PagosVenta(db.Model):
-    __tablename__ = 'pagos_venta'
-    
-    id_pago = db.Column(db.Integer, primary_key=True)
-    id_venta = db.Column(db.Integer, db.ForeignKey('ventas.id_venta'), nullable=False)
-    id_metodo_pago = db.Column(db.Integer, db.ForeignKey('metodos_pago.id_metodo_pago'), nullable=False)
-    monto = db.Column(db.Numeric(10, 2), nullable=False)
 
 # --- NUEVO: Relación con Sesión de Caja ---
 class SesionCaja(db.Model):

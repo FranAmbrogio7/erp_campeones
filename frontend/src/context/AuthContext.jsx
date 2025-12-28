@@ -1,86 +1,98 @@
-import { createContext, useState, useEffect, useContext } from 'react';
+import { createContext, useState, useContext, useEffect } from 'react';
 import axios from 'axios';
-import { jwtDecode } from "jwt-decode";
 
 const AuthContext = createContext();
 
-// Creamos una instancia de axios con la baseURL configurada
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-
+// Configuración de Axios
 export const api = axios.create({
-  baseURL: baseURL,
+  baseURL: 'http://localhost:5000/api', // Asegúrate que este puerto sea el correcto
+});
+
+// Interceptor para agregar el token a cada petición
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+
+  if (token) {
+    // Limpieza de comillas
+    const cleanToken = token.replace(/"/g, '');
+
+    // --- AGREGA ESTA LÍNEA PARA VER EN CONSOLA ---
+    console.log("📤 Enviando Token:", cleanToken);
+    // ---------------------------------------------
+
+    config.headers.Authorization = `Bearer ${cleanToken}`;
+  } else {
+    console.warn("⚠️ No hay token en localStorage");
+  }
+  return config;
 });
 
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-  const [token, setToken] = useState(localStorage.getItem('token') || '');
+  const [token, setToken] = useState(localStorage.getItem('token'));
   const [loading, setLoading] = useState(true);
 
-  // Interceptor: Cada vez que axios haga una petición, inyecta el token
-  api.interceptors.request.use((config) => {
-    const savedToken = localStorage.getItem('token');
-    if (savedToken) {
-      config.headers.Authorization = `Bearer ${savedToken}`;
-    }
-    return config;
-  });
-
-  // Verificar sesión al cargar la app
+  // Verificar sesión al cargar
   useEffect(() => {
-    const savedToken = localStorage.getItem('token');
-    if (savedToken) {
-      try {
-        const decoded = jwtDecode(savedToken);
-        // Opcional: Verificar expiración aquí
-        setUser({
-          id: decoded.sub,
-          rol: decoded.rol,
-          nombre: decoded.nombre
-        });
-      } catch (error) {
-        logout();
-      }
+    const storedUser = localStorage.getItem('user');
+    if (token && storedUser) {
+      setUser(JSON.parse(storedUser));
     }
     setLoading(false);
-  }, []);
+  }, [token]);
 
+  // --- FUNCIÓN LOGIN ---
   const login = async (email, password) => {
     try {
       const res = await api.post('/auth/login', { email, password });
 
-      const newToken = res.data.access_token;
-      localStorage.setItem('token', newToken);
-      setToken(newToken);
+      // AQUÍ ESTABA EL PROBLEMA PROBABLEMENTE:
+      // El backend devuelve: { success: true, token: "...", user: {...} }
 
-      // Decodificamos el token para actualizar el estado del usuario inmediatamente
-      const decoded = jwtDecode(newToken);
-      setUser({
-        id: decoded.sub,
-        rol: decoded.rol,
-        nombre: decoded.nombre
-      });
+      if (res.data.success) {
+        const { token, user } = res.data;
 
-      return { success: true };
+        // Guardar en LocalStorage
+        localStorage.setItem('token', token);
+        localStorage.setItem('user', JSON.stringify(user));
+
+        // Guardar en Estado
+        setToken(token);
+        setUser(user);
+
+        return { success: true };
+      }
+
+      return { success: false, message: "Respuesta inesperada del servidor" };
+
     } catch (error) {
+      console.error("Error en Login:", error);
+      // Devolver mensaje claro
       return {
         success: false,
-        message: error.response?.data?.msg || "Error de conexión"
+        message: error.response?.data?.msg || "Error de conexión con el servidor"
       };
     }
   };
 
+  // --- FUNCIÓN LOGOUT ---
   const logout = () => {
     localStorage.removeItem('token');
-    setToken('');
+    localStorage.removeItem('user');
+    setToken(null);
     setUser(null);
+    window.location.href = '/login'; // Redirigir forzadamente
   };
 
-  return (
-    <AuthContext.Provider value={{ user, login, logout, loading, token }}>
-      {!loading && children}
-    </AuthContext.Provider>
-  );
+  const value = {
+    user,
+    token,
+    login,
+    logout,
+    loading
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-// Hook personalizado para usar el contexto más fácil
 export const useAuth = () => useContext(AuthContext);

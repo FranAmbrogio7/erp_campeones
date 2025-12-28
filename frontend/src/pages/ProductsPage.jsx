@@ -3,6 +3,15 @@ import BulkPriceModal from '../components/BulkPriceModal';
 import { Plus, Trash2, Shirt, Save, ChevronLeft, ChevronRight, Search, Image as ImageIcon, X, TrendingUp } from 'lucide-react';
 import { useAuth, api } from '../context/AuthContext';
 
+// --- DEFINICIÓN DE CURVAS DE TALLES ---
+const SIZE_GRIDS = {
+    'ADULTO': ['S', 'M', 'L', 'XL', 'XXL'],
+    'NIÑOS': ['4', '6', '8', '10', '12', '14', '16'],
+    'BEBÉ': ['0', '1', '2', '3', '4', '5'],
+    'ÚNICO': ['U'],
+    'CALZADO': ['38', '39', '40', '41', '42', '43', '44']
+};
+
 const ProductsPage = () => {
     // --- Estados de Datos ---
     const [products, setProducts] = useState([]);
@@ -18,8 +27,12 @@ const ProductsPage = () => {
 
     // --- Estados de Formulario ---
     const [showForm, setShowForm] = useState(false);
+
+    // Estado para la curva seleccionada (Por defecto Adulto)
+    const [selectedGridType, setSelectedGridType] = useState('ADULTO');
+
     const [newProduct, setNewProduct] = useState({
-        nombre: '', precio: '', talle: 'M', stock: '10', sku: '',
+        nombre: '', precio: '', stock: '10', sku: '',
         categoria_id: '', categoria_especifica_id: ''
     });
     const [selectedFile, setSelectedFile] = useState(null);
@@ -105,8 +118,15 @@ const ProductsPage = () => {
             const formData = new FormData();
             formData.append('nombre', newProduct.nombre);
             formData.append('precio', newProduct.precio);
-            formData.append('talle', newProduct.talle);
+
+            // --- LÓGICA DE CURVA DE TALLES ---
+            // Enviamos la lista de talles separada por comas (ej: "S,M,L,XL")
+            const tallesToSend = SIZE_GRIDS[selectedGridType].join(',');
+            formData.append('talle', tallesToSend);
+
+            // Stock inicial (se aplicará a CADA talle)
             formData.append('stock', newProduct.stock);
+
             formData.append('categoria_id', newProduct.categoria_id);
 
             if (newProduct.categoria_especifica_id) {
@@ -124,14 +144,16 @@ const ProductsPage = () => {
             });
 
             setShowForm(false);
+            // Resetear formulario
             setNewProduct({
-                nombre: '', precio: '', talle: 'M', stock: '10', sku: '',
+                nombre: '', precio: '', stock: '10', sku: '',
                 categoria_id: '', categoria_especifica_id: ''
             });
+            setSelectedGridType('ADULTO'); // Volver al default
             setSelectedFile(null);
             setSearchTerm('');
             fetchProducts(1, '');
-            alert("Producto creado correctamente");
+            alert(`Producto creado correctamente con talles: ${tallesToSend}`);
 
         } catch (e) {
             alert("Error: " + (e.response?.data?.msg || "Error desconocido"));
@@ -185,7 +207,7 @@ const ProductsPage = () => {
             {/* FORMULARIO */}
             {showForm && (
                 <div className="bg-white p-6 rounded-xl shadow border border-blue-200 animate-fade-in-down shrink-0">
-                    <h3 className="font-bold text-lg mb-4 text-gray-700">Agregar Camiseta Nueva</h3>
+                    <h3 className="font-bold text-lg mb-4 text-gray-700">Agregar Nuevo Producto</h3>
                     <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
 
                         <div className="md:col-span-3">
@@ -239,27 +261,31 @@ const ProductsPage = () => {
                             />
                         </div>
 
+                        {/* SELECTOR DE CURVA DE TALLES (NUEVO) */}
                         <div className="md:col-span-1">
-                            <label className="block text-xs font-bold text-gray-500 mb-1">Talle Inicial</label>
+                            <label className="block text-xs font-bold text-gray-500 mb-1">Curva de Talles</label>
                             <select
-                                className="w-full border p-2 rounded outline-none bg-white"
-                                value={newProduct.talle}
-                                onChange={e => setNewProduct({ ...newProduct, talle: e.target.value })}
+                                className="w-full border p-2 rounded outline-none bg-white text-sm"
+                                value={selectedGridType}
+                                onChange={e => setSelectedGridType(e.target.value)}
                             >
-                                <option value="S">S</option>
-                                <option value="M">M</option>
-                                <option value="L">L</option>
-                                <option value="XL">XL</option>
-                                <option value="XXL">XXL</option>
+                                {Object.keys(SIZE_GRIDS).map(gridName => (
+                                    <option key={gridName} value={gridName}>{gridName}</option>
+                                ))}
                             </select>
+                            {/* Previsualización */}
+                            <div className="text-[10px] text-blue-500 mt-1 truncate font-medium">
+                                {SIZE_GRIDS[selectedGridType].join(', ')}
+                            </div>
                         </div>
 
                         <div className="md:col-span-1">
-                            <label className="block text-xs font-bold text-gray-500 mb-1">Stock Inicial</label>
+                            <label className="block text-xs font-bold text-gray-500 mb-1">Stock Inicial (c/u)</label>
                             <input
                                 className="w-full border p-2 rounded outline-none"
                                 required
                                 type="number"
+                                placeholder="Por talle"
                                 value={newProduct.stock}
                                 onChange={e => setNewProduct({ ...newProduct, stock: e.target.value })}
                             />
@@ -297,7 +323,7 @@ const ProductsPage = () => {
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Nombre</th>
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Categoría</th>
                                 <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Precio</th>
-                                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Stock</th>
+                                <th className="px-6 py-3 text-left text-xs font-semibold text-gray-500 uppercase">Stock Total</th>
                                 <th className="px-6 py-3 text-right text-xs font-semibold text-gray-500 uppercase">Acciones</th>
                             </tr>
                         </thead>

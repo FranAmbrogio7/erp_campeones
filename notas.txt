@@ -63,10 +63,12 @@ agregar boton enter en form de cambio y devolucion
 validar impresion de tickets en todos los modulos
 mejorar sku de los productos, un poco mas intuitivo, que se realicen en base al tipo de producto (camiseta = CAM), en base al talle definir si es niño (N) o adulto (A). CAMISETA-LIGA-ID-TALLE-TIT/ALT
 alerta de bajo stock en dashboard y mejorar dashboard en general
-poder acceder al detalle de compras historico
+poder acceder al detalle de compras historico ✅
 integrar ENTER y ESCAPE a paginas en general, principalmente a ventas para q sea mas agil
-ventana modal para ver el detalle de ventas especificas
-pagina de estadisticas donde se vea el detalle de lo vendido en 1 mes y toda la informacion fundamental para conocer los ingresos del negocio, obteniendo los datos de las cajas historicas
+
+ventana modal para ver el detalle de ventas especificas ✅
+
+pagina de estadisticas donde se vea el detalle de lo vendido en 1 mes y toda la informacion fundamental para conocer los ingresos del negocio, obteniendo los datos de las cajas historicas ✅
 
 
 
@@ -124,4 +126,5 @@ implementar sonidos para acciones basicas (modificar stock, etc) y animaciones d
 
 modulo para mercaderia reservada, monto de seña, saldo restante a pagar, nombre del cliente, posibilidad de imprimir ticket de reserva ✅
 
-funcion para añadir una venta sin codigo, en caso de que sea un producto que aun no se haya cargado en el inventario, que se pueda agregar un campo de texto completo para que el usuario pueda agregar el detalle del producto 
+funcion para añadir una venta sin codigo, en caso de que sea un producto que aun no se haya cargado en el inventario, que se pueda agregar un campo de texto completo para que el usuario pueda agregar el detalle del producto, ya que tambien hay situaciones en las que el cliente paga una parte en efectivo, y otra parte la transfiere, quiero una funcion para poder solucionar estos casos
+

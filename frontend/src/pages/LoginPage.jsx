@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 // --- IMPORTA TU LOGO AQUÍ ---
 // Asegúrate de que la ruta sea correcta según donde guardaste la imagen
 import logoImg from '../assets/logo.png';
+import { Link } from 'react-router-dom';
 
 const LoginPage = () => {
   const [email, setEmail] = useState('');
@@ -172,6 +173,16 @@ const LoginPage = () => {
                 )}
               </button>
             </div>
+
+            <div className="mt-6 text-center border-t pt-4">
+              <p className="text-sm text-gray-600">
+                ¿Eres nuevo en el equipo?{' '}
+                <Link to="/register" className="font-bold text-blue-600 hover:text-blue-800 transition-colors">
+                  Crear una cuenta
+                </Link>
+              </p>
+            </div>
+
           </form>
         </div>
       </div>
