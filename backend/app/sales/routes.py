@@ -943,9 +943,9 @@ def checkout():
                 return jsonify({"msg": "La nota de crédito ya fue utilizada o anulada"}), 400
             
             # Validar saldo suficiente
-            total_venta = data.get('total_final')
+            """ total_venta = data.get('total_final')
             if nota_usada.monto < total_venta:
-                return jsonify({"msg": f"Saldo insuficiente en Nota. Tiene ${nota_usada.monto}, Venta ${total_venta}"}), 400
+                return jsonify({"msg": f"Saldo insuficiente en Nota. Tiene ${nota_usada.monto}, Venta ${total_venta}"}), 400 """
             
             # MARCAR COMO USADA (Se guardará al hacer commit abajo)
             nota_usada.estado = 'usada'

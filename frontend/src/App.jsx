@@ -22,6 +22,8 @@ import ReservationsPage from './pages/ReservationsPage';
 import BudgetPage from './pages/BudgetPage';
 import RegisterPage from './pages/RegisterPage';
 import CreditNotesPage from './pages/CreditNotesPage';
+import StockReportPage from './pages/StockReportPage';
+import NotesPage from './pages/NotesPage';
 
 function App() {
   return (
@@ -51,6 +53,8 @@ function App() {
                 <Route path="/reservas" element={<ReservationsPage />} />
                 <Route path="/presupuestos" element={<BudgetPage />} />
                 <Route path="/notas-credito" element={<CreditNotesPage />} />
+                <Route path="/reporte-stock" element={<StockReportPage />} />
+                <Route path="/notas" element={<NotesPage />} />
               </Route>
             </Route>
 

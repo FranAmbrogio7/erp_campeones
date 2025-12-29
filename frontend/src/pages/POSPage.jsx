@@ -21,6 +21,8 @@ const SOUNDS = {
 const POSPage = () => {
   const { token } = useAuth();
 
+  const [appliedNote, setAppliedNote] = useState(null);
+
   // --- ESTADOS ---
   const [isRegisterOpen, setIsRegisterOpen] = useState(null);
   const [skuInput, setSkuInput] = useState('');
@@ -241,20 +243,52 @@ const POSPage = () => {
   const processSale = async () => {
     const toastId = toast.loading("Procesando...");
     setIsConfirmModalOpen(false);
+
     try {
       const metodoNombre = selectedMethod.nombre.toLowerCase();
-      const esNotaCredito = metodoNombre.includes('credito') || metodoNombre.includes('crédito');
+      const esMedioNota = metodoNombre.includes('credito') || metodoNombre.includes('crédito');
+      let notaParaEnviar = esMedioNota ? creditNoteCode : (appliedNote?.codigo || null);
+      let metodoParaEnviar = selectedMethod.id;
 
-      // 1. Validar Nota de Crédito en Backend
-      if (esNotaCredito) {
+      // 1. VALIDACIÓN INTELIGENTE DE NOTA DE CRÉDITO
+      if (esMedioNota) {
         try {
+          // Verificar saldo real en backend
           const check = await api.get(`/sales/notas-credito/validar/${creditNoteCode}`);
-          // Validar si alcanza el saldo
-          if (check.data.monto < totalFinal) {
-            toast.error(`Saldo insuficiente en Nota ($${check.data.monto})`, { id: toastId });
-            playSound('error');
-            return;
+          const saldoNota = check.data.monto;
+
+          // CASO A: La nota NO alcanza (Pago Mixto)
+          if (saldoNota < totalFinal) {
+            const restante = totalFinal - saldoNota;
+
+            // Guardamos la nota para usarla en el siguiente intento
+            setAppliedNote({ codigo: creditNoteCode, monto: saldoNota });
+
+            // Actualizamos el total a cobrar por la diferencia
+            setCustomTotal(restante);
+
+            // Limpiamos selección para que elija el otro medio
+            setSelectedMethod(null);
+            setCreditNoteCode(''); // Limpiamos el input visual
+
+            toast.dismiss(toastId);
+
+            // Alerta visual clara
+            toast((t) => (
+              <div className="text-sm">
+                <p className="font-bold">⚠️ Saldo Parcial</p>
+                <p>La nota cubre <b>${saldoNota.toLocaleString()}</b>.</p>
+                <p className="mt-1">Restan pagar: <b className="text-red-600">${restante.toLocaleString()}</b></p>
+                <p className="mt-2 text-xs text-gray-500">Seleccione Efectivo o Tarjeta para completar.</p>
+              </div>
+            ), { duration: 6000, icon: '💰' });
+
+            playSound('beep');
+            return; // DETENEMOS AQUÍ para que el usuario elija el segundo pago
           }
+
+          // CASO B: La nota alcanza o sobra -> Seguimos normal
+
         } catch (e) {
           toast.error(e.response?.data?.msg || "Código de Nota inválido", { id: toastId });
           playSound('error');
@@ -262,12 +296,13 @@ const POSPage = () => {
         }
       }
 
+      // 2. ARMAR PAYLOAD (Si llegamos aquí, es porque ya se paga todo)
       const payload = {
         items: cart,
         subtotal_calculado: subtotalCalculado,
-        total_final: totalFinal,
-        metodo_pago_id: selectedMethod.id,
-        codigo_nota_credito: esNotaCredito ? creditNoteCode : null
+        total_final: totalFinal, // Este será el monto restante si fue mixto
+        metodo_pago_id: metodoParaEnviar,
+        codigo_nota_credito: notaParaEnviar // Enviamos la nota aunque pague con efectivo el resto
       };
 
       const res = await api.post('/sales/checkout', payload);
@@ -278,13 +313,15 @@ const POSPage = () => {
         items: cart,
         total: totalFinal,
         cliente: "Consumidor Final",
-        metodo: selectedMethod.nombre
+        metodo: selectedMethod.nombre + (appliedNote ? ` + Nota` : '')
       });
 
       playSound('beep');
       toast.success(`Venta #${res.data.id} Exitosa`, { id: toastId });
 
-      setCart([]); setSkuInput(''); setSelectedMethod(null); setCustomTotal(null); setCreditNoteCode('');
+      // Resetear todo
+      setCart([]); setSkuInput(''); setSelectedMethod(null);
+      setCustomTotal(null); setCreditNoteCode(''); setAppliedNote(null);
       fetchRecentSales();
 
     } catch (error) {
@@ -551,6 +588,22 @@ const POSPage = () => {
 
         {/* Zona de Cobro */}
         <div className="p-4 bg-white border-t-2 border-gray-100 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-20">
+
+          {/* INDICADOR DE NOTA APLICADA (Pago Mixto) */}
+          {appliedNote && (
+            <div className="mb-3 bg-green-50 border border-green-200 p-3 rounded-lg flex justify-between items-center animate-pulse">
+              <div>
+                <span className="text-xs font-bold text-green-700 block">NOTA APLICADA</span>
+                <span className="text-sm font-mono text-gray-700">{appliedNote.codigo} (-${appliedNote.monto.toLocaleString()})</span>
+              </div>
+              <button
+                onClick={() => { setAppliedNote(null); setCustomTotal(null); toast("Nota quitada"); }}
+                className="text-red-400 hover:text-red-600 p-1"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
 
           <div className="mb-4">
             <p className="text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-wide">Seleccionar Medio de Pago</p>

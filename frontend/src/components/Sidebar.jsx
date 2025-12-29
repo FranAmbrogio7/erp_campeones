@@ -20,6 +20,7 @@ import {
   Lock,           // Cierre Caja
   ScrollText,     // Historial Ventas
   History,        // Historial Cajas
+  FileText,       // Notas
 
   Shirt,          // Catálogo
   ArrowRightLeft, // Movimientos/Cambios
@@ -104,10 +105,21 @@ const Sidebar = () => {
       ]
     },
     {
-      type: 'link',
-      path: '/reportes',
+      type: 'folder',
+      key: 'reportes',
       name: 'Estadísticas',
-      icon: PieChart
+      icon: PieChart,
+      items: [
+        { path: '/reportes', name: 'Estadísticas', icon: PieChart },
+        { path: '/reporte-stock', name: 'Reporte de Stock', icon: ArrowRightLeft },
+      ]
+    },
+    {
+      type: 'link',
+      key: 'notas',
+      name: 'Notas',
+      icon: FileText,
+      path: '/notas'
     }
   ];
 

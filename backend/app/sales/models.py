@@ -161,3 +161,5 @@ class NotaCredito(db.Model):
         chars = string.ascii_uppercase + string.digits
         code = ''.join(random.choice(chars) for _ in range(6))
         return f"NC-{code}"
+
+    

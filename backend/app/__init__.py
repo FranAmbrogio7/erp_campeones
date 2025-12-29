@@ -39,6 +39,9 @@ def create_app(config_class=Config):
     from app.sales.webhooks import bp_webhooks
     app.register_blueprint(bp_webhooks, url_prefix='/api/webhooks')
 
+    from app.notes.routes import bp as notes_bp
+    app.register_blueprint(notes_bp, url_prefix='/api/notes')
+
     # 3. Ruta de prueba simple (Health Check)
     @app.route('/api/health', methods=['GET'])
     def health_check():
