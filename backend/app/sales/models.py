@@ -1,6 +1,8 @@
 # backend/app/sales/models.py
 from app.extensions import db
 from datetime import datetime
+import random
+import string
 
 class MovimientoCaja(db.Model):
     __tablename__ = 'movimientos_caja'
@@ -68,7 +70,9 @@ class Venta(db.Model):
     
     detalles = db.relationship(DetalleVenta, backref='venta', lazy=True, cascade="all, delete-orphan")
 
-# --- NUEVO: Relación con Sesión de Caja ---
+    observaciones = db.Column(db.Text)
+
+    # --- NUEVO: Relación con Sesión de Caja ---
 class SesionCaja(db.Model):
     __tablename__ = 'sesiones_caja'
     __table_args__ = {'extend_existing': True}
@@ -136,3 +140,24 @@ class DetallePresupuesto(db.Model):
     subtotal = db.Column(db.Numeric(10, 2))
     
     variante = db.relationship('ProductoVariante')
+
+
+class NotaCredito(db.Model):
+    __tablename__ = 'notas_credito'
+    
+    id_nota = db.Column(db.Integer, primary_key=True)
+    codigo = db.Column(db.String(50), unique=True, nullable=False)
+    monto = db.Column(db.Float, nullable=False)
+    fecha_emision = db.Column(db.DateTime, default=datetime.now)
+    estado = db.Column(db.String(20), default='activa') # 'activa' o 'usada'
+    observaciones = db.Column(db.String(255))
+    
+    # Opcional: Relación con cliente si la tienes
+    # id_cliente = db.Column(...)
+
+    @staticmethod
+    def generar_codigo():
+        """Genera un código único tipo NC-A1B2C3"""
+        chars = string.ascii_uppercase + string.digits
+        code = ''.join(random.choice(chars) for _ in range(6))
+        return f"NC-{code}"

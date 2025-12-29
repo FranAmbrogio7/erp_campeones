@@ -3,7 +3,7 @@ from io import StringIO
 from flask import Blueprint, jsonify, request, Response
 from app.extensions import db
 # IMPORTAMOS DESDE TUS ARCHIVOS SEPARADOS
-from app.sales.models import Venta, DetalleVenta, MetodoPago, SesionCaja, MovimientoCaja, Reserva, DetalleReserva, Presupuesto, DetallePresupuesto
+from app.sales.models import Venta, DetalleVenta, MetodoPago, SesionCaja, MovimientoCaja, Reserva, DetalleReserva, Presupuesto, DetallePresupuesto, NotaCredito
 from app.products.models import Producto, ProductoVariante, Inventario
 from flask_jwt_extended import jwt_required
 from sqlalchemy import desc, func, extract
@@ -138,83 +138,6 @@ def scan_product(sku):
         }
     }), 200
 
-@bp.route('/checkout', methods=['POST'])
-@jwt_required()
-def checkout():
-    data = request.get_json()
-    items = data.get('items', [])
-    
-    # Recibimos el total calculado por el sistema (suma de items)
-    subtotal_sistema = data.get('subtotal_calculado', 0)
-    
-    # Recibimos el total que EL VENDEDOR DECIDIÓ COBRAR
-    total_final = data.get('total_final', subtotal_sistema) 
-    
-    metodo_id = data.get('metodo_pago_id')
-
-    if not items: return jsonify({"msg": "Carrito vacío"}), 400
-    if not metodo_id: return jsonify({"msg": "Falta método de pago"}), 400
-
-    try:
-        # Calculamos el descuento
-        descuento_aplicado = float(subtotal_sistema) - float(total_final)
-        
-        # Validamos que no sea un "descuento negativo" absurdo (cobrar de más está permitido como propina/ajuste)
-        # pero si el total final es negativo, error.
-        if float(total_final) < 0:
-             return jsonify({"msg": "El total no puede ser negativo"}), 400
-
-        # 1. Crear Venta
-        nueva_venta = Venta(
-            subtotal=subtotal_sistema,   # Lo que valía la mercadería
-            descuento=descuento_aplicado, # La rebaja
-            total=total_final,           # Lo que entra a la caja
-            id_cliente=None,
-            id_metodo_pago=metodo_id
-        )
-        db.session.add(nueva_venta)
-        db.session.flush()
-
-        # 2. Procesar Ítems (Igual que antes)
-        for item in items:
-            variante_db = ProductoVariante.query.get(item['id_variante'])
-            
-            if not variante_db or not variante_db.inventario:
-                db.session.rollback()
-                return jsonify({"msg": f"Error stock: {item.get('nombre')}"}), 400
-
-            if variante_db.inventario.stock_actual < item['cantidad']:
-                db.session.rollback()
-                return jsonify({"msg": f"Stock insuficiente: {variante_db.producto.nombre}"}), 400
-
-            # Restar stock
-            variante_db.inventario.stock_actual -= item['cantidad']
-
-            # Actualizar stock en Tienda Nube
-            if variante_db.tiendanube_variant_id and variante_db.producto.tiendanube_id and variante_db.producto.sincronizado_web:
-                tn_service.update_variant_stock(
-                    tn_product_id=variante_db.producto.tiendanube_id,
-                    tn_variant_id=variante_db.tiendanube_variant_id,
-                    new_stock=variante_db.inventario.stock_actual
-                )
-
-            # Crear detalle
-            detalle = DetalleVenta(
-                id_venta=nueva_venta.id_venta,
-                id_variante=variante_db.id_variante,
-                cantidad=item['cantidad'],
-                precio_unitario=item['precio'],
-                subtotal=item['subtotal']
-            )
-            db.session.add(detalle)
-
-        db.session.commit()
-        return jsonify({"msg": "Venta exitosa", "id": nueva_venta.id_venta}), 201
-
-    except Exception as e:
-        db.session.rollback()
-        print(f"ERROR CHECKOUT: {e}")
-        return jsonify({"msg": "Error interno"}), 500
 
 # --- 1. VER ESTADO DE CAJA ---
 @bp.route('/caja/status', methods=['GET'])
@@ -905,3 +828,178 @@ def anular_venta(id_venta):
     except Exception as e:
         db.session.rollback()
         return jsonify({"msg": "Error al anular", "error": str(e)}), 500
+
+@bp.route('/notas-credito/crear', methods=['POST'])
+@jwt_required()
+def crear_nota_credito():
+    data = request.get_json()
+    try:
+        monto = data.get('monto')
+        observaciones = data.get('observaciones', '')
+
+        # Validaciones básicas
+        if not monto or float(monto) <= 0:
+            return jsonify({"msg": "El monto debe ser mayor a 0"}), 400
+
+        # Generar Código Único (Intenta hasta que encuentre uno libre)
+        codigo = NotaCredito.generar_codigo()
+        while NotaCredito.query.filter_by(codigo=codigo).first():
+            codigo = NotaCredito.generar_codigo()
+
+        # Crear Objeto
+        nueva_nota = NotaCredito(
+            codigo=codigo,
+            monto=float(monto),
+            fecha_emision=datetime.now(),
+            estado='activa',
+            observaciones=observaciones
+        )
+        
+        db.session.add(nueva_nota)
+        db.session.commit()
+        
+        return jsonify({
+            "msg": "Nota creada exitosamente", 
+            "nota": {
+                "id": nueva_nota.id_nota,
+                "codigo": nueva_nota.codigo, 
+                "monto": nueva_nota.monto
+            }
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        print("Error creando nota:", e)
+        return jsonify({"msg": "Error al crear nota", "error": str(e)}), 500
+
+
+# 1. LISTAR NOTAS (Para la página de gestión)
+@bp.route('/notas-credito', methods=['GET'])
+@jwt_required()
+def get_notas_credito():
+    notas = NotaCredito.query.order_by(NotaCredito.fecha_emision.desc()).all()
+    result = []
+    for n in notas:
+        result.append({
+            "id": n.id_nota,
+            "codigo": n.codigo,
+            "monto": n.monto,
+            "estado": n.estado,
+            "fecha": n.fecha_emision.strftime('%d/%m/%Y %H:%M'),
+            "observaciones": n.observaciones
+        })
+    return jsonify(result), 200
+
+# 2. VALIDAR CÓDIGO (Para el POS antes de cobrar)
+@bp.route('/notas-credito/validar/<code>', methods=['GET'])
+@jwt_required()
+def validar_nota(code):
+    nota = NotaCredito.query.filter_by(codigo=code).first()
+    
+    if not nota:
+        return jsonify({"valid": False, "msg": "Código inexistente"}), 404
+        
+    if nota.estado != 'activa':
+        return jsonify({"valid": False, "msg": "Esta nota ya fue utilizada"}), 400
+        
+    return jsonify({
+        "valid": True,
+        "id": nota.id_nota,
+        "monto": nota.monto,
+        "msg": "Nota válida"
+    }), 200
+
+# 3. MODIFICAR EL CHECKOUT (Para "quemar" la nota)
+# Busca tu función 'checkout' actual y modifícala así:
+
+@bp.route('/checkout', methods=['POST'])
+@jwt_required()
+def checkout():
+    data = request.get_json()
+    items = data.get('items', [])
+    metodo_pago_id = data.get('metodo_pago_id')
+    
+    # Recibimos el código de la nota si aplica
+    codigo_nota = data.get('codigo_nota_credito') 
+    cliente_id = data.get('cliente_id') # Asegúrate de recibir esto si lo usas
+
+    # Validar carrito vacío
+    if not items: return jsonify({"msg": "Carrito vacío"}), 400
+    if not metodo_pago_id: return jsonify({"msg": "Falta método de pago"}), 400
+
+    try:
+        # --- 1. LÓGICA DE NOTA DE CRÉDITO (NUEVO) ---
+        nota_usada = None
+        
+        if codigo_nota:
+            # Buscar la nota
+            nota_usada = NotaCredito.query.filter_by(codigo=codigo_nota).first()
+            
+            # Validar existencia y estado
+            if not nota_usada:
+                return jsonify({"msg": "Código de nota no encontrado"}), 404
+            
+            if nota_usada.estado != 'activa':
+                return jsonify({"msg": "La nota de crédito ya fue utilizada o anulada"}), 400
+            
+            # Validar saldo suficiente
+            total_venta = data.get('total_final')
+            if nota_usada.monto < total_venta:
+                return jsonify({"msg": f"Saldo insuficiente en Nota. Tiene ${nota_usada.monto}, Venta ${total_venta}"}), 400
+            
+            # MARCAR COMO USADA (Se guardará al hacer commit abajo)
+            nota_usada.estado = 'usada'
+            
+        # --- 2. CREACIÓN DE VENTA ---
+        nueva_venta = Venta(
+            total=data.get('total_final'),
+            subtotal=data.get('subtotal_calculado'),
+            descuento=0, 
+            fecha_venta=datetime.now(),
+            id_cliente=cliente_id,
+            id_metodo_pago=metodo_pago_id,
+            observaciones=f"Pagado con Nota {codigo_nota}" if codigo_nota else ""
+        )
+        db.session.add(nueva_venta)
+        db.session.flush()
+
+        # --- 3. PROCESAR ITEMS ---
+        for item in items:
+            variante = ProductoVariante.query.get(item['id_variante'])
+            
+            # Validar Stock
+            if variante.inventario.stock_actual < item['cantidad']:
+                db.session.rollback()
+                return jsonify({"msg": f"Sin stock suficiente: {variante.producto.nombre}"}), 400
+            
+            # Descontar Stock Local
+            variante.inventario.stock_actual -= item['cantidad']
+            
+            # Sync Tienda Nube (Si aplica)
+            if variante.tiendanube_variant_id:
+                try:
+                    tn_service.update_variant_stock(
+                        tn_product_id=variante.producto.tiendanube_id,
+                        tn_variant_id=variante.tiendanube_variant_id,
+                        new_stock=variante.inventario.stock_actual
+                    )
+                except:
+                    print(f"Error sync TN para {variante.producto.nombre}")
+
+            # Guardar Detalle
+            detalle = DetalleVenta(
+                id_venta=nueva_venta.id_venta,
+                id_variante=variante.id_variante,
+                cantidad=item['cantidad'],
+                precio_unitario=item['precio'],
+                subtotal=item['subtotal']
+            )
+            db.session.add(detalle)
+
+        db.session.commit()
+        return jsonify({"msg": "Venta exitosa", "id": nueva_venta.id_venta}), 201
+
+    except Exception as e:
+        db.session.rollback()
+        print(e)
+        return jsonify({"msg": "Error procesando venta", "error": str(e)}), 500

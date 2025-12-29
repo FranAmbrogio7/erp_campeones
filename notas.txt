@@ -129,3 +129,5 @@ modulo para mercaderia reservada, monto de seña, saldo restante a pagar, nombre
 funcion para añadir una venta sin codigo, en caso de que sea un producto que aun no se haya cargado en el inventario, que se pueda agregar un campo de texto completo para que el usuario pueda agregar el detalle del producto, ya que tambien hay situaciones en las que el cliente paga una parte en efectivo, y otra parte la transfiere, quiero una funcion para poder solucionar estos casos
 
 generar pagina de notas para anotar todo lo que se necesite de situaciones diarias, por ejemplo, comprar cinta, comprar carton de cintas, etc
+
+pagina para emitir un listado de stock en pdf de los articulos que el usuario quiera

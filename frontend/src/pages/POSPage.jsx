@@ -8,13 +8,14 @@ import ConfirmModal from '../components/ConfirmModal';
 import ReservationModal from '../components/ReservationModal';
 import {
   ShoppingCart, Trash2, Plus, Minus, ScanBarcode, Banknote,
-  CreditCard, Smartphone, Lock, ArrowRight, Printer, Clock, Search, Shirt, CalendarClock, X, RotateCcw
+  CreditCard, Smartphone, Lock, ArrowRight, Printer, Clock,
+  Search, Shirt, CalendarClock, X, AlertTriangle, Receipt, Edit3
 } from 'lucide-react';
 
 // Sonidos para feedback inmediato (UX)
 const SOUNDS = {
-  beep: new Audio('https://cdn.freesound.org/previews/536/536108_12152864-lq.mp3'), // Éxito
-  error: new Audio('https://cdn.freesound.org/previews/419/419023_8340785-lq.mp3')   // Error
+  beep: new Audio('https://cdn.freesound.org/previews/536/536108_12152864-lq.mp3'),
+  error: new Audio('https://cdn.freesound.org/previews/419/419023_8340785-lq.mp3')
 };
 
 const POSPage = () => {
@@ -36,6 +37,9 @@ const POSPage = () => {
   const [customTotal, setCustomTotal] = useState(null);
   const [isEditingPrice, setIsEditingPrice] = useState(false);
 
+  // Nota de Crédito
+  const [creditNoteCode, setCreditNoteCode] = useState('');
+
   // Historial
   const [recentSales, setRecentSales] = useState([]);
 
@@ -51,21 +55,30 @@ const POSPage = () => {
   // Refs de Foco
   const inputRef = useRef(null);
   const searchInputRef = useRef(null);
+  const creditNoteInputRef = useRef(null);
 
   // Cálculos en tiempo real
   const subtotalCalculado = cart.reduce((sum, item) => sum + item.subtotal, 0);
   const totalFinal = customTotal !== null && customTotal !== '' ? parseFloat(customTotal) : subtotalCalculado;
   const descuentoVisual = subtotalCalculado - totalFinal;
 
-  // --- AUDIO HELPER ---
+  // --- AUDIO HELPER MEJORADO ---
   const playSound = (type) => {
     try {
-      if (SOUNDS[type]) {
-        SOUNDS[type].currentTime = 0;
-        SOUNDS[type].volume = 0.4;
-        SOUNDS[type].play();
+      const audio = SOUNDS[type];
+      if (audio) {
+        audio.currentTime = 0;
+        audio.volume = 0.5;
+        const playPromise = audio.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((error) => {
+            console.warn("Reproducción de audio bloqueada por el navegador:", error);
+          });
+        }
       }
-    } catch (e) { console.error(e); }
+    } catch (e) {
+      console.error("Error sistema audio:", e);
+    }
   };
 
   // --- CARGA INICIAL ---
@@ -74,23 +87,6 @@ const POSPage = () => {
       const res = await api.get('/sales/history', { params: { current_session: true, limit: 10 } });
       setRecentSales(res.data.history);
     } catch (error) { console.error("Error historial", error); }
-  };
-
-
-  const handleVoidSale = async (ventaId) => {
-    if (!window.confirm(`¿Error en cobro? \n\nEsto eliminará la Venta #${ventaId} y devolverá los productos al stock.`)) return;
-
-    const toastId = toast.loading("Anulando venta...");
-    try {
-      await api.delete(`/sales/${ventaId}/anular`);
-
-      toast.success("Venta anulada correctamente", { id: toastId });
-      playSound('beep');
-      fetchRecentSales(); // Refrescar la lista
-    } catch (error) {
-      toast.error("No se pudo anular", { id: toastId });
-      playSound('error');
-    }
   };
 
   useEffect(() => {
@@ -110,10 +106,19 @@ const POSPage = () => {
     init();
   }, [token]);
 
-  // Foco Automático (Agilidad)
+  // Foco Automático Inteligente
   useEffect(() => {
-    if (isRegisterOpen && !isEditingPrice && !isConfirmModalOpen && !isReservationModalOpen) {
-      isSearchMode ? searchInputRef.current?.focus() : inputRef.current?.focus();
+    if (!isRegisterOpen || isEditingPrice || isConfirmModalOpen || isReservationModalOpen) return;
+
+    // Si hay un método de crédito seleccionado, quizás queramos foco allí, 
+    // pero por defecto priorizamos seguir vendiendo.
+    if (isSearchMode) {
+      searchInputRef.current?.focus();
+    } else {
+      // Solo enfocamos el escáner si NO estamos escribiendo la nota de crédito
+      if (document.activeElement !== creditNoteInputRef.current) {
+        inputRef.current?.focus();
+      }
     }
   }, [cart, isRegisterOpen, isEditingPrice, isConfirmModalOpen, isReservationModalOpen, isSearchMode]);
 
@@ -128,7 +133,7 @@ const POSPage = () => {
         const res = await api.get('/products', { params: { search: manualTerm, limit: 5 } });
         setManualResults(res.data.products || []);
       } catch (error) { console.error(error); }
-    }, 300); // 300ms para mayor respuesta
+    }, 300);
     return () => clearTimeout(delaySearch);
   }, [manualTerm, isSearchMode]);
 
@@ -146,7 +151,6 @@ const POSPage = () => {
     playSound('beep');
     setManualTerm('');
     setManualResults([]);
-    // Volver foco al input para seguir buscando
     setTimeout(() => searchInputRef.current?.focus(), 100);
   };
 
@@ -154,7 +158,6 @@ const POSPage = () => {
   const handleScan = async (e) => {
     e.preventDefault();
     if (!skuInput.trim()) return;
-
     try {
       const res = await api.get(`/sales/scan/${skuInput}`);
       if (res.data.found) {
@@ -172,7 +175,7 @@ const POSPage = () => {
 
   // --- CARRITO ---
   const addToCart = (product) => {
-    setCustomTotal(null);
+    setCustomTotal(null); // Reseteamos precio editado al agregar cosas
     setCart((prevCart) => {
       const existing = prevCart.find(i => i.id_variante === product.id_variante);
       if (existing) {
@@ -198,8 +201,8 @@ const POSPage = () => {
     setCart(prev => prev.map(item => {
       if (item.id_variante === id) {
         const newQty = item.cantidad + delta;
-        if (newQty < 1) return item;
-        if (newQty > item.stock_actual) return item;
+        if (newQty < 1) return item; // Mínimo 1
+        if (newQty > item.stock_actual) return item; // Máximo stock real
         return { ...item, cantidad: newQty, subtotal: newQty * item.precio };
       }
       return item;
@@ -223,6 +226,15 @@ const POSPage = () => {
       playSound('error');
       return;
     }
+    // Validación Nota Crédito (Flexible con acentos)
+    const metodoNombre = selectedMethod.nombre.toLowerCase();
+    if ((metodoNombre.includes('credito') || metodoNombre.includes('crédito')) && !creditNoteCode.trim()) {
+      toast.error("Debes ingresar el código de la Nota");
+      playSound('error');
+      // Enfocar el input de nota si está vacío
+      setTimeout(() => creditNoteInputRef.current?.focus(), 200);
+      return;
+    }
     setIsConfirmModalOpen(true);
   };
 
@@ -230,48 +242,82 @@ const POSPage = () => {
     const toastId = toast.loading("Procesando...");
     setIsConfirmModalOpen(false);
     try {
-      const payload = { items: cart, subtotal_calculado: subtotalCalculado, total_final: totalFinal, metodo_pago_id: selectedMethod.id };
+      const metodoNombre = selectedMethod.nombre.toLowerCase();
+      const esNotaCredito = metodoNombre.includes('credito') || metodoNombre.includes('crédito');
+
+      // 1. Validar Nota de Crédito en Backend
+      if (esNotaCredito) {
+        try {
+          const check = await api.get(`/sales/notas-credito/validar/${creditNoteCode}`);
+          // Validar si alcanza el saldo
+          if (check.data.monto < totalFinal) {
+            toast.error(`Saldo insuficiente en Nota ($${check.data.monto})`, { id: toastId });
+            playSound('error');
+            return;
+          }
+        } catch (e) {
+          toast.error(e.response?.data?.msg || "Código de Nota inválido", { id: toastId });
+          playSound('error');
+          return;
+        }
+      }
+
+      const payload = {
+        items: cart,
+        subtotal_calculado: subtotalCalculado,
+        total_final: totalFinal,
+        metodo_pago_id: selectedMethod.id,
+        codigo_nota_credito: esNotaCredito ? creditNoteCode : null
+      };
+
       const res = await api.post('/sales/checkout', payload);
 
-      // Preparamos datos por si quiere imprimir después, pero NO imprimimos automático
       setTicketData({
         id_venta: res.data.id,
         fecha: new Date().toLocaleString(),
         items: cart,
         total: totalFinal,
-        cliente: "Consumidor Final"
+        cliente: "Consumidor Final",
+        metodo: selectedMethod.nombre
       });
 
       playSound('beep');
       toast.success(`Venta #${res.data.id} Exitosa`, { id: toastId });
 
-      // Limpieza
-      setCart([]); setSkuInput(''); setSelectedMethod(null); setCustomTotal(null);
-      fetchRecentSales(); // Actualizar lista lateral
+      setCart([]); setSkuInput(''); setSelectedMethod(null); setCustomTotal(null); setCreditNoteCode('');
+      fetchRecentSales();
 
     } catch (error) {
       playSound('error');
-      toast.error("Error al procesar venta", { id: toastId });
+      toast.error(error.response?.data?.msg || "Error al procesar", { id: toastId });
+    }
+  };
+
+  // --- ANULAR VENTA (PÁNICO) ---
+  const handleVoidSale = async (ventaId) => {
+    if (!window.confirm(`⚠️ ¿ANULAR VENTA #${ventaId}?\n\nSe devolverá el stock inmediatamente.`)) return;
+
+    const toastId = toast.loading("Anulando...");
+    try {
+      await api.delete(`/sales/${ventaId}/anular`);
+      toast.success("Venta anulada y stock devuelto", { id: toastId });
+      playSound('beep');
+      fetchRecentSales();
+    } catch (error) {
+      toast.error("Error al anular", { id: toastId });
+      playSound('error');
     }
   };
 
   const handleReprint = (venta) => {
-    // Reconstruimos el objeto para el ticket
-    // Nota: venta.items suele venir como string resumen del backend, 
-    // idealmente el endpoint history debería traer items_detail si queremos ticket full.
-    // Aquí asumimos estructura simple para reimpresión rápida.
     setTicketData({
       id_venta: venta.id,
       fecha: venta.fecha,
-      items: venta.items_detail || [], // Si el backend lo manda, genial
+      items: venta.items_detail || [],
       total: venta.total,
       cliente: "Reimpresión"
     });
-
-    // Pequeño delay para que React renderice el ticket oculto antes de llamar a print
-    setTimeout(() => {
-      reactToPrintFn();
-    }, 200);
+    setTimeout(() => { reactToPrintFn(); }, 200);
   };
 
   // --- RESERVAS ---
@@ -285,14 +331,10 @@ const POSPage = () => {
     setIsReservationModalOpen(false);
     try {
       const payload = {
-        items: cart,
-        total: totalFinal,
-        sena: reservationData.sena,
-        cliente: reservationData.cliente,
-        telefono: reservationData.telefono,
+        items: cart, total: totalFinal, sena: reservationData.sena,
+        cliente: reservationData.cliente, telefono: reservationData.telefono,
         id_metodo_pago: reservationData.metodo_pago_id
       };
-
       await api.post('/sales/reservas/crear', payload);
       playSound('beep');
       toast.success("Reserva creada", { id: toastId });
@@ -305,19 +347,22 @@ const POSPage = () => {
 
   // --- HELPERS UI ---
   const getPaymentIcon = (n) => {
-    if (n.toLowerCase().includes('tarjeta')) return <CreditCard size={20} />;
-    if (n.toLowerCase().includes('transferencia')) return <Smartphone size={20} />;
+    const name = n.toLowerCase();
+    if (name.includes('tarjeta')) return <CreditCard size={20} />;
+    if (name.includes('transferencia')) return <Smartphone size={20} />;
+    if (name.includes('credito') || name.includes('crédito')) return <Receipt size={20} />;
     return <Banknote size={20} />;
   };
 
   const getMethodBadgeColor = (methodName) => {
-    const m = methodName.toLowerCase();
+    const m = (methodName || '').toLowerCase();
     if (m.includes('efectivo')) return 'bg-green-100 text-green-700 border-green-200';
     if (m.includes('tarjeta')) return 'bg-blue-100 text-blue-700 border-blue-200';
     if (m.includes('transferencia')) return 'bg-purple-100 text-purple-700 border-purple-200';
     return 'bg-gray-100 text-gray-600 border-gray-200';
   };
 
+  // --- RENDER ---
   if (isRegisterOpen === false) return (
     <div className="h-[80vh] flex flex-col items-center justify-center p-6 text-center animate-fade-in">
       <div className="bg-red-50 p-6 rounded-full text-red-500 mb-6 shadow-sm"><Lock size={64} /></div>
@@ -329,28 +374,12 @@ const POSPage = () => {
   return (
     <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)] gap-4 p-2">
       <Toaster position="top-center" />
-
-      {/* Ticket Oculto */}
       <div style={{ display: 'none' }}><div ref={ticketRef}><Ticket saleData={ticketData} /></div></div>
 
-      <ConfirmModal
-        isOpen={isConfirmModalOpen}
-        onClose={() => setIsConfirmModalOpen(false)}
-        onConfirm={processSale}
-        title="Confirmar Venta"
-        message={`Cobrar $${totalFinal.toLocaleString()}?`}
-        confirmText="Cobrar"
-      />
+      <ConfirmModal isOpen={isConfirmModalOpen} onClose={() => setIsConfirmModalOpen(false)} onConfirm={processSale} title="Confirmar Venta" message={`Cobrar $${totalFinal.toLocaleString()}?`} confirmText="Cobrar" />
+      <ReservationModal isOpen={isReservationModalOpen} onClose={() => setIsReservationModalOpen(false)} onConfirm={processReservation} total={totalFinal} paymentMethods={paymentMethods} />
 
-      <ReservationModal
-        isOpen={isReservationModalOpen}
-        onClose={() => setIsReservationModalOpen(false)}
-        onConfirm={processReservation}
-        total={totalFinal}
-        paymentMethods={paymentMethods}
-      />
-
-      {/* --- COLUMNA IZQUIERDA: BÚSQUEDA Y HISTORIAL --- */}
+      {/* --- COLUMNA IZQUIERDA --- */}
       <div className="w-full md:w-2/3 flex flex-col gap-4">
 
         {/* PANEL BUSCADOR */}
@@ -374,28 +403,38 @@ const POSPage = () => {
                 ref={searchInputRef}
                 value={manualTerm}
                 onChange={e => setManualTerm(e.target.value)}
-                placeholder="Escribe nombre de producto..."
+                placeholder="Nombre del producto..."
                 className="w-full p-4 border-2 border-purple-200 rounded-xl outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-50 transition-all text-lg"
                 autoFocus
               />
+              {/* RESULTADOS MANUALES COMPLETOS */}
               {manualResults.length > 0 && (
-                <div className="absolute top-full left-0 right-0 bg-white border shadow-2xl rounded-b-xl mt-1 max-h-80 overflow-y-auto">
+                <div className="absolute top-full left-0 right-0 bg-white border shadow-2xl rounded-b-xl mt-1 max-h-80 overflow-y-auto z-50">
                   {manualResults.map(p => (
-                    <div key={p.id} className="p-3 border-b hover:bg-gray-50 flex gap-3 cursor-pointer" onClick={() => { }}>
-                      <div className="w-12 h-12 bg-gray-100 rounded-lg shrink-0 flex items-center justify-center border">
-                        {p.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${p.imagen}`} className="w-full h-full object-cover rounded-lg" /> : <Shirt size={20} className="text-gray-300" />}
+                    <div key={p.id} className="p-3 border-b hover:bg-gray-50 flex gap-3 cursor-pointer group" onClick={() => { }}>
+                      <div className="w-12 h-12 bg-gray-100 rounded-lg shrink-0 flex items-center justify-center border overflow-hidden">
+                        {p.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${p.imagen}`} className="w-full h-full object-cover" /> : <Shirt size={20} className="text-gray-300" />}
                       </div>
                       <div className="flex-1">
-                        <div className="flex justify-between font-bold text-sm text-gray-800"><span>{p.nombre}</span><span>${p.precio}</span></div>
-                        <div className="flex flex-wrap gap-2 mt-1">
+                        <div className="flex justify-between font-bold text-sm text-gray-800">
+                          <span>{p.nombre}</span>
+                          <span className="text-blue-600">${p.precio}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-2 mt-2">
                           {p.variantes.map(v => (
                             <button
                               key={v.id_variante}
                               onClick={(e) => { e.stopPropagation(); handleManualAdd(p, v); }}
                               disabled={v.stock === 0}
-                              className={`text-xs px-2 py-1 rounded border transition-colors ${v.stock > 0 ? 'hover:bg-purple-600 hover:text-white border-purple-200 text-purple-700' : 'bg-gray-100 text-gray-400 cursor-not-allowed'}`}
+                              className={`text-xs px-3 py-1 rounded border transition-all flex items-center gap-1 ${v.stock > 0
+                                ? 'hover:bg-purple-600 hover:text-white border-purple-200 text-purple-700 bg-purple-50'
+                                : 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                                }`}
                             >
-                              {v.talle} <span className="opacity-70">({v.stock})</span>
+                              <span className="font-bold">{v.talle}</span>
+                              <span className="text-[10px] opacity-70 border-l pl-1 ml-1 border-current">
+                                {v.stock}u
+                              </span>
                             </button>
                           ))}
                         </div>
@@ -420,7 +459,7 @@ const POSPage = () => {
           )}
         </div>
 
-        {/* LISTA HISTORIAL (MEJORADA) */}
+        {/* LISTA HISTORIAL */}
         <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col relative z-0 overflow-hidden">
           <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
             <h3 className="text-sm font-bold text-gray-700 flex items-center"><Clock size={16} className="mr-2 text-blue-500" /> Últimas Ventas</h3>
@@ -428,13 +467,13 @@ const POSPage = () => {
           </div>
           <div className="flex-1 overflow-y-auto p-0">
             <table className="w-full text-xs text-left">
-              <thead className="bg-white text-gray-400 font-bold sticky top-0 shadow-sm">
+              <thead className="bg-white text-gray-400 font-bold sticky top-0 shadow-sm z-10">
                 <tr>
                   <th className="p-3">Hora</th>
                   <th className="p-3">Items</th>
                   <th className="p-3 text-center">Pago</th>
                   <th className="p-3 text-right">Total</th>
-                  <th className="p-3 text-center">Ticket</th>
+                  <th className="p-3 text-center">Acciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -448,21 +487,11 @@ const POSPage = () => {
                       </span>
                     </td>
                     <td className="p-3 font-bold text-gray-900 text-right">${v.total.toLocaleString()}</td>
-                    <td className="p-3 text-center">
-                      <button
-                        onClick={() => handleReprint(v)}
-                        className="text-gray-300 hover:text-blue-600 hover:bg-blue-100 p-1.5 rounded-full transition-all"
-                        title="Imprimir Ticket"
-                      >
+                    <td className="p-3 text-center flex justify-center gap-2">
+                      <button onClick={() => handleReprint(v)} className="text-gray-300 hover:text-blue-600 hover:bg-blue-100 p-1.5 rounded-full transition-all" title="Imprimir Ticket">
                         <Printer size={16} />
                       </button>
-
-                      {/* --- NUEVO BOTÓN ANULAR (Visible solo al pasar el mouse o siempre) --- */}
-                      <button
-                        onClick={() => handleVoidSale(v.id)}
-                        className="text-red-300 hover:text-red-600 p-1 hover:bg-red-50 rounded transition-colors"
-                        title="ANULAR VENTA (Devolver Stock)"
-                      >
+                      <button onClick={() => handleVoidSale(v.id)} className="text-red-300 hover:text-red-600 p-1.5 hover:bg-red-50 rounded-full transition-colors" title="ANULAR Y RESTAURAR STOCK">
                         <Trash2 size={16} />
                       </button>
                     </td>
@@ -477,7 +506,7 @@ const POSPage = () => {
         </div>
       </div>
 
-      {/* --- COLUMNA DERECHA: TICKET Y COBRO --- */}
+      {/* --- COLUMNA DERECHA --- */}
       <div className="w-full md:w-1/3 bg-white flex flex-col rounded-2xl shadow-lg border border-gray-200 overflow-hidden relative">
 
         {/* Header Carrito */}
@@ -523,14 +552,13 @@ const POSPage = () => {
         {/* Zona de Cobro */}
         <div className="p-4 bg-white border-t-2 border-gray-100 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-20">
 
-          {/* Métodos de Pago */}
           <div className="mb-4">
             <p className="text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-wide">Seleccionar Medio de Pago</p>
             <div className="grid grid-cols-3 gap-2">
               {paymentMethods.map(m => (
                 <button
                   key={m.id}
-                  onClick={() => setSelectedMethod(m)}
+                  onClick={() => { setSelectedMethod(m); setCreditNoteCode(''); }}
                   className={`flex flex-col items-center justify-center p-2 rounded-xl border-2 transition-all active:scale-95 ${selectedMethod?.id === m.id
                     ? 'bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-200'
                     : 'bg-white text-gray-500 border-gray-200 hover:border-blue-300 hover:bg-blue-50'
@@ -541,24 +569,60 @@ const POSPage = () => {
                 </button>
               ))}
             </div>
+
+            {/* INPUT DE NOTA DE CRÉDITO (Corregido para tildes y mayúsculas) */}
+            {selectedMethod &&
+              (selectedMethod.nombre.toLowerCase().includes('credito') || selectedMethod.nombre.toLowerCase().includes('crédito')) && (
+                <div className="mt-3 bg-yellow-50 p-3 rounded-lg border border-yellow-200 animate-fade-in shadow-sm">
+                  <label className="text-xs font-bold text-yellow-800 uppercase block mb-1 flex items-center">
+                    <AlertTriangle size={12} className="mr-1" /> Código de la Nota
+                  </label>
+                  <input
+                    ref={creditNoteInputRef}
+                    value={creditNoteCode}
+                    onChange={e => setCreditNoteCode(e.target.value.toUpperCase())}
+                    placeholder="NC-XXXXXX"
+                    className="w-full p-2 border border-yellow-300 rounded font-mono text-center uppercase focus:ring-2 focus:ring-yellow-400 outline-none bg-white text-lg font-bold text-gray-800 placeholder-gray-300"
+                  />
+                </div>
+              )}
           </div>
 
-          {/* Totales */}
+          {/* TOTAL Y EDICIÓN (Mejorado con Icono) */}
           <div className="flex justify-between items-end mb-4 border-b border-dashed pb-3">
             <div>
               <span className="text-gray-500 font-medium text-xs uppercase">Total a Cobrar</span>
               {descuentoVisual > 0 && <div className="text-xs text-green-600 font-bold bg-green-50 px-1 rounded inline-block mt-1">Ahorro: ${descuentoVisual.toLocaleString()}</div>}
             </div>
-            <div onClick={() => setIsEditingPrice(true)} className="cursor-pointer group relative">
-              {isEditingPrice ?
-                <input autoFocus type="number" className="text-3xl font-black text-right w-36 border-b-2 border-blue-500 outline-none bg-transparent" value={customTotal === null ? subtotalCalculado : customTotal} onChange={e => setCustomTotal(e.target.value)} onBlur={() => setIsEditingPrice(false)} onKeyDown={e => { if (e.key === 'Enter') setIsEditingPrice(false) }} />
-                : <span className={`text-3xl font-black tracking-tighter group-hover:text-blue-600 transition-colors ${descuentoVisual !== 0 ? 'text-blue-600' : 'text-slate-800'}`}>$ {totalFinal.toLocaleString()}</span>
-              }
-              {!isEditingPrice && <span className="absolute -top-3 -right-2 text-[10px] bg-gray-100 text-gray-400 px-1 rounded opacity-0 group-hover:opacity-100 transition-opacity">Editar</span>}
+            <div
+              onClick={() => setIsEditingPrice(true)}
+              className="cursor-pointer group flex items-center relative"
+              title="Haz clic para editar el precio final"
+            >
+              {isEditingPrice ? (
+                <input
+                  autoFocus
+                  type="number"
+                  className="text-3xl font-black text-right w-36 border-b-2 border-blue-500 outline-none bg-transparent"
+                  value={customTotal === null ? subtotalCalculado : customTotal}
+                  onChange={e => setCustomTotal(e.target.value)}
+                  onBlur={() => setIsEditingPrice(false)}
+                  onKeyDown={e => { if (e.key === 'Enter') setIsEditingPrice(false) }}
+                />
+              ) : (
+                <>
+                  <span className={`text-3xl font-black tracking-tighter transition-colors ${descuentoVisual !== 0 ? 'text-blue-600' : 'text-slate-800'}`}>
+                    $ {totalFinal.toLocaleString()}
+                  </span>
+                  {/* ICONO DE EDICIÓN VISIBLE */}
+                  <div className="ml-2 p-1 rounded-full bg-gray-100 text-gray-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
+                    <Edit3 size={16} />
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
-          {/* Botones Finales */}
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={handleReservationClick}

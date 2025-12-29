@@ -84,7 +84,7 @@ const Sidebar = () => {
       icon: Package,
       items: [
         { path: '/productos', name: 'Catálogo Productos', icon: Shirt },
-        { path: '/inventario', name: 'Movimientos Stock', icon: ArrowRightLeft },
+        { path: '/inventario', name: 'Inventario', icon: ArrowRightLeft },
         { path: '/recuento', name: 'Recuento Físico', icon: ClipboardCheck },
         { path: '/compras', name: 'Registro Compras', icon: Truck },
         { path: '/etiquetas', name: 'Etiquetas / Códigos', icon: QrCode },
@@ -99,6 +99,7 @@ const Sidebar = () => {
       items: [
         { path: '/cambios', name: 'Cambios / Devol.', icon: ArrowRightLeft },
         { path: '/reservas', name: 'Reservas y Señas', icon: CalendarClock },
+        { path: '/notas-credito', name: 'Notas de Crédito', icon: QrCode },
         { path: '/presupuestos', name: 'Presupuestos', icon: FileSpreadsheet },
       ]
     },
