@@ -143,3 +143,4 @@ en la pagina de reservas, cuando el cliente salda el total de la reserva, esa ve
 poder imprimir comprobante de reserva en pagina, poder eliminar las reservas ya completadas
 
 arreglar poder escapar cuando seleccione reserva y quiero volver para atras en la pagina de POSPage.jsx
+.
