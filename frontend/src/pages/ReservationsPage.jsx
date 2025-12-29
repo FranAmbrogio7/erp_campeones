@@ -120,8 +120,8 @@ const ReservationsPage = () => {
                                     <td className="p-4">
                                         <div className="flex items-center gap-2">
                                             <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase border ${r.estado === 'pendiente' ? 'bg-yellow-50 text-yellow-700 border-yellow-200' :
-                                                    r.estado === 'retirada' ? 'bg-green-50 text-green-700 border-green-200' :
-                                                        'bg-gray-100 text-gray-500 border-gray-200'
+                                                r.estado === 'retirada' ? 'bg-green-50 text-green-700 border-green-200' :
+                                                    'bg-gray-100 text-gray-500 border-gray-200'
                                                 }`}>
                                                 {r.estado}
                                             </span>

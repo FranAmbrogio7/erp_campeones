@@ -128,12 +128,18 @@ modulo para mercaderia reservada, monto de seña, saldo restante a pagar, nombre
 
 funcion para añadir una venta sin codigo, en caso de que sea un producto que aun no se haya cargado en el inventario, que se pueda agregar un campo de texto completo para que el usuario pueda agregar el detalle del producto, ya que tambien hay situaciones en las que el cliente paga una parte en efectivo, y otra parte la transfiere, quiero una funcion para poder solucionar estos casos
 
-generar pagina de notas para anotar todo lo que se necesite de situaciones diarias, por ejemplo, comprar cinta, comprar carton de cintas, etc
+generar pagina de notas para anotar todo lo que se necesite de situaciones diarias, por ejemplo, comprar cinta, comprar carton de cintas, etc ✅
 
 pagina para emitir un listado de stock en pdf de los articulos que el usuario quiera ✅
 
-la nota de credito ya funciona, pero hay q validar cuando el monto a abonar es inferior a la nota de credito, que pasa con el saldo restante a favor del cliente?
+la nota de credito ya funciona, pero hay q validar cuando el monto a abonar es inferior a la nota de credito, que pasa con el saldo restante a favor del cliente? ✅
 
 agregar boton de reimprimir nota de credito en pagina de notas de credito
 
 boton para sincronizar todo el stock con tienda nube
+
+en la pagina de reservas, cuando el cliente salda el total de la reserva, esa venta se debe registrar en el historial de ventas, en un primer momento se guarda la venta con la plata de la seña, y posteriormente se debe abonar el saldo restante, pero como manejas esas condiciones en el historial de ventas? para que no tenga diferencias en la caja del dia
+
+poder imprimir comprobante de reserva en pagina, poder eliminar las reservas ya completadas
+
+arreglar poder escapar cuando seleccione reserva y quiero volver para atras en la pagina de POSPage.jsx
