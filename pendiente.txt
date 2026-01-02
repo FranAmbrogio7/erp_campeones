@@ -5,3 +5,13 @@
 -configurar vps y levantar erp en produccion
 
 -revisar bien el gitignore xq el enviroment se esta subiendo (preparar proyecto para produccion)
+
+
+
+Lunes 02:
+-terminar db de videos
+-arreglar validaciones, ux/ui faltante, algun modulo importante
+
+-configurar vps y probar subir a produccion
+-si levanta el vps, terminar webhooks tienda nube a erp
+

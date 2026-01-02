@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
-import { useAuth, api } from '../context/AuthContext'; // Asegúrate de importar api si lo usas
+import { useAuth, api } from '../context/AuthContext';
 import {
     CalendarClock, Search, CheckCircle, XCircle, DollarSign,
     Phone, Eye, Printer, AlertTriangle
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
-import ReservationDetailsModal from '../components/ReservationDetailsModal'; // <--- IMPORTAR MODAL
+import { useReactToPrint } from 'react-to-print'; // <--- 1. Importar librería
+import ReservationDetailsModal from '../components/ReservationDetailsModal';
+import Ticket from '../components/Ticket'; // <--- 2. Importar Ticket
 
 const ReservationsPage = () => {
     const { token } = useAuth();
@@ -17,9 +19,37 @@ const ReservationsPage = () => {
     const [selectedReserva, setSelectedReserva] = useState(null);
     const [isDetailOpen, setIsDetailOpen] = useState(false);
 
+    // --- LÓGICA DE IMPRESIÓN ---
+    const [ticketData, setTicketData] = useState(null);
+    const ticketRef = useRef(null);
+
+    const reactToPrintFn = useReactToPrint({
+        contentRef: ticketRef, // Versión corregida para React moderno
+    });
+
+    const handleReprint = (reserva) => {
+        // Adaptamos los datos de la reserva al formato que espera el componente Ticket
+        const dataForTicket = {
+            id_venta: `RES-${reserva.id}`, // Prefijo para distinguir
+            fecha: reserva.fecha || new Date().toLocaleDateString(),
+            items: reserva.items || [], // Asumimos que el backend trae los items, si no, saldrá vacío
+            total: reserva.total,
+            cliente: reserva.cliente,
+            metodo: `Seña: $${reserva.sena} (Saldo: $${reserva.saldo})`, // Mostramos el estado del pago
+            tipo: 'RESERVA' // Flag opcional si tu Ticket lo soporta
+        };
+
+        setTicketData(dataForTicket);
+
+        // Esperamos a que se renderice el ticket oculto
+        setTimeout(() => {
+            if (reactToPrintFn) reactToPrintFn();
+        }, 150);
+    };
+    // ---------------------------
+
     const fetchReservas = async () => {
         try {
-            // Usamos api.get o axios.get directo según tu config
             const res = await axios.get('http://localhost:5000/api/sales/reservas', {
                 headers: { Authorization: `Bearer ${token}` }
             });
@@ -65,6 +95,13 @@ const ReservationsPage = () => {
     return (
         <div className="p-6 max-w-7xl mx-auto space-y-6">
             <Toaster position="top-center" />
+
+            {/* --- TICKET OCULTO --- */}
+            <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
+                <div ref={ticketRef}>
+                    <Ticket saleData={ticketData} />
+                </div>
+            </div>
 
             {/* MODAL DE DETALLE */}
             <ReservationDetailsModal
@@ -162,6 +199,16 @@ const ReservationsPage = () => {
 
                                     <td className="p-4 text-right">
                                         <div className="flex justify-end gap-2">
+                                            {/* --- BOTÓN IMPRIMIR --- */}
+                                            <button
+                                                onClick={() => handleReprint(r)}
+                                                className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-100"
+                                                title="Reimprimir Comprobante"
+                                            >
+                                                <Printer size={18} />
+                                            </button>
+                                            {/* ---------------------- */}
+
                                             {r.estado === 'pendiente' ? (
                                                 <>
                                                     <button

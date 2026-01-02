@@ -80,6 +80,18 @@ const Sidebar = () => {
     },
     {
       type: 'folder',
+      key: 'gestion',
+      name: 'Gestión Comercial',
+      icon: Users,
+      items: [
+        { path: '/cambios', name: 'Cambios / Devol.', icon: ArrowRightLeft },
+        { path: '/reservas', name: 'Reservas y Señas', icon: CalendarClock },
+        { path: '/notas-credito', name: 'Notas de Crédito', icon: QrCode },
+        { path: '/presupuestos', name: 'Presupuestos', icon: FileSpreadsheet },
+      ]
+    },
+    {
+      type: 'folder',
       key: 'inventario',
       name: 'Stock y Productos',
       icon: Package,
@@ -90,18 +102,6 @@ const Sidebar = () => {
         { path: '/compras', name: 'Registro Compras', icon: Truck },
         { path: '/etiquetas', name: 'Etiquetas / Códigos', icon: QrCode },
         { path: '/categorias', name: 'Categorías', icon: Tags },
-      ]
-    },
-    {
-      type: 'folder',
-      key: 'gestion',
-      name: 'Gestión Comercial',
-      icon: Users,
-      items: [
-        { path: '/cambios', name: 'Cambios / Devol.', icon: ArrowRightLeft },
-        { path: '/reservas', name: 'Reservas y Señas', icon: CalendarClock },
-        { path: '/notas-credito', name: 'Notas de Crédito', icon: QrCode },
-        { path: '/presupuestos', name: 'Presupuestos', icon: FileSpreadsheet },
       ]
     },
     {

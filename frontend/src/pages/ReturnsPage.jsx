@@ -216,6 +216,10 @@ const ReturnsPage = () => {
                                 autoFocus
                             />
                             <ScanBarcode className="absolute left-3 top-3.5 text-red-300" size={20} />
+                            <button type="submit" className="absolute right-3 top-3.5 text-red-300">
+                                <ArrowLeft size={20} />
+                            </button>
+
                         </form>
                     </div>
 
@@ -276,8 +280,8 @@ const ReturnsPage = () => {
                             </p>
 
                             <div className={`py-2 px-3 rounded-lg text-xs font-bold uppercase inline-block w-full ${balance > 0 ? 'bg-green-500 text-slate-900' :
-                                    balance < 0 ? 'bg-blue-500 text-white' :
-                                        'bg-slate-700 text-slate-400'
+                                balance < 0 ? 'bg-blue-500 text-white' :
+                                    'bg-slate-700 text-slate-400'
                                 }`}>
                                 {balance > 0 ? "Cliente Paga Diferencia" :
                                     balance < 0 ? "A Favor del Cliente (NC)" :
@@ -291,8 +295,8 @@ const ReturnsPage = () => {
                         onClick={handleProcess}
                         disabled={itemsIn.length === 0 && itemsOut.length === 0}
                         className={`w-full py-4 rounded-xl font-bold text-lg shadow-lg transition-all active:scale-95 flex items-center justify-center ${itemsIn.length === 0 && itemsOut.length === 0
-                                ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
-                                : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200'
+                            ? 'bg-gray-200 text-gray-400 cursor-not-allowed'
+                            : 'bg-blue-600 text-white hover:bg-blue-700 shadow-blue-200'
                             }`}
                     >
                         CONFIRMAR <CheckCircle size={20} className="ml-2" />
@@ -317,6 +321,9 @@ const ReturnsPage = () => {
                                 placeholder="Escanear qué se lleva..."
                             />
                             <ScanBarcode className="absolute left-3 top-3.5 text-green-300" size={20} />
+                            <button type="submit" className="absolute right-3 top-3.5 text-green-300">
+                                <ArrowLeft size={20} />
+                            </button>
                         </form>
                     </div>
 

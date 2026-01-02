@@ -482,17 +482,26 @@ const POSPage = () => {
               )}
             </div>
           ) : (
-            <form onSubmit={handleScan} className="relative">
+            <form onSubmit={handleScan} className="relative flex gap-2">
               <input
                 ref={inputRef}
                 value={skuInput}
                 onChange={e => setSkuInput(e.target.value)}
                 placeholder="CÓDIGO DE BARRAS..."
-                className="w-full text-2xl p-4 border-2 border-blue-500 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 uppercase font-mono tracking-wider transition-all"
+                className="flex-1 text-2xl p-4 border-2 border-blue-500 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 uppercase font-mono tracking-wider transition-all"
                 autoFocus
                 disabled={isEditingPrice || isConfirmModalOpen}
               />
+
+              <button
+                type="submit"
+                disabled={isEditingPrice || isConfirmModalOpen}
+                className="px-6 text-xl font-bold bg-blue-500 text-white rounded-xl hover:bg-blue-600 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                ENTER
+              </button>
             </form>
+
           )}
         </div>
 

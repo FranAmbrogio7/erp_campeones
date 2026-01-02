@@ -4,7 +4,7 @@ import { useAuth, api } from '../context/AuthContext';
 import {
     Package, QrCode, Search, Edit,
     ChevronLeft, ChevronRight, Shirt, Filter, XCircle,
-    Cloud, UploadCloud, Loader2 // Importamos Loader2 para el spinner
+    Cloud, UploadCloud, Loader2, Plus // Importamos Loader2 para el spinner
 } from 'lucide-react';
 import ModalBarcode from '../components/ModalBarcode';
 import EditProductModal from '../components/EditProductModal';
@@ -48,6 +48,11 @@ const InventoryPage = () => {
     const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+
+    const handleCreateClick = () => {
+        setEditingProduct(null); // Pasamos null para indicar que es NUEVO
+        setIsEditModalOpen(true); // Reutilizamos el modal de edición
+    };
 
     // --- Estado Zoom Imagen ---
     const [imageModalSrc, setImageModalSrc] = useState(null);
@@ -198,6 +203,7 @@ const InventoryPage = () => {
 
                     <div className="flex gap-2 w-full md:w-auto">
                         <div className="relative flex-1 md:w-64">
+
                             <input
                                 name="search"
                                 placeholder="Buscar nombre o SKU..."
@@ -213,6 +219,12 @@ const InventoryPage = () => {
                             title="Filtros avanzados"
                         >
                             <Filter size={20} />
+                        </button>
+                        <button
+                            onClick={handleCreateClick}
+                            className="bg-slate-900 hover:bg-black text-white px-4 py-2 rounded-lg font-bold flex items-center shadow-lg transition-transform active:scale-95 whitespace-nowrap"
+                        >
+                            <Plus size={20} className="mr-2" /> Nuevo
                         </button>
                     </div>
                 </div>

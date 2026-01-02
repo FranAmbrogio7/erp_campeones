@@ -30,118 +30,38 @@ pendiente:
 
 - agregar funcion para poder ver 'motivo' en caso de que se haga retiro de plata de caja
 
-- generar una pagina exclusivamente de guardado de arqueos de caja donde el cliente pueda controlar las ventas de todos los dias, y que se vayan agrupando por mes/año
-
-- crear modulo para compras, ver lo que sea necesario modificar en la base de datos, donde el usuario tenga una pagina para cargar el detalle de lo que compro (pueden ser productos ya cargados en el inventario o que requiera la creacion de nuevos productos), el registro del proveedor en el caso de que sea necesario, el detalle de los gastos, fecha, y lo que sea fundamental
-
-- a la hora de cerrar la venta, ver posibilidad de hacer una modificacion EXCEPCIONAL en caso de que se le ofrezca algun detalle al cliente (que quede registrado)
-
-- añadir funcion para imprimir ticket con detalle de compra para el cliente, desde la pagina de "Nueva venta" (que incluya: nombre de cliente, fecha, detalle de compra, total, nombre del negocio 'Campeones')
-
-- a la hora de cerrar la venta, ver posibilidad de hacer una modificacion EXCEPCIONAL en caso de que se le ofrezca algun detalle al cliente (que quede registrado)
-
--login funcional real
-
 -validar el cierre de caja, en caso de que el usuario cierre la caja y se equivoque, que pueda volver a modificarla aunque ya se haya cerrado
-
--funcion para emitir nota de credito cliente
-
--funcion para sumar articulo al stock en caso de cambio, NO RETIRAR ETIQUETA POR PARTE DE CLIENTE (AVISAR)
-
 
 
 -------------------------- FUTURAS FUNCIONES --------------------------
--vincular base de datos con tienda nube
 -facturacion desde la app
--reportes (producto + vendido, cliente + compras, etc)
 
 
-
---------------------------UPDATES--------------------------
-
-agregar boton enter en form de cambio y devolucion
-validar impresion de tickets en todos los modulos
-mejorar sku de los productos, un poco mas intuitivo, que se realicen en base al tipo de producto (camiseta = CAM), en base al talle definir si es niño (N) o adulto (A). CAMISETA-LIGA-ID-TALLE-TIT/ALT
-alerta de bajo stock en dashboard y mejorar dashboard en general
-poder acceder al detalle de compras historico ✅
-integrar ENTER y ESCAPE a paginas en general, principalmente a ventas para q sea mas agil
-
-ventana modal para ver el detalle de ventas especificas ✅
-
-pagina de estadisticas donde se vea el detalle de lo vendido en 1 mes y toda la informacion fundamental para conocer los ingresos del negocio, obteniendo los datos de las cajas historicas ✅
-
-
-
-
-
- ------------------------------------------------------------------------------------------------------------------------------
-nueva venta:
-integrar historial de ventas del dia en el recuadro vacio que dice 'accesos rapidos' ✅
 
 cambio/devolucion:
 historial de notas de credito con el detalle para reimprimir 
 
-catalogo de producto:
-incluir validacion de contraseña para eliminar productos 
-
-gestion de inventario:
-que las variantes de talles se muestren de una forma un poco mas clara e intuitiva para el usuario, al igual que la visualizacion de los codigo de producto ✅
-que te permita filtrar por liga, niño/adulto, precio, etc  ✅
-
-recuento de stock:
-por ahora nada ✅
-
-registro de compras:
-ver detalle en ventana modal de detalle de compra ✅
-
-impresion de etiquetas:
-arreglar error que no se imprimen correctamente
-validar que te saque de la lista desplegable con tecla ESCAPE
-
-historial de ventas:
-ventana modal en historial de ventas para ver el detalle de la venta ✅
 que permita realizar una venta sin codigo necesariamente, en caso de q no coincida la plata o sobre
 
-historial de cajas:
-arreglar el undefined ese ✅
- 
 
-
-impresion a arreglar ✅
-
-cambio/devolucion ---> nota de credito
-
-crear categorias ✅
-
-incluir busqueda de productos en la pagina de ventas ✅ 
-
-
-función para armar presupuestos e impresión ✅
-
-inclusion de guardado de nota de creidito para que se canjee en la caja ✅
-
-funcion para anular una venta en caso de que el cliente se arrepienta al instante y vuelva a ingresar el stock ✅
-
-implementar sonidos para acciones basicas (modificar stock, etc) y animaciones de espera cuando se hace una edicion o accion, para que el usuario sepa que algo esta sucediendo ✅
-
-modulo para mercaderia reservada, monto de seña, saldo restante a pagar, nombre del cliente, posibilidad de imprimir ticket de reserva ✅
 
 funcion para añadir una venta sin codigo, en caso de que sea un producto que aun no se haya cargado en el inventario, que se pueda agregar un campo de texto completo para que el usuario pueda agregar el detalle del producto, ya que tambien hay situaciones en las que el cliente paga una parte en efectivo, y otra parte la transfiere, quiero una funcion para poder solucionar estos casos
-
-generar pagina de notas para anotar todo lo que se necesite de situaciones diarias, por ejemplo, comprar cinta, comprar carton de cintas, etc ✅
 
 
 la nota de credito ya funciona, pero hay q validar cuando el monto a abonar es inferior a la nota de credito, que pasa con el saldo restante a favor del cliente? ✅
 
-agregar boton de reimprimir nota de credito en pagina de notas de credito
 
 boton para sincronizar todo el stock con tienda nube
 
 en la pagina de reservas, cuando el cliente salda el total de la reserva, esa venta se debe registrar en el historial de ventas, en un primer momento se guarda la venta con la plata de la seña, y posteriormente se debe abonar el saldo restante, pero como manejas esas condiciones en el historial de ventas? para que no tenga diferencias en la caja del dia
 
-poder imprimir comprobante de reserva en pagina, poder eliminar las reservas ya completadas
 
 arreglar poder escapar cuando seleccione reserva y quiero volver para atras en la pagina de POSPage.jsx
 
 
-mejorar el filtrado x palabras, que no necesariamente respete el orden de las palabras, sino que filtre por coincidencia
+mejorar el filtrado x palabras, que no necesariamente respete el orden de las palabras, sino que filtre por coincidencia:
+-postpage
+-catalogo de productos
+-inventario
+-etiquetas/codigos 
+

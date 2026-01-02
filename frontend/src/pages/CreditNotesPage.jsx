@@ -1,7 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { api } from '../context/AuthContext';
-import { FileText, CheckCircle, XCircle, Search, Plus, Save, X } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, Search, Plus, Save, X, Printer } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
+import { useReactToPrint } from 'react-to-print';
+import CreditNoteTicket from '../components/CreditNoteTicket'; // Asegúrate de que este componente exista en la ruta
 
 const CreditNotesPage = () => {
     const [notas, setNotas] = useState([]);
@@ -11,6 +13,27 @@ const CreditNotesPage = () => {
     // Estado del Formulario
     const [formData, setFormData] = useState({ monto: '', observaciones: '' });
     const [loading, setLoading] = useState(false);
+
+    // --- LÓGICA DE IMPRESIÓN (Idéntica a SalesHistoryPage) ---
+    const [printData, setPrintData] = useState(null);
+    const ticketRef = useRef(null);
+
+    const reactToPrintFn = useReactToPrint({
+        contentRef: ticketRef,
+    });
+
+    const handleReprint = (nota) => {
+        // 1. Guardamos los datos de la nota a imprimir
+        setPrintData(nota);
+
+        // 2. Esperamos un instante a que React renderice el componente oculto
+        setTimeout(() => {
+            if (reactToPrintFn) {
+                reactToPrintFn();
+            }
+        }, 150);
+    };
+    // ---------------------------------------------------------
 
     useEffect(() => {
         fetchNotas();
@@ -22,6 +45,7 @@ const CreditNotesPage = () => {
             setNotas(res.data);
         } catch (error) {
             console.error(error);
+            toast.error("Error cargando notas");
         }
     };
 
@@ -29,15 +53,20 @@ const CreditNotesPage = () => {
         e.preventDefault();
         setLoading(true);
         try {
-            await api.post('/sales/notas-credito/crear', {
+            const res = await api.post('/sales/notas-credito/crear', {
                 monto: formData.monto,
                 observaciones: formData.observaciones
             });
 
             toast.success("Nota de Crédito Generada!");
+
+            // Imprimir automáticamente al crear (Opcional)
+            const nuevaNota = { ...res.data.nota, fecha: new Date().toLocaleDateString() };
+            handleReprint(nuevaNota);
+
             setFormData({ monto: '', observaciones: '' });
             setIsModalOpen(false);
-            fetchNotas(); // Refrescar lista
+            fetchNotas();
 
         } catch (error) {
             toast.error(error.response?.data?.msg || "Error al crear nota");
@@ -54,6 +83,15 @@ const CreditNotesPage = () => {
     return (
         <div className="p-6 max-w-7xl mx-auto h-[calc(100vh-4rem)] overflow-y-auto">
             <Toaster position="top-center" />
+
+            {/* --- COMPONENTE OCULTO PARA IMPRESIÓN --- */}
+            {/* Usamos position absolute para sacarlo de la vista pero mantenerlo en el DOM */}
+            <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
+                <div ref={ticketRef}>
+                    <CreditNoteTicket data={printData} />
+                </div>
+            </div>
+            {/* ---------------------------------------- */}
 
             <div className="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
                 <div>
@@ -93,6 +131,7 @@ const CreditNotesPage = () => {
                             <th className="p-4">Estado</th>
                             <th className="p-4">Fecha Emisión</th>
                             <th className="p-4">Motivo / Observaciones</th>
+                            <th className="p-4 text-center">Acciones</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
@@ -113,10 +152,21 @@ const CreditNotesPage = () => {
                                 </td>
                                 <td className="p-4 text-gray-500">{n.fecha}</td>
                                 <td className="p-4 text-gray-500 italic max-w-xs truncate">{n.observaciones || '-'}</td>
+
+                                {/* BOTÓN DE REIMPRIMIR */}
+                                <td className="p-4 text-center">
+                                    <button
+                                        onClick={() => handleReprint(n)}
+                                        className="text-gray-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-full transition-all"
+                                        title="Imprimir Comprobante"
+                                    >
+                                        <Printer size={20} />
+                                    </button>
+                                </td>
                             </tr>
                         ))}
                         {filtered.length === 0 && (
-                            <tr><td colSpan="5" className="p-10 text-center text-gray-400">No se encontraron notas de crédito.</td></tr>
+                            <tr><td colSpan="6" className="p-10 text-center text-gray-400">No se encontraron notas de crédito.</td></tr>
                         )}
                     </tbody>
                 </table>
