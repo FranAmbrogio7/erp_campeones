@@ -158,7 +158,7 @@ const InventoryPage = () => {
             // Simulamos un delay mínimo para que el usuario vea la animación (opcional, se puede quitar)
             // await new Promise(r => setTimeout(r, 500)); 
 
-            await axios.post(`http://localhost:5000/api/products/${product.id}/publish`, {}, {
+            await axios.post(`/api/products/${product.id}/publish`, {}, {
                 headers: { Authorization: `Bearer ${token}` }
             });
 

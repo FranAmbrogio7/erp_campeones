@@ -61,7 +61,7 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                 dataToSend.append('imagen', newImageFile);
             }
 
-            await axios.put(`http://localhost:5000/api/products/${product.id}`, dataToSend, {
+            await axios.put(`/api/products/${product.id}`, dataToSend, {
                 headers: { Authorization: `Bearer ${token}` }
             });
 
@@ -82,7 +82,7 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
     // --- 2. ACTUALIZAR STOCK ---
     const handleUpdateVariant = async (variantId, newStock, newSku) => {
         try {
-            await axios.put(`http://localhost:5000/api/products/variants/${variantId}`,
+            await axios.put(`/api/products/variants/${variantId}`,
                 { stock: newStock, sku: newSku },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
@@ -92,7 +92,7 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
     // --- 3. AGREGAR VARIANTE ---
     const handleAddVariant = async () => {
         try {
-            await axios.post(`http://localhost:5000/api/products/variants`, {
+            await axios.post(`/api/products/variants`, {
                 id_producto: product.id, talla: newSize, stock: newStock
             }, { headers: { Authorization: `Bearer ${token}` } });
             onUpdate(); setNewStock(0); onClose();
@@ -103,7 +103,7 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
     const handleDeleteVariant = async (id) => {
         if (!window.confirm("¿Borrar este talle?")) return;
         try {
-            await axios.delete(`http://localhost:5000/api/products/variants/${id}`, {
+            await axios.delete(`/api/products/variants/${id}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setVariants(prev => prev.filter(v => v.id_variante !== id));
@@ -183,7 +183,7 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                                     {newImageFile ? (
                                         <img src={URL.createObjectURL(newImageFile)} alt="Nueva" className="w-full h-full object-cover" />
                                     ) : currentImage ? (
-                                        <img src={`http://localhost:5000/static/uploads/${currentImage}`} alt="Actual" className="w-full h-full object-cover" onError={(e) => { e.target.src = 'https://via.placeholder.com/150?text=Error'; }} />
+                                        <img src={`/static/uploads/${currentImage}`} alt="Actual" className="w-full h-full object-cover" onError={(e) => { e.target.src = 'https://via.placeholder.com/150?text=Error'; }} />
                                     ) : (
                                         <ImageIcon className="text-slate-300" size={40} />
                                     )}

@@ -1,55 +1,37 @@
 import requests
 import os
-# Si lo corres local, necesitas python-dotenv, si es en VPS asegúrate de tener las vars de entorno
-try:
-    from dotenv import load_dotenv
-    load_dotenv()
-except:
-    pass
+from dotenv import load_dotenv
 
-# --- CONFIGURACIÓN ---
+load_dotenv('/var/www/erp_campeones/backend/.env') # Cargar claves reales
+
+# TUS DATOS DEL .ENV
 ACCESS_TOKEN = os.getenv('TIENDANUBE_ACCESS_TOKEN')
 USER_ID = os.getenv('TIENDANUBE_USER_ID')
 
-# 👇👇 AQUÍ PONDRÁS TU DOMINIO REAL CUANDO LO TENGAS 👇👇
-# Ejemplo: "https://mi-erp-campeones.com" o la IP "https://142.33.22.11"
-DOMINIO_PRODUCCION = "72.61.219.128" 
-
-# Ruta completa al webhook
-WEBHOOK_URL = f"{DOMINIO_PRODUCCION}/api/webhooks/tn/orders"
+# ¡¡USA TU IP PÚBLICA AQUÍ!! (No la 100.x.x.x)
+IP_PUBLICA = "http://72.61.219.128" 
+WEBHOOK_URL = f"{IP_PUBLICA}/api/webhooks/tn/orders"
 
 def registrar():
-    if "TU_DOMINIO_REAL" in DOMINIO_PRODUCCION:
-        print("⚠️  ERROR: Debes editar el script y poner tu dominio real en la variable DOMINIO_PRODUCCION")
-        return
-
     url = f"https://api.tiendanube.com/v1/{USER_ID}/webhooks"
-    
     headers = {
         "Authentication": f"bearer {ACCESS_TOKEN}",
         "Content-Type": "application/json"
     }
     
-    # Evento: order/created (Cuando entra el pedido)
-    # También podrías registrar 'order/paid' si prefieres descontar stock solo al pagar
+    # Evento: Orden Creada
     data = {
         "event": "order/created",
         "url": WEBHOOK_URL
     }
     
-    print(f"📡 Configurando Tienda Nube para enviar avisos a: {WEBHOOK_URL}")
-    
-    # 1. Primero intentamos borrar si ya existía para no duplicar (Opcional, pero limpio)
-    # (Requiere listar webhooks primero, lo saltamos para simplicidad)
-
-    # 2. Crear Webhook
+    print(f"📡 Registrando en Tienda Nube: {WEBHOOK_URL}")
     response = requests.post(url, json=data, headers=headers)
     
     if response.status_code == 201:
-        print("✅ ¡ÉXITO! Tu ERP ahora recibirá las ventas automáticamente.")
-        print(f"ID del Webhook: {response.json().get('id')}")
+        print("✅ ¡Webhook registrado con éxito!")
     else:
-        print(f"❌ Error ({response.status_code}): {response.text}")
+        print(f"❌ Error: {response.text}")
 
 if __name__ == "__main__":
     registrar()

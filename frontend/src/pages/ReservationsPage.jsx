@@ -50,7 +50,7 @@ const ReservationsPage = () => {
 
     const fetchReservas = async () => {
         try {
-            const res = await axios.get('http://localhost:5000/api/sales/reservas', {
+            const res = await axios.get('/api/sales/reservas', {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setReservas(res.data);
@@ -62,7 +62,7 @@ const ReservationsPage = () => {
     const handleRetirar = async (id, saldo) => {
         if (!window.confirm(`¿Confirmar retiro? Se ingresarán $${saldo.toLocaleString()} a la caja.`)) return;
         try {
-            await axios.post(`http://localhost:5000/api/sales/reservas/${id}/retirar`, {}, {
+            await axios.post(`/api/sales/reservas/${id}/retirar`, {}, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             toast.success("Reserva retirada correctamente");
@@ -73,7 +73,7 @@ const ReservationsPage = () => {
     const handleCancelar = async (id) => {
         if (!window.confirm("¿Cancelar reserva? El stock volverá al inventario.")) return;
         try {
-            await axios.post(`http://localhost:5000/api/sales/reservas/${id}/cancelar`, {}, {
+            await axios.post(`/api/sales/reservas/${id}/cancelar`, {}, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             toast.success("Reserva cancelada");
