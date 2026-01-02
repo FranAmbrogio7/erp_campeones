@@ -201,4 +201,6 @@ def cargar_todo():
 
 if __name__ == '__main__':
     with app.app_context():
-        cargar_todo()
+        print("🛠️ Creando tablas en la base de datos...")
+        db.create_all()  # <--- ESTA ES LA CLAVE
+        print("✅ Tablas creadas. Iniciando carga...")
