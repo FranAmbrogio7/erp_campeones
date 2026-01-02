@@ -12,7 +12,9 @@
 .env.local
 .env.production
 .env.production.local
-.enviromnent
+.env.environment
+.env.environment/bin
+.environment/bin
 
 # Logs
 npm-debug.log*
