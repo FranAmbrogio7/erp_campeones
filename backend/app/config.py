@@ -4,10 +4,10 @@ from datetime import timedelta
 
 class Config:
     # Configuración de Base de Datos (Esa ya funciona bien)
-    DB_USER = os.environ.get('DB_USER', 'root')
+    DB_USER = os.environ.get('DB_USER', 'campeones_user')
     DB_PASSWORD = os.environ.get('DB_PASSWORD', '0044295023') # Tu contraseña
     DB_HOST = os.environ.get('DB_HOST', 'localhost')
-    DB_NAME = os.environ.get('DB_NAME', 'tienda_futbol')
+    DB_NAME = os.environ.get('DB_NAME', 'campeones_db')
     
     SQLALCHEMY_DATABASE_URI = f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}/{DB_NAME}'
     SQLALCHEMY_TRACK_MODIFICATIONS = False 
