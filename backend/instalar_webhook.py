@@ -13,7 +13,7 @@ USER_ID = os.getenv('TIENDANUBE_USER_ID')
 
 # 👇👇 AQUÍ PONDRÁS TU DOMINIO REAL CUANDO LO TENGAS 👇👇
 # Ejemplo: "https://mi-erp-campeones.com" o la IP "https://142.33.22.11"
-DOMINIO_PRODUCCION = "https://TU_DOMINIO_REAL_AQUI.com" 
+DOMINIO_PRODUCCION = "72.61.219.128" 
 
 # Ruta completa al webhook
 WEBHOOK_URL = f"{DOMINIO_PRODUCCION}/api/webhooks/tn/orders"
