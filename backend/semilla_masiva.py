@@ -1,3 +1,8 @@
+import os
+from dotenv import load_dotenv
+load_dotenv()
+
+
 from app import create_app
 from app.extensions import db
 from app.products.models import Producto, ProductoVariante, Categoria, CategoriaEspecifica, Inventario
