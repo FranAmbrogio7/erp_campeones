@@ -1,175 +1,173 @@
 import os
 import requests
+import json
 from dotenv import load_dotenv
 
 load_dotenv()
 
 class TiendaNubeService:
-    # ==========================================
-    # 1. Inicialización
-    # ==========================================
     def __init__(self):
-        self.store_id = os.getenv('TIENDANUBE_USER_ID')
-        self.token = os.getenv('TIENDANUBE_ACCESS_TOKEN')
-        self.user_agent = os.getenv('TIENDANUBE_USER_AGENT')
-        self.base_url = f"https://api.tiendanube.com/v1/{self.store_id}"
+        # 1. CARGA DE CREDENCIALES (Aquí estaba el error, faltaba esto)
+        self.access_token = os.getenv('TIENDANUBE_ACCESS_TOKEN')
+        self.user_id = os.getenv('TIENDANUBE_USER_ID')
+        self.api_url = f"https://api.tiendanube.com/v1/{self.user_id}" if self.user_id else None
+        self.user_agent = "AppGestion (tu_email@ejemplo.com)"
         
-        self.headers = {
-            "Authentication": f"bearer {self.token}",
+        # 2. CONFIGURACIÓN DE PRECIOS
+        self.PORCENTAJE_WEB = 1.15  # 15% de aumento para la web
+
+    def _get_headers(self):
+        """Helper para headers comunes"""
+        return {
+            "Authentication": f"bearer {self.access_token}",
             "User-Agent": self.user_agent,
             "Content-Type": "application/json"
         }
 
-    # ==========================================
-    # 2. Conexión
-    # ==========================================
     def check_connection(self):
-        """Prueba simple para ver si las credenciales funcionan"""
+        """Verifica si las credenciales funcionan"""
+        if not self.access_token or not self.user_id:
+            return {"success": False, "error": "Faltan credenciales en .env"}
+        
         try:
-            # Pedimos info de la tienda para ver si responde
-            response = requests.get(f"{self.base_url}/store", headers=self.headers)
+            url = f"{self.api_url}/store"
+            response = requests.get(url, headers=self._get_headers())
+            
             if response.status_code == 200:
                 return {"success": True, "data": response.json()}
             else:
-                return {"success": False, "error": response.text, "status": response.status_code}
+                return {"success": False, "error": f"Status {response.status_code}: {response.text}"}
         except Exception as e:
             return {"success": False, "error": str(e)}
 
-    # ==========================================
-    # 3. Descargar productos
-    # ==========================================
-    def get_all_products_cloud(self):
-        """Descarga todos los productos de la nube (maneja paginación automática)"""
-        products = []
-        page = 1
-        while True:
-            try:
-                url = f"{self.base_url}/products?page={page}&per_page=200"
-                print(f"Descargando página {page} de Tienda Nube...")
-                res = requests.get(url, headers=self.headers)
-                data = res.json()
-                
-                if not data: break # Si viene vacío, terminamos
-                
-                products.extend(data)
-                page += 1
-            except Exception as e:
-                print(f"Error descargando productos TN: {e}")
-                break
-        return products
+    # --- LÓGICA DE PRECIOS ---
 
+    def calcular_precio_web(self, precio_local):
+        """Aplica el recargo web al precio local"""
+        if not precio_local: return 0.0
+        try:
+            precio = float(precio_local)
+            return round(precio * self.PORCENTAJE_WEB, 2)
+        except ValueError:
+            return 0.0
 
-    # ==========================================
-    # 4. Crear producto en Tienda Nube
-    # ==========================================
-    def create_product_in_cloud(self, local_product):
-        """
-        Toma un objeto Producto (SQLAlchemy) y lo crea en Tienda Nube.
-        Retorna el ID de Tienda Nube y el mapeo de variantes.
-        """
-        # 1. Armar las Variantes (Talles)
-        variants_payload = []
-        for var in local_product.variantes:
-            stock = var.inventario.stock_actual if var.inventario else 0
-            variants_payload.append({
-                "price": float(local_product.precio),
-                "stock": int(stock),
-                "sku": var.codigo_sku,
-                "values": [{"es": var.talla}]  # El "valor" de la variante (Ej: XL)
-            })
+    def update_variant_price(self, tn_product_id, tn_variant_id, precio_local):
+        """Actualiza SOLO el precio de una variante"""
+        if not self.access_token or not self.api_url: return
 
-        # 2. Armar el Producto Padre
-        payload = {
-            "images": [], # Pendiente: lógica de imágenes
-            "name": {"es": local_product.nombre},
-            "description": {"es": local_product.descripcion or ""},
-            "attributes": [{"es": "Talle"}], # Definimos que la variante es por "Talle"
-            "variants": variants_payload
+        precio_web = self.calcular_precio_web(precio_local)
+        
+        url = f"{self.api_url}/products/{tn_product_id}/variants/{tn_variant_id}"
+        data = {
+            "price": precio_web,
+            "promotional_price": None # Opcional: podrías ponerlo en null para limpiar ofertas viejas
         }
-
-        try:
-            print(f"📤 Subiendo {local_product.nombre} a Tienda Nube...")
-            response = requests.post(f"{self.base_url}/products", json=payload, headers=self.headers)
-            
-            if response.status_code == 201:
-                data = response.json()
-                return {"success": True, "tn_data": data}
-            else:
-                return {"success": False, "error": response.text}
-                
-        except Exception as e:
-            return {"success": False, "error": str(e)}
-
-
-    # ==========================================
-    # 5. Actualizar stock de una variante específica
-    # ==========================================
-    def update_variant_stock(self, tn_product_id, tn_variant_id, new_stock):
-        """
-        Actualiza el stock de una variante específica en Tienda Nube.
-        """
-        if not tn_product_id or not tn_variant_id:
-            return False
-
-        try:
-            url = f"{self.base_url}/products/{tn_product_id}/variants/{tn_variant_id}"
-            payload = { "stock": int(new_stock) }
-            
-            # Usamos PUT para actualizar datos existentes
-            response = requests.put(url, json=payload, headers=self.headers)
-            
-            if response.status_code == 200:
-                print(f"✅ Stock actualizado en Nube: Prod {tn_product_id} -> {new_stock} u.")
-                return True
-            else:
-                print(f"❌ Error actualizando stock TN: {response.text}")
-                return False
-        except Exception as e:
-            print(f"❌ Error de conexión TN: {e}")
-            return False
-
-    def delete_product_in_cloud(self, tn_product_id):
-        """Elimina un producto de Tienda Nube"""
-        if not tn_product_id: return False
         
         try:
-            url = f"{self.base_url}/products/{tn_product_id}"
-            res = requests.delete(url, headers=self.headers)
-            
-            if res.status_code == 200:
-                print(f"🗑️ Producto {tn_product_id} eliminado de la Nube.")
-                return True
-            else:
-                print(f"⚠️ No se pudo eliminar de la nube: {res.text}")
-                return False
+            requests.put(url, json=data, headers=self._get_headers())
+            print(f"✅ TN Sync: Precio actualizado a ${precio_web} (ID: {tn_variant_id})")
         except Exception as e:
-            print(f"❌ Error conexión TN: {e}")
-            return False
+            print(f"⚠️ Error actualizando precio en TN: {e}")
 
-    
-    def update_product_data(self, tn_product_id, nombre, descripcion=None):
-        """Actualiza nombre y descripción del producto padre"""
+    # --- OTROS MÉTODOS DE SINCRONIZACIÓN ---
+
+    def update_variant_stock(self, tn_product_id, tn_variant_id, new_stock):
+        if not self.access_token or not self.api_url: return
+        
+        url = f"{self.api_url}/products/{tn_product_id}/variants/{tn_variant_id}"
+        data = {"stock": int(new_stock)} if new_stock is not None else {}
+        
+        if not data: return
+
         try:
-            url = f"{self.base_url}/products/{tn_product_id}"
-            
-            payload = {
-                "name": {"es": nombre}
-            }
-            if descripcion is not None:
-                payload["description"] = {"es": descripcion}
-
-            # Enviar actualización
-            res = requests.put(url, json=payload, headers=self.headers)
-            
-            if res.status_code == 200:
-                print(f"✅ Nombre actualizado en Nube: {nombre}")
-                return True
-            else:
-                print(f"❌ Error actualizando nombre TN: {res.text}")
-                return False
+            requests.put(url, json=data, headers=self._get_headers())
+            print(f"✅ TN Sync: Stock actualizado a {new_stock} (ID: {tn_variant_id})")
         except Exception as e:
-            print(f"❌ Error conexión TN: {e}")
-            return False
+            print(f"⚠️ Error actualizando stock en TN: {e}")
 
-# Instancia global lista para usar
+    def update_product_data(self, tn_product_id, nombre=None, descripcion=None):
+        if not self.access_token or not self.api_url: return
+        
+        url = f"{self.api_url}/products/{tn_product_id}"
+        data = {}
+        if nombre: data["name"] = {"es": nombre}
+        if descripcion: data["description"] = {"es": descripcion}
+        
+        if not data: return
+
+        try:
+            requests.put(url, json=data, headers=self._get_headers())
+            print(f"✅ TN Sync: Datos base actualizados (ID: {tn_product_id})")
+        except Exception as e:
+            print(f"⚠️ Error actualizando producto en TN: {e}")
+
+    def delete_product_in_cloud(self, tn_product_id):
+        if not self.access_token or not self.api_url: return
+        
+        url = f"{self.api_url}/products/{tn_product_id}"
+        try:
+            requests.delete(url, headers=self._get_headers())
+            print(f"🗑️ TN Sync: Producto eliminado (ID: {tn_product_id})")
+        except Exception as e:
+            print(f"⚠️ Error eliminando de TN: {e}")
+
+    def create_product_in_cloud(self, local_prod):
+        """Sube un producto nuevo completo a Tienda Nube"""
+        # 1. EL TRY DEBE CUBRIR TODO EL METODO
+        try:
+            if not self.access_token or not self.api_url: 
+                return {"success": False, "error": "No hay credenciales configuradas"}
+
+            # Preparar Variantes
+            variants_data = []
+            
+            # --- VALIDACIÓN DE SEGURIDAD ---
+            # Si local_prod no tiene variantes o es None, esto fallaba antes
+            if not local_prod:
+                raise ValueError("El producto local es None")
+                
+            for var in local_prod.variantes:
+                stock_val = var.inventario.stock_actual if var.inventario else 0
+                precio_web = self.calcular_precio_web(local_prod.precio)
+                
+                # --- OJO AQUÍ ---
+                # Verifica si en tu modelo de BD la propiedad es .talla, .talle o .size
+                # Si esto falla, ahora el try lo capturará.
+                nombre_talle = getattr(var, 'talla', None) or getattr(var, 'talle', "Único")
+
+                variants_data.append({
+                    "price": precio_web,
+                    "stock": int(stock_val),
+                    "sku": var.codigo_sku,
+                    "values": [{"es": nombre_talle}] 
+                })
+
+            # Payload del Producto
+            payload = {
+                "name": {"es": local_prod.nombre},
+                "description": {"es": local_prod.descripcion or ""},
+                # IMPORTANTE: TiendaNube pide definir qué son los valores (ej: "Talle")
+                "attributes": [{"es": "Talle"}], 
+                "variants": variants_data,
+                "images": [] 
+            }
+
+            # Request
+            url = f"{self.api_url}/products"
+            response = requests.post(url, json=payload, headers=self._get_headers())
+            
+            if response.status_code == 201:
+                return {"success": True, "tn_data": response.json()}
+            else:
+                # Devuelve el error exacto que da TiendaNube
+                return {"success": False, "error": f"API Error {response.status_code}: {response.text}"}
+
+        except Exception as e:
+            # AHORA SÍ verás el error real en tu consola gracias a esto:
+            import traceback
+            print("❌ ERROR CRÍTICO EN CREATE_PRODUCT:")
+            traceback.print_exc()
+            return {"success": False, "error": str(e)}
+
+# Instancia global para importar en otros lados
 tn_service = TiendaNubeService()

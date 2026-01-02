@@ -10,7 +10,7 @@ def cargar_liga_argentina():
 
     # 1. CONFIGURACIÓN BASE
     PRECIO_FIJO = 16000
-    STOCK_INICIAL = 10 # Unidades por talle
+    STOCK_INICIAL = 0 # Unidades por talle
     TALLES_ADULTO = ["S", "M", "L", "XL", "XXL"]
     
     # Lista de los 30 equipos

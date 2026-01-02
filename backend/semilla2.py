@@ -19,17 +19,17 @@ def cargar_liga_argentina_kids():
         "Argentinos Juniors", "Lanús", "Banfield", "Defensa y Justicia", "Tigre",
         "Platense", "Unión de Santa Fe", "Atlético Tucumán", "Central Córdoba SdE", "Barracas Central",
         "Sarmiento de Junín", "Independiente Rivadavia", "Deportivo Riestra", 
-        "San Martín de San Juan", "Aldosivi"
+        "San Martín de San Juan", "Aldosivi", "Estudiantes Rio IV"
     ]
 
     # 2. OBTENER CATEGORÍAS
     # Buscamos o creamos la categoría "Camisetas Niño"
-    cat_gral = Categoria.query.filter_by(nombre="Camisetas Niño").first()
+    cat_gral = Categoria.query.filter_by(nombre="Camisetas Niños").first()
     if not cat_gral:
-        cat_gral = Categoria(nombre="Camisetas Niño")
+        cat_gral = Categoria(nombre="Camisetas Niños")
         db.session.add(cat_gral)
         db.session.commit()
-        print("   -> Categoría 'Camisetas Niño' creada.")
+        print("   -> Categoría 'Camisetas Niños' creada.")
 
     # Buscamos la liga (ya debería existir del script anterior, pero por seguridad la buscamos)
     cat_esp = CategoriaEspecifica.query.filter_by(nombre="Liga Profesional Arg").first()

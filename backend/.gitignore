@@ -24,11 +24,12 @@ wheels/
 venv/
 env/
 ENV/
-environment/
+.env.environment/
 
 # Environment variables
 .env
 .env.production
+.environment
 
 # Database
 *.db

@@ -304,7 +304,7 @@ def generate_barcode(sku):
 
 
 # ==========================================
-# 8. Editar producto (datos generales + imagen)
+# 8. Editar producto (datos generales + imagen + PRECIO WEB)
 # ==========================================
 @bp.route('/<int:id>', methods=['PUT'])
 @jwt_required()
@@ -317,7 +317,7 @@ def update_product(id):
         
         # 1. Datos de texto (FormData)
         if 'nombre' in request.form: prod.nombre = request.form['nombre']
-        if 'precio' in request.form: prod.precio = request.form['precio']
+        if 'precio' in request.form: prod.precio = float(request.form['precio']) # Asegurar float
         if 'categoria_id' in request.form: 
             prod.id_categoria = request.form['categoria_id'] or None
         if 'categoria_especifica_id' in request.form:
@@ -336,12 +336,6 @@ def update_product(id):
                 file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], filename))
                 prod.imagen = filename
 
-        # 3. Actualización de Variantes (Si vienen como JSON string en el FormData o se maneja aparte)
-        # Nota: Normalmente la edición de stock específica se hace vía el modal que llama a endpoints específicos
-        # o el usuario envía JSON. En tu implementación actual de EditProductModal, parece que solo editas info base
-        # y usas endpoints de variantes separados para el stock. 
-        # PERO, si quieres asegurar la sincronización, verificaremos los cambios guardados.
-
         db.session.commit()
 
         # B. SINCRONIZACIÓN CON TIENDA NUBE ------------
@@ -349,22 +343,30 @@ def update_product(id):
         if prod.tiendanube_id:
             print(f"🔄 Sincronizando '{prod.nombre}' con Tienda Nube...")
 
+            # 1. Datos básicos
             tn_service.update_product_data(
                 tn_product_id=prod.tiendanube_id,
                 nombre=prod.nombre,
                 descripcion=prod.descripcion
             )
             
-            # Recorremos todas las variantes para asegurar que el stock esté igualado
-            # (Esto es útil si se modificó el stock en otro lado y queremos forzar sync)
+            # 2. Stock y PRECIO por variante
             for var in prod.variantes:
-                if var.tiendanube_variant_id and var.inventario:
-                    tn_service.update_variant_stock(
+                if var.tiendanube_variant_id:
+                    # Sync Stock (si se hubiera tocado por otro lado)
+                    if var.inventario:
+                        tn_service.update_variant_stock(
+                            tn_product_id=prod.tiendanube_id,
+                            tn_variant_id=var.tiendanube_variant_id,
+                            new_stock=var.inventario.stock_actual
+                        )
+                    
+                    # Sync PRECIO (Aquí aplica el aumento web definido en el servicio)
+                    tn_service.update_variant_price(
                         tn_product_id=prod.tiendanube_id,
                         tn_variant_id=var.tiendanube_variant_id,
-                        new_stock=var.inventario.stock_actual
+                        precio_local=prod.precio
                     )
-                    # Aquí también podrías agregar lógica para actualizar precio si Tienda Nube lo requiere por variante
         
         return jsonify({"msg": "Producto actualizado y sincronizado"}), 200
 
@@ -447,10 +449,6 @@ def add_variant():
         
         db.session.commit()
         
-        # NOTA: Si agregas una variante localmente a un producto vinculado, 
-        # idealmente deberías crearla también en Tienda Nube. 
-        # Por ahora lo dejamos simple, pero tenlo en cuenta para el futuro.
-        
         return jsonify({"msg": "Variante agregada"}), 201
     except Exception as e:
         db.session.rollback()
@@ -475,6 +473,9 @@ def delete_variant(id):
         db.session.rollback()
         return jsonify({"msg": str(e)}), 500
 
+# ==========================================
+# 12. ACTUALIZACIÓN MASIVA DE PRECIOS (SYNC WEB)
+# ==========================================
 @bp.route('/bulk-update-price', methods=['POST'])
 @jwt_required()
 def bulk_update_price():
@@ -507,11 +508,23 @@ def bulk_update_price():
             prod.precio = round(new_price, 2)
             count += 1
             
-            # AQUÍ PODRÍAS AGREGAR SINCRONIZACIÓN DE PRECIOS SI LO DESEAS
-            # (Requiere lógica adicional para actualizar precios en todas las variantes en Nube)
+            # --- SYNC TIENDA NUBE (PRECIO WEB) ---
+            if prod.tiendanube_id:
+                for var in prod.variantes:
+                    if var.tiendanube_variant_id:
+                        try:
+                            # Enviamos el precio local; el servicio se encarga de sumarle el % extra
+                            tn_service.update_variant_price(
+                                tn_product_id=prod.tiendanube_id,
+                                tn_variant_id=var.tiendanube_variant_id,
+                                precio_local=prod.precio
+                            )
+                        except Exception as e:
+                            print(f"⚠️ Error sync precio {var.codigo_sku}: {e}")
+            # -------------------------------------
 
         db.session.commit()
-        return jsonify({"msg": f"Precios actualizados en {count} productos"}), 200
+        return jsonify({"msg": f"Precios actualizados en {count} productos y sincronizados con la web."}), 200
 
     except Exception as e:
         db.session.rollback()
@@ -519,7 +532,7 @@ def bulk_update_price():
 
 
 # ==========================================
-# 12. Actualizar stock en masa
+# 13. Actualizar stock en masa
 # ==========================================
 @bp.route('/stock/bulk-update', methods=['POST'])
 @jwt_required()
@@ -556,7 +569,7 @@ def bulk_stock_update():
 
 
 # ==========================================
-# 13. Generar PDF de etiquetas en masa
+# 14. Generar PDF de etiquetas en masa
 # ==========================================
 @bp.route('/labels/batch-pdf', methods=['POST'])
 @jwt_required()

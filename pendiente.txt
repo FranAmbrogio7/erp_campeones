@@ -1,0 +1,7 @@
+-terminar webhooks tienda nube a erp
+
+-crear base de datos real
+
+-configurar vps y levantar erp en produccion
+
+-revisar bien el gitignore xq el enviroment se esta subiendo (preparar proyecto para produccion)
