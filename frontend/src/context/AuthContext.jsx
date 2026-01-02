@@ -5,7 +5,7 @@ const AuthContext = createContext();
 
 // Configuración de Axios
 export const api = axios.create({
-  baseURL: 'http://localhost:5000/api', // Asegúrate que este puerto sea el correcto
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
 });
 
 // Interceptor para agregar el token a cada petición

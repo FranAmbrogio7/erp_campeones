@@ -204,3 +204,10 @@ if __name__ == '__main__':
         print("🛠️ Creando tablas en la base de datos...")
         db.create_all()  # <--- ESTA ES LA CLAVE
         print("✅ Tablas creadas. Iniciando carga...")
+
+
+
+        
+
+
+
