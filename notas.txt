@@ -130,7 +130,6 @@ funcion para añadir una venta sin codigo, en caso de que sea un producto que au
 
 generar pagina de notas para anotar todo lo que se necesite de situaciones diarias, por ejemplo, comprar cinta, comprar carton de cintas, etc ✅
 
-pagina para emitir un listado de stock en pdf de los articulos que el usuario quiera ✅
 
 la nota de credito ya funciona, pero hay q validar cuando el monto a abonar es inferior a la nota de credito, que pasa con el saldo restante a favor del cliente? ✅
 
