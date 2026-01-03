@@ -36,7 +36,7 @@ def create_app(config_class=Config):
     from app.sales.routes import bp as sales_bp 
     app.register_blueprint(sales_bp, url_prefix='/api/sales')   
 
-    from app.sales.webhooks import bp_webhooks
+    from app.webhooks.routes import bp as bp_webhooks
     app.register_blueprint(bp_webhooks, url_prefix='/api/webhooks')
 
     from app.notes.routes import bp as notes_bp
