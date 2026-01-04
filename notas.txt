@@ -65,3 +65,35 @@ mejorar el filtrado x palabras, que no necesariamente respete el orden de las pa
 -inventario
 -etiquetas/codigos 
 
+
+18.214.235.111 - - [03/Jan/2026:17:23:18 +0000] "POST /api/webhooks/tn/orders HTTP/1.1" 200 28 "-" "LinkedStore Webhook (itmaster@tiendanube.com)"
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+el video en marketing no vende, esto te diria alguien q probablemetne no sabe.
+
+utiliza correctamente las herramientas de comunicacion audiovisual.
+
+el 80% de todas las personas en redes sociales en general, se ven mas empaticos cuando ven productos
+audiovisual al momento de tomar decisiones, esto se debe simplemente a que los productos
+audiovisuales de calidad conectan mejor con las perosonas y apelan mucho mas a la parte emocional.
+
+si queres conectar mas, mira nuestro trabajo. ---> tomas del trabajo
+
+cierre: no te pierdas esta oportunidad de poder conectar con tus clientes, y poder asi alcanzar mas ventas. nosotros estamos para ayudarte 
+
+
+
+18.214.235.111 - - [04/Jan/2026:14:34:51 +0000] "POST /api/webhooks/tn/orders HTTP/1.1" 404 207 "-" "LinkedStore Webhook (itmaster@tiendanube.com)"
