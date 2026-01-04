@@ -66,9 +66,6 @@ mejorar el filtrado x palabras, que no necesariamente respete el orden de las pa
 -etiquetas/codigos 
 
 
-18.214.235.111 - - [03/Jan/2026:17:23:18 +0000] "POST /api/webhooks/tn/orders HTTP/1.1" 200 28 "-" "LinkedStore Webhook (itmaster@tiendanube.com)"
-
-
 
 
 
