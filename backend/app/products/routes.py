@@ -124,15 +124,27 @@ def get_products():
 
     # 3. Aplicar Filtros
     if search:
-        search_term = f"%{search}%"
+        # Hacemos el join con variantes UNA sola vez para poder buscar por SKU
         query = query.join(ProductoVariante)
-        query = query.filter(
-            or_(
-                Producto.nombre.ilike(search_term),
-                Categoria.nombre.ilike(search_term),
-                ProductoVariante.codigo_sku.ilike(search_term)
+        
+        # --- CAMBIO IMPORTANTE AQUÍ ---
+        # Separamos la búsqueda en palabras (ej: "boca retro" -> ["boca", "retro"])
+        terms = search.strip().split()
+        
+        for term in terms:
+            term_filter = f"%{term}%"
+            # Para cada palabra, exigimos que aparezca en Nombre O Categoria O SKU
+            # Al encadenar .filter() sucesivamente, SQLAlchemy aplica un AND entre ellos.
+            query = query.filter(
+                or_(
+                    Producto.nombre.ilike(term_filter),
+                    Categoria.nombre.ilike(term_filter),
+                    ProductoVariante.codigo_sku.ilike(term_filter)
+                )
             )
-        )
+        # -------------------------------
+
+        # Agrupamos para que no salgan productos repetidos por cada variante encontrada
         query = query.group_by(Producto.id_producto)
     
     if cat_id:
@@ -188,7 +200,6 @@ def get_products():
             "current_page": paginated_data.page,
         }
     }), 200
-
 
 # ==========================================
 # 5. Crear producto
