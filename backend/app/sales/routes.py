@@ -39,59 +39,67 @@ def add_movement():
 @jwt_required()
 def get_sales_history():
     try:
-        # 1. Verificar si el frontend pide solo la sesión actual (para la Caja) o todo (para Historial)
+        # 1. Verificar si es solo sesión actual
         solo_actual = request.args.get('current_session') == 'true'
         
-        # 2. Query Base: Ventas ordenadas por fecha (más nuevas primero)
-        # Usamos joinedload para traer el nombre del método de pago eficientemente
         query = Venta.query.options(db.joinedload(Venta.metodo)).order_by(desc(Venta.fecha_venta))
 
         if solo_actual:
-            # Buscar la sesión abierta
             sesion = SesionCaja.query.filter_by(estado='abierta').first()
             if sesion:
-                # Filtramos ventas hechas DESPUÉS de la apertura
                 query = query.filter(Venta.fecha_venta >= sesion.fecha_apertura)
             else:
-                # Si no hay caja abierta, la lista actual está vacía
                 return jsonify({
                     "history": [], 
                     "today_summary": {"total": 0, "count": 0}
                 }), 200
         else:
-            # Si es historial general, limitamos a las últimas 100 para no saturar
             query = query.limit(100)
 
         ventas = query.all()
         
-        # 3. Procesar datos
         lista_ventas = []
         for v in ventas:
-            # A. Generar resumen en texto para la tabla (Ej: "Camiseta x2...")
-            descripcion_items = ", ".join([f"{d.variante.producto.nombre} ({d.variante.talla}) x{d.cantidad}" for d in v.detalles])
-            
-            # B. Generar detalle estructurado para IMPRIMIR TICKET
+            items_summary = []
             items_detail = []
+
             for d in v.detalles:
+                # --- LÓGICA DE PROTECCIÓN (Manual vs Inventario) ---
+                if d.variante:
+                    # Es un producto de inventario
+                    nombre_prod = d.variante.producto.nombre if d.variante.producto else "Producto Eliminado"
+                    talle_prod = d.variante.talla
+                else:
+                    # Es un ítem manual (id_variante es None)
+                    # Usamos 'producto_nombre' que guardamos al vender, o un texto por defecto
+                    # Usamos getattr por si tu modelo de BD aun no tiene la columna actualizada en memoria
+                    nombre_prod = getattr(d, 'producto_nombre', 'Ítem Manual') or 'Ítem Manual'
+                    talle_prod = "-"
+
+                # A. Texto para la tabla
+                txt = f"{nombre_prod} ({talle_prod}) x{d.cantidad}" if talle_prod != "-" else f"{nombre_prod} x{d.cantidad}"
+                items_summary.append(txt)
+                
+                # B. Objeto para el ticket
                 items_detail.append({
-                    "nombre": d.variante.producto.nombre,
-                    "talle": d.variante.talla,
+                    "nombre": nombre_prod,
+                    "talle": talle_prod,
                     "cantidad": d.cantidad,
-                    "precio": float(d.precio_unitario), # Precio unitario
-                    "subtotal": float(d.subtotal)       # Subtotal de la línea
+                    "precio": float(d.precio_unitario),
+                    "subtotal": float(d.subtotal)
                 })
 
             lista_ventas.append({
                 "id": v.id_venta,
-                "fecha": v.fecha_venta.strftime('%d/%m/%Y %H:%M'), # Formato legible
+                "fecha": v.fecha_venta.strftime('%d/%m/%Y %H:%M'),
                 "total": float(v.total),
                 "metodo": v.metodo.nombre if v.metodo else "N/A",
-                "items": descripcion_items,       # Para mostrar en tabla
-                "items_detail": items_detail,     # Para enviar al componente Ticket
+                "items": ", ".join(items_summary), # <--- Ahora esto ya no fallará
+                "items_detail": items_detail,
                 "estado": v.estado
             })
 
-        # 4. Calcular Totales del DÍA ACTUAL (Independiente de la sesión, calendario puro)
+        # Totales del día
         hoy = date.today()
         total_hoy = db.session.query(func.sum(Venta.total)).filter(func.date(Venta.fecha_venta) == hoy).scalar() or 0
         cantidad_ventas_hoy = db.session.query(func.count(Venta.id_venta)).filter(func.date(Venta.fecha_venta) == hoy).scalar() or 0
@@ -106,7 +114,9 @@ def get_sales_history():
 
     except Exception as e:
         print(f"Error historial: {e}")
-        return jsonify({"msg": "Error cargando historial"}), 500
+        import traceback
+        traceback.print_exc()
+        return jsonify({"msg": "Error cargando historial", "error": str(e)}), 500
 
 # --- NUEVO ENDPOINT: Listar Métodos ---
 @bp.route('/payment-methods', methods=['GET'])
@@ -915,82 +925,119 @@ def validar_nota(code):
 @bp.route('/checkout', methods=['POST'])
 @jwt_required()
 def checkout():
-    data = request.get_json()
-    items = data.get('items', [])
-    metodo_pago_id = data.get('metodo_pago_id')
-    
-    # Recibimos el código de la nota si aplica
-    codigo_nota = data.get('codigo_nota_credito') 
-    cliente_id = data.get('cliente_id') # Asegúrate de recibir esto si lo usas
-
-    # Validar carrito vacío
-    if not items: return jsonify({"msg": "Carrito vacío"}), 400
-    if not metodo_pago_id: return jsonify({"msg": "Falta método de pago"}), 400
-
     try:
-        # --- 1. LÓGICA DE NOTA DE CRÉDITO (NUEVO) ---
+        data = request.get_json()
+        print(f"📦 INICIO CHECKOUT. Items: {len(data.get('items', []))}") 
+        
+        items = data.get('items', [])
+        metodo_pago_id = data.get('metodo_pago_id')
+        cliente_id = data.get('cliente_id')
+        codigo_nota = data.get('codigo_nota_credito')
+        
+        # Validaciones básicas
+        if not items: return jsonify({"msg": "Carrito vacío"}), 400
+        # Permitimos venta sin metodo si es mixto (se valida en frontend), pero por seguridad backend:
+        # if not metodo_pago_id: return jsonify({"msg": "Falta método de pago"}), 400
+
+        # --- 1. LÓGICA DE NOTA DE CRÉDITO ---
         nota_usada = None
+        observaciones_venta = ""
         
         if codigo_nota:
-            # Buscar la nota
             nota_usada = NotaCredito.query.filter_by(codigo=codigo_nota).first()
-            
-            # Validar existencia y estado
             if not nota_usada:
                 return jsonify({"msg": "Código de nota no encontrado"}), 404
-            
             if nota_usada.estado != 'activa':
-                return jsonify({"msg": "La nota de crédito ya fue utilizada o anulada"}), 400
+                return jsonify({"msg": "La nota ya fue utilizada"}), 400
             
-            # Validar saldo suficiente
-            """ total_venta = data.get('total_final')
-            if nota_usada.monto < total_venta:
-                return jsonify({"msg": f"Saldo insuficiente en Nota. Tiene ${nota_usada.monto}, Venta ${total_venta}"}), 400 """
-            
-            # MARCAR COMO USADA (Se guardará al hacer commit abajo)
             nota_usada.estado = 'usada'
-            
-        # --- 2. CREACIÓN DE VENTA ---
+            observaciones_venta = f"Pagado con Nota {codigo_nota}"
+
+        # --- 2. CREACIÓN DE VENTA (CABECERA) ---
         nueva_venta = Venta(
             total=data.get('total_final'),
             subtotal=data.get('subtotal_calculado'),
             descuento=0, 
-            fecha_venta=datetime.now(),
+            fecha_venta=datetime.now(), # Usar datetime.now() del servidor
             id_cliente=cliente_id,
             id_metodo_pago=metodo_pago_id,
-            observaciones=f"Pagado con Nota {codigo_nota}" if codigo_nota else ""
+            observaciones=observaciones_venta
         )
         db.session.add(nueva_venta)
-        db.session.flush()
+        db.session.flush() # Obtenemos el ID de venta
+
+        if nota_usada:
+            nota_usada.id_venta_uso = nueva_venta.id_venta
 
         # --- 3. PROCESAR ITEMS ---
         for item in items:
-            variante = ProductoVariante.query.get(item['id_variante'])
+            nombre_item = item.get('nombre', 'Item sin nombre')
+            es_custom = item.get('is_custom') # Bandera del Frontend
+
+            # =======================================================
+            # CASO A: ÍTEM MANUAL (Sin stock, sin Tienda Nube)
+            # =======================================================
+            if es_custom is True or str(es_custom).lower() == 'true':
+                print(f"   🔸 Ítem Manual detectado: {nombre_item}")
+                detalle = DetalleVenta(
+                    id_venta=nueva_venta.id_venta,
+                    id_variante=None, # Permitimos NULL aquí
+                    producto_nombre=nombre_item,
+                    cantidad=item['cantidad'],
+                    precio_unitario=item['precio'],
+                    subtotal=item['subtotal']
+                )
+                db.session.add(detalle)
+                continue # Saltamos al siguiente ítem (NO descontamos stock)
+
+            # =======================================================
+            # CASO B: ÍTEM DE INVENTARIO (Con Stock y Sync TN)
+            # =======================================================
+            id_variante = item.get('id_variante')
+            variante = ProductoVariante.query.get(id_variante)
             
-            # Validar Stock
-            if variante.inventario.stock_actual < item['cantidad']:
+            # Protección: Si el producto fue borrado mientras se vendía
+            if not variante:
                 db.session.rollback()
-                return jsonify({"msg": f"Sin stock suficiente: {variante.producto.nombre}"}), 400
+                return jsonify({"msg": f"El producto '{nombre_item}' ya no existe en base de datos."}), 400
+
+            # Validar Stock Local
+            stock_actual = variante.inventario.stock_actual if variante.inventario else 0
+            cantidad_solicitada = int(item['cantidad'])
+
+            if stock_actual < cantidad_solicitada:
+                db.session.rollback()
+                return jsonify({"msg": f"Sin stock suficiente para: {variante.producto.nombre}"}), 400
             
             # Descontar Stock Local
-            variante.inventario.stock_actual -= item['cantidad']
+            if variante.inventario:
+                variante.inventario.stock_actual -= cantidad_solicitada
+                nuevo_stock = variante.inventario.stock_actual
             
-            # Sync Tienda Nube (Si aplica)
-            if variante.tiendanube_variant_id:
-                try:
-                    tn_service.update_variant_stock(
-                        tn_product_id=variante.producto.tiendanube_id,
-                        tn_variant_id=variante.tiendanube_variant_id,
-                        new_stock=variante.inventario.stock_actual
-                    )
-                except:
-                    print(f"Error sync TN para {variante.producto.nombre}")
+                # --- SYNC TIENDA NUBE (Tu código original + Protección) ---
+                # Usamos getattr para que NO explote si faltan columnas en la BD
+                tn_var_id = getattr(variante, 'tiendanube_variant_id', None)
+                tn_prod_id = getattr(variante.producto, 'tiendanube_id', None)
+
+                if tn_var_id and tn_prod_id:
+                    try:
+                        # Usamos tu servicio original 'tn_service'
+                        tn_service.update_variant_stock(
+                            tn_product_id=tn_prod_id,
+                            tn_variant_id=tn_var_id,
+                            new_stock=nuevo_stock
+                        )
+                        print(f"   ☁️ TN Sync OK: {variante.producto.nombre} -> Stock {nuevo_stock}")
+                    except Exception as e:
+                        print(f"   ⚠️ Error sync TN para {variante.producto.nombre}: {e}")
+                # ---------------------------------------------------------
 
             # Guardar Detalle
             detalle = DetalleVenta(
                 id_venta=nueva_venta.id_venta,
                 id_variante=variante.id_variante,
-                cantidad=item['cantidad'],
+                producto_nombre=variante.producto.nombre, # Guardamos nombre original
+                cantidad=cantidad_solicitada,
                 precio_unitario=item['precio'],
                 subtotal=item['subtotal']
             )
@@ -1001,5 +1048,7 @@ def checkout():
 
     except Exception as e:
         db.session.rollback()
-        print(e)
+        print(f"🔥 Error Checkout: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"msg": "Error procesando venta", "error": str(e)}), 500
