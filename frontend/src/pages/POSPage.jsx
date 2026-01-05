@@ -64,6 +64,35 @@ const POSPage = () => {
   const totalFinal = customTotal !== null && customTotal !== '' ? parseFloat(customTotal) : subtotalCalculado;
   const descuentoVisual = subtotalCalculado - totalFinal;
 
+  // Estado para el modal de ítem manual
+  const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
+  const [customItemData, setCustomItemData] = useState({ description: '', price: '' });
+
+  // Función para agregar el ítem manual al carrito
+  const addCustomItem = (e) => {
+    e.preventDefault();
+    if (!customItemData.description || !customItemData.price) return;
+
+    const newItem = {
+      // Generamos un ID temporal único para que React no se queje
+      id_variante: `custom-${Date.now()}`,
+      sku: 'MANUAL',
+      nombre: customItemData.description.toUpperCase(),
+      talle: '-',
+      precio: parseFloat(customItemData.price),
+      cantidad: 1,
+      stock_actual: 9999, // Stock infinito para que no bloquee la venta
+      subtotal: parseFloat(customItemData.price),
+      is_custom: true // BANDERA IMPORTANTE para el backend
+    };
+
+    setCart(prev => [...prev, newItem]);
+    toast.success("Ítem manual agregado");
+    playSound('beep');
+    setCustomItemData({ description: '', price: '' });
+    setIsCustomModalOpen(false);
+  };
+
   // --- AUDIO HELPER MEJORADO ---
   const playSound = (type) => {
     try {
@@ -426,12 +455,24 @@ const POSPage = () => {
               {isSearchMode ? <Search className="mr-2 text-purple-600" /> : <ScanBarcode className="mr-2 text-blue-600" />}
               {isSearchMode ? "Buscador Manual" : "Escáner Activo"}
             </h2>
-            <button
-              onClick={() => { setIsSearchMode(!isSearchMode); setManualTerm(''); setManualResults([]); }}
-              className={`text-xs px-3 py-1.5 rounded-lg border font-bold flex items-center transition-all ${isSearchMode ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-purple-50 text-purple-600 border-purple-200'}`}
-            >
-              {isSearchMode ? "Cambiar a Escáner" : "Cambiar a Manual"}
-            </button>
+
+            <div className="flex gap-2">
+              {/* --- BOTÓN NUEVO --- */}
+              <button
+                onClick={() => setIsCustomModalOpen(true)}
+                className="text-xs px-3 py-1.5 rounded-lg border font-bold flex items-center bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100 transition-colors"
+              >
+                <Plus size={14} className="mr-1" /> Ítem Libre
+              </button>
+              {/* ------------------- */}
+
+              <button
+                onClick={() => { setIsSearchMode(!isSearchMode); setManualTerm(''); setManualResults([]); }}
+                className={`text-xs px-3 py-1.5 rounded-lg border font-bold flex items-center transition-all ${isSearchMode ? 'bg-blue-50 text-blue-600 border-blue-200' : 'bg-purple-50 text-purple-600 border-purple-200'}`}
+              >
+                {isSearchMode ? "Cambiar a Escáner" : "Cambiar a Manual"}
+              </button>
+            </div>
           </div>
 
           {isSearchMode ? (
@@ -704,6 +745,55 @@ const POSPage = () => {
             >
               COBRAR <ArrowRight className="ml-2" size={20} />
             </button>
+
+            {/* MODAL DE ÍTEM MANUAL */}
+            {isCustomModalOpen && (
+              <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-fade-in-up">
+                  <div className="flex justify-between items-center mb-4">
+                    <h3 className="text-xl font-black text-gray-800 flex items-center">
+                      <Edit3 className="mr-2 text-yellow-500" /> Agregar Ítem Libre
+                    </h3>
+                    <button onClick={() => setIsCustomModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button>
+                  </div>
+
+                  <form onSubmit={addCustomItem} className="space-y-4">
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Descripción</label>
+                      <input
+                        autoFocus
+                        required
+                        value={customItemData.description}
+                        onChange={e => setCustomItemData({ ...customItemData, description: e.target.value })}
+                        placeholder="Ej: Diferencia cambio, Flete, etc."
+                        className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-yellow-400 font-bold text-gray-700"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-gray-500 uppercase mb-1">Precio Unitario</label>
+                      <div className="relative">
+                        <span className="absolute left-3 top-3 text-gray-400 font-bold">$</span>
+                        <input
+                          type="number"
+                          required
+                          min="0"
+                          step="0.01"
+                          value={customItemData.price}
+                          onChange={e => setCustomItemData({ ...customItemData, price: e.target.value })}
+                          placeholder="0.00"
+                          className="w-full p-3 pl-8 border rounded-xl outline-none focus:ring-2 focus:ring-yellow-400 font-bold text-xl text-gray-700"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3 mt-6">
+                      <button type="button" onClick={() => setIsCustomModalOpen(false)} className="flex-1 py-3 text-gray-600 font-bold hover:bg-gray-100 rounded-xl">Cancelar</button>
+                      <button type="submit" className="flex-1 py-3 bg-yellow-500 text-white font-bold rounded-xl hover:bg-yellow-600 shadow-lg shadow-yellow-200">Agregar</button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

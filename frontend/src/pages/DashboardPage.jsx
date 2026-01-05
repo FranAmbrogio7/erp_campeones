@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { api } from '../context/AuthContext';
 
+
 const DashboardPage = () => {
     const { user } = useAuth();
     const [loading, setLoading] = useState(true);
@@ -40,7 +41,7 @@ const DashboardPage = () => {
             {/* 1. HEADER */}
             <div className="flex justify-between items-end">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Hola, {user?.nombre} 👋</h1>
+                    <h1 className="text-2xl font-bold text-gray-800">Hola, {user?.nombre}</h1>
                     <p className="text-gray-500 text-sm">Resumen de operaciones en tiempo real.</p>
                 </div>
                 <div className="hidden md:flex items-center bg-white px-4 py-2 rounded-full shadow-sm border border-gray-100">

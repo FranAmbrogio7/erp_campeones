@@ -38,13 +38,14 @@ class DetalleVenta(db.Model):
 
     id_detalle = db.Column(db.Integer, primary_key=True)
     id_venta = db.Column(db.Integer, db.ForeignKey('ventas.id_venta'), nullable=False)
-    id_variante = db.Column(db.Integer, db.ForeignKey('producto_variantes.id_variante'), nullable=False)
+    id_variante = db.Column(db.Integer, db.ForeignKey('producto_variantes.id_variante'), nullable=True)
+    producto_nombre = db.Column(db.String(255))
     cantidad = db.Column(db.Integer, nullable=False)
     precio_unitario = db.Column(db.Numeric(10, 2), nullable=False)
     subtotal = db.Column(db.Numeric(10, 2), nullable=False) 
 
     # Relación para poder saber qué camiseta vendimos al ver el detalle
-    variante = db.relationship('ProductoVariante')
+    variante = db.relationship('ProductoVariante', backref='detalles_ventas')
 
 class Venta(db.Model):
     __tablename__ = 'ventas'

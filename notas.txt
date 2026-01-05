@@ -5,23 +5,6 @@ db:
 root 
 0044295023  
 
-pendiente:
-
--cargar productos reales
-    -todos los clubes liga argentina (talle S-M-L-XL-XXL y 4-6-8-10-12-14-16)
-    -premier league (talle S-M-L-XL-XXL y 4-6-8-10-12-14-16)
-    -la liga (talle S-M-L-XL-XXL y 4-6-8-10-12-14-16)
-    -b nacional (talle S-M-L-XL-XXL y 4-6-8-10-12-14-16)
-    -selecciones (talle S-M-L-XL-XXL y 4-6-8-10-12-14-16)
-    -brasileirao (talle S-M-L-XL-XXL y 4-6-8-10-12-14-16)
-    -retro (talle S-M-L-XL-XXL y 4-6-8-10-12-14-16)
-    -serie a (talle S-M-L-XL-XXL y 4-6-8-10-12-14-16)
-    -bundesliga (talle S-M-L-XL-XXL y 4-6-8-10-12-14-16)
-    -ligue 1 (talle S-M-L-XL-XXL y 4-6-8-10-12-14-16)
-    -mls (talle S-M-L-XL-XXL y 4-6-8-10-12-14-16)
-    -liga portugal (talle S-M-L-XL-XXL y 4-6-8-10-12-14-16)
-    -liga uruguay (talle S-M-L-XL-XXL y 4-6-8-10-12-14-16)
-    
 
 -------------------------- FUNCIONES A AÑADIR --------------------------
 - ver funcion en caso de que paguen con 2 medios de pago, poder añadir funcion de que agreguen ventas sin tickar codigo
@@ -37,16 +20,12 @@ pendiente:
 -facturacion desde la app
 
 
-
 cambio/devolucion:
-historial de notas de credito con el detalle para reimprimir 
 
 que permita realizar una venta sin codigo necesariamente, en caso de q no coincida la plata o sobre
 
 
-
 funcion para añadir una venta sin codigo, en caso de que sea un producto que aun no se haya cargado en el inventario, que se pueda agregar un campo de texto completo para que el usuario pueda agregar el detalle del producto, ya que tambien hay situaciones en las que el cliente paga una parte en efectivo, y otra parte la transfiere, quiero una funcion para poder solucionar estos casos
-
 
 la nota de credito ya funciona, pero hay q validar cuando el monto a abonar es inferior a la nota de credito, que pasa con el saldo restante a favor del cliente? ✅
 
@@ -56,41 +35,4 @@ boton para sincronizar todo el stock con tienda nube
 en la pagina de reservas, cuando el cliente salda el total de la reserva, esa venta se debe registrar en el historial de ventas, en un primer momento se guarda la venta con la plata de la seña, y posteriormente se debe abonar el saldo restante, pero como manejas esas condiciones en el historial de ventas? para que no tenga diferencias en la caja del dia
 
 
-arreglar poder escapar cuando seleccione reserva y quiero volver para atras en la pagina de POSPage.jsx
 
-
-mejorar el filtrado x palabras, que no necesariamente respete el orden de las palabras, sino que filtre por coincidencia:
--postpage
--catalogo de productos
--inventario
--etiquetas/codigos 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-el video en marketing no vende, esto te diria alguien q probablemetne no sabe.
-
-utiliza correctamente las herramientas de comunicacion audiovisual.
-
-el 80% de todas las personas en redes sociales en general, se ven mas empaticos cuando ven productos
-audiovisual al momento de tomar decisiones, esto se debe simplemente a que los productos
-audiovisuales de calidad conectan mejor con las perosonas y apelan mucho mas a la parte emocional.
-
-si queres conectar mas, mira nuestro trabajo. ---> tomas del trabajo
-
-cierre: no te pierdas esta oportunidad de poder conectar con tus clientes, y poder asi alcanzar mas ventas. nosotros estamos para ayudarte 
-
-
-
-18.214.235.111 - - [04/Jan/2026:14:34:51 +0000] "POST /api/webhooks/tn/orders HTTP/1.1" 404 207 "-" "LinkedStore Webhook (itmaster@tiendanube.com)"
