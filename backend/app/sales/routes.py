@@ -309,8 +309,7 @@ def list_closed_sessions():
 # 2. DESCARGAR CSV DE UNA SESIÓN
 @bp.route('/caja/<int:id>/export', methods=['GET'])
 def export_caja_csv(id):
-    # Nota: Quitamos jwt_required para facilitar descarga directa desde navegador, 
-    # o lo pasamos como token en URL si quieres seguridad estricta.
+    # Nota: Quitamos jwt_required para facilitar descarga directa desde navegador
     
     sesion = SesionCaja.query.get(id)
     if not sesion: return "Caja no encontrada", 404
@@ -337,8 +336,26 @@ def export_caja_csv(id):
     # Sección Ventas
     cw.writerow(['--- VENTAS ---'])
     cw.writerow(['ID Venta', 'Hora', 'Metodo Pago', 'Total', 'Items'])
+    
     for v in ventas:
-        items_str = " | ".join([f"{d.variante.producto.nombre} x{d.cantidad}" for d in v.detalles])
+        # --- LÓGICA CORREGIDA PARA ÍTEMS MANUALES ---
+        lista_nombres_items = []
+        for d in v.detalles:
+            if d.variante:
+                # Caso: Producto de Inventario
+                nombre = d.variante.producto.nombre if d.variante.producto else "Producto Borrado"
+                talle = d.variante.talla
+                lista_nombres_items.append(f"{nombre} ({talle}) x{d.cantidad}")
+            else:
+                # Caso: Ítem Manual (Sin variante)
+                # Usamos getattr por seguridad
+                nombre = getattr(d, 'producto_nombre', 'Ítem Manual') or 'Ítem Manual'
+                lista_nombres_items.append(f"{nombre} x{d.cantidad}")
+        
+        # Unimos todo en un solo texto separado por " | "
+        items_str = " | ".join(lista_nombres_items)
+        # --------------------------------------------
+
         metodo = v.metodo.nombre if v.metodo else "N/A"
         cw.writerow([v.id_venta, v.fecha_venta.strftime('%H:%M'), metodo, v.total, items_str])
     
