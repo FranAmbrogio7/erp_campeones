@@ -1,51 +1,96 @@
-import { X, Printer } from 'lucide-react';
+import React, { useRef } from 'react';
+import Barcode from 'react-barcode';
+import { useReactToPrint } from 'react-to-print';
+import { X, Printer, Package } from 'lucide-react';
 
 const ModalBarcode = ({ isOpen, onClose, productData }) => {
+  const componentRef = useRef();
+
+  const handlePrint = useReactToPrint({
+    content: () => componentRef.current,
+    documentTitle: productData ? `Etiqueta-${productData.sku}` : 'Etiqueta',
+  });
+
   if (!isOpen || !productData) return null;
 
-  // URL directa a tu backend que genera la imagen
-  const barcodeUrl = `/api/products/barcode/${productData.sku}`;
-
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100">
 
-        {/* Header */}
-        <div className="flex justify-between items-center p-4 border-b">
-          <h3 className="font-bold text-lg text-gray-800">Etiqueta de Producto</h3>
-          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
+        {/* Encabezado del Modal */}
+        <div className="flex justify-between items-center p-5 border-b bg-gray-50">
+          <h3 className="font-bold text-gray-800 flex items-center gap-2">
+            <Package className="text-blue-600" size={20} />
+            Imprimir Etiqueta
+          </h3>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-gray-600 hover:bg-gray-200 p-1 rounded-full transition-colors"
+          >
             <X size={24} />
           </button>
         </div>
 
-        {/* Body */}
-        <div className="p-6 flex flex-col items-center">
-          <p className="text-sm text-gray-500 mb-2">{productData.nombre}</p>
-          <p className="font-bold text-xl mb-4">{productData.talle}</p>
+        {/* Área de Previsualización */}
+        <div className="p-8 bg-gray-100 flex justify-center items-center min-h-[300px]">
 
-          {/* Aquí cargamos la imagen directa desde Python */}
-          <div className="border-2 border-dashed border-gray-300 p-4 rounded bg-gray-50">
-            <img
-              src={barcodeUrl}
-              alt="Barcode"
-              className="max-h-24 object-contain"
-              onError={(e) => {
-                e.target.src = "https://via.placeholder.com/300x100?text=Error+SKU";
-                e.target.alt = "Error generando código";
-              }}
-            />
+          {/* --- ESTA ES LA ETIQUETA QUE SE IMPRIME --- */}
+          <div
+            ref={componentRef}
+            className="bg-white p-4 border border-gray-300 shadow-sm w-[300px] h-[180px] flex flex-col items-center justify-center text-center"
+            // Estilo específico para impresión para asegurar fondo blanco y tamaños
+            style={{
+              printColorAdjust: 'exact',
+              WebkitPrintColorAdjust: 'exact'
+            }}
+          >
+            {/* 1. Nombre del Producto (Truncado si es muy largo) */}
+            <h2 className="text-sm font-bold text-gray-900 leading-tight mb-1 max-w-full overflow-hidden text-ellipsis whitespace-nowrap uppercase px-2">
+              {productData.nombre}
+            </h2>
+
+            {/* 2. Talle y Categoría (Sin Precio) */}
+            <div className="flex items-center justify-center gap-2 mb-1">
+              <span className="text-xs text-gray-500 uppercase">Talle:</span>
+              <span className="text-2xl font-black text-gray-800">{productData.talle}</span>
+            </div>
+
+            {/* 3. Código de Barras */}
+            <div className="w-full flex justify-center overflow-hidden">
+              <Barcode
+                value={productData.sku}
+                width={1.8}      // Barras un poco más anchas
+                height={40}      // Altura justa
+                fontSize={12}    // Texto del código legible
+                margin={0}
+                displayValue={true}
+                background="#ffffff"
+                lineColor="#000000"
+              />
+            </div>
+
+            {/* 4. Pie de página (Opcional: Nombre del negocio pequeño) */}
+            <p className="text-[8px] text-gray-400 mt-1 tracking-widest uppercase">
+              CAMPEONES
+            </p>
           </div>
+          {/* ------------------------------------------ */}
 
-          <p className="mt-2 text-xs font-mono text-gray-400">{productData.sku}</p>
         </div>
 
-        {/* Footer */}
-        <div className="p-4 bg-gray-50 border-t flex justify-end">
+        {/* Pie del Modal con Botones */}
+        <div className="p-5 border-t bg-white flex justify-end gap-3">
           <button
-            className="flex items-center px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-            onClick={() => window.print()} // Por ahora impresión simple del navegador
+            onClick={onClose}
+            className="px-4 py-2 text-gray-600 font-bold hover:bg-gray-100 rounded-lg transition-colors"
           >
-            <Printer size={18} className="mr-2" />
+            Cancelar
+          </button>
+          <button
+            onClick={handlePrint}
+            className="px-6 py-2 bg-slate-900 text-white font-bold rounded-lg hover:bg-black shadow-lg hover:shadow-xl transition-all flex items-center gap-2 active:scale-95"
+          >
+            <Printer size={18} />
             Imprimir
           </button>
         </div>
