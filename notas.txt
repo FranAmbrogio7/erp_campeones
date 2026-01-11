@@ -36,5 +36,3 @@ en la pagina de reservas, cuando el cliente salda el total de la reserva, esa ve
 
 
 
-
-
