@@ -161,7 +161,7 @@ const POSPage = () => {
         return;
       }
       try {
-        const res = await api.get('/products', { params: { search: manualTerm, limit: 5 } });
+        const res = await api.get('/products', { params: { search: manualTerm, limit: 100 } });
         setManualResults(res.data.products || []);
       } catch (error) { console.error(error); }
     }, 300);
