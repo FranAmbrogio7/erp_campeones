@@ -3,6 +3,8 @@ import os
 from flask import Flask, jsonify
 from .config import Config
 from .extensions import db, migrate, jwt, cors, ma
+from app.sales.routes import bp as sales_bp
+from app.sales.webhooks import bp_webhooks
 
 def create_app(config_class=Config):
     # 1. Inicializar Flask
