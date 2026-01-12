@@ -17,9 +17,15 @@ def handle_new_order():
     """
     topic = request.headers.get('X-Topic')
     store_id = request.headers.get('X-Store-Id')
+
+    # --- AGREGAR ESTAS LÍNEAS DE DEBUG ---
+    print(f"🔍 DEBUG ID RECIBIDO (Header): '{store_id}'")
+    print(f"🔍 DEBUG ID LOCAL (Service):  '{tn_service.store_id}'")
+    # -------------------------------------
     
     # Validación básica de seguridad (Verificar que sea nuestra tienda)
     if str(store_id) != str(tn_service.store_id):
+        print("❌ FALLÓ LA VALIDACIÓN DE ID") # Agrega esto también
         return jsonify({"msg": "Store ID mismatch"}), 401
 
     data = request.get_json()
