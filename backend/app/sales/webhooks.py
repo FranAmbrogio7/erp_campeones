@@ -1,3 +1,4 @@
+#/backend/app/sales/webhooks.py
 from flask import Blueprint, request, jsonify
 from app.extensions import db
 from app.products.models import Producto, ProductoVariante, Inventario
