@@ -9,8 +9,8 @@ class TiendaNubeService:
     def __init__(self):
         # 1. CARGA DE CREDENCIALES (Aquí estaba el error, faltaba esto)
         self.access_token = os.getenv('TIENDANUBE_ACCESS_TOKEN')
-        self.user_id = os.getenv('TIENDANUBE_USER_ID')
-        self.api_url = f"https://api.tiendanube.com/v1/{self.user_id}" if self.user_id else None
+        self.store_id = os.getenv('TIENDANUBE_STORE_ID')
+        self.api_url = f"https://api.tiendanube.com/v1/{self.store_id}" if self.store_id else None
         self.user_agent = "AppGestion (tu_email@ejemplo.com)"
         
         # 2. CONFIGURACIÓN DE PRECIOS
@@ -26,7 +26,7 @@ class TiendaNubeService:
 
     def check_connection(self):
         """Verifica si las credenciales funcionan"""
-        if not self.access_token or not self.user_id:
+        if not self.access_token or not self.store_id:
             return {"success": False, "error": "Faltan credenciales en .env"}
         
         try:
