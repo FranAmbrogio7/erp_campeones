@@ -169,5 +169,24 @@ class TiendaNubeService:
             traceback.print_exc()
             return {"success": False, "error": str(e)}
 
+
+    def get_order_details(self, order_id):
+        if not self.access_token or not self.api_url: return None
+
+        url = f"{self.api_url}/orders/{order_id}"
+
+        try:
+            print(f"📥 Descargando detalles de Orden #{order_id} desde API...")
+            response = requests.get(url, headers=self._get_headers())
+
+            if response.status_code == 200:
+                return response.json()
+            else:
+                print(f"❌ Error descargando orden: {response.status_code} - {response.text}")
+            return None
+        except Exception as e:
+            print(f"🔥 Error conexión API: {e}")
+            return None
+
 # Instancia global para importar en otros lados
 tn_service = TiendaNubeService()
