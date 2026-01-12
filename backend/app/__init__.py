@@ -44,8 +44,8 @@ def create_app(config_class=Config):
 
     # Notas (Si existe el módulo)
     # Asegúrate que 'app.notes.routes' exista, si no, comenta estas líneas
-    # from app.notes.routes import bp as notes_bp
-    # app.register_blueprint(notes_bp, url_prefix='/api/notes')
+    from app.notes.routes import bp as notes_bp
+    app.register_blueprint(notes_bp, url_prefix='/api/notes')
 
     # Compras (Purchases)
     from app.purchases.routes import bp as purchases_bp
