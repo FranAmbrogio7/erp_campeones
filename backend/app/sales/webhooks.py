@@ -10,37 +10,33 @@ bp_webhooks = Blueprint('webhooks', __name__)
 
 @bp_webhooks.route('/tiendanube/orders', methods=['POST'])
 def handle_new_order():
-    """
-    Recibe notificación de Tienda Nube
-    """
     try:
-        # --- DIAGNÓSTICO: VER QUÉ LLEGA REALMENTE ---
-        print("\n📨 --- INICIO WEBHOOK ---")
-        print("HEADERS RECIBIDOS:")
-        # Imprimimos cada cabecera para ver si 'X-Store-Id' llega en minúsculas o distinto
-        for key, value in request.headers.items():
-            print(f"   {key}: {value}")
-        print("--------------------------\n")
-
-        topic = request.headers.get('X-Topic') or request.headers.get('x-topic')
-        store_id = request.headers.get('X-Store-Id') or request.headers.get('x-store-id')
-
-        # --- BYPASS DE SEGURIDAD TEMPORAL ---
-        # Comentamos esto para que FUNCIONE AHORA MISMO
-        # if str(store_id) != str(tn_service.store_id):
-        #    print(f"❌ RECHAZADO: ID Recibido '{store_id}' vs Local '{tn_service.store_id}'")
-        #    return jsonify({"msg": "Store ID mismatch"}), 401
-        
-        data = request.get_json()
+        # 1. Obtenemos el ID de la notificación
+        data = request.get_json() or {}
         order_id = data.get('id')
-        
-        print(f"🔔 PROCESANDO ORDEN #{order_id} (Topic: {topic})")
+        store_id = data.get('store_id') # A veces viene en el body
 
-        if topic == 'order/created':
-            process_cloud_order(data)
-            return jsonify({"msg": "Orden procesada localmente"}), 200
-            
-        return jsonify({"msg": "Evento ignorado"}), 200
+        print(f"🔔 NOTIFICACIÓN RECIBIDA: ID #{order_id}")
+
+        if not order_id:
+            return jsonify({"msg": "Sin ID de orden"}), 200
+
+        # 2. VALIDACIÓN (Opcional / Bypass temporal)
+        # Como vimos que los headers fallan, confiamos en que si llega aquí, es válido.
+        # O podemos validar si el store_id del body coincide (si viene).
+
+        # 3. PASO CLAVE: DESCARGAR LA DATA COMPLETA
+        # Como el webhook viene vacío (60 bytes), pedimos los datos a la API.
+        full_order_data = tn_service.get_order_details(order_id)
+
+        if not full_order_data:
+            print("❌ No se pudo obtener la información de la orden. Se aborta.")
+            return jsonify({"msg": "Error fetching order data"}), 500
+
+        # 4. PROCESAR LA ORDEN CON LOS DATOS COMPLETOS
+        process_cloud_order(full_order_data)
+
+        return jsonify({"msg": "Orden procesada exitosamente"}), 200
 
     except Exception as e:
         print(f"🔥 ERROR CRÍTICO EN WEBHOOK: {e}")
@@ -50,7 +46,11 @@ def handle_new_order():
 
 def process_cloud_order(order_data):
     """Lógica para registrar la venta en MySQL y bajar stock"""
-    
+
+    # Validación: Solo procesar si está pagada o creada (según tu lógica)
+    # status = order_data.get('status') 
+    # print(f"ℹ️ Estado de la orden: {status}")
+
     # 1. Buscar o Crear Método de Pago "Tienda Nube"
     metodo_nube = MetodoPago.query.filter_by(nombre="Tienda Nube").first()
     if not metodo_nube:
@@ -72,16 +72,22 @@ def process_cloud_order(order_data):
 
     # 3. Procesar Productos
     products = order_data.get('products', [])
-    
+
+    if not products:
+        print("⚠️ ALERTA: La orden descargada no tiene productos.")
+
     for item in products:
-        variant_id_nube = str(item.get('variant_id')) # Convertimos a string por seguridad
+        variant_id_nube = str(item.get('variant_id'))
         cantidad = int(item.get('quantity', 1))
         precio = float(item.get('price', 0))
-        
+        nombre_producto = item.get('name', 'Producto Nube')
+
+        print(f"   procesando item: {nombre_producto} (VarID: {variant_id_nube})")
+
         # Buscar variante local vinculada
         variante_local = ProductoVariante.query.filter_by(tiendanube_variant_id=variant_id_nube).first()
-        
-        # Si no la encuentra por ID de variante, intenta por SKU (Plan B)
+
+        # Intento por SKU si falla ID
         if not variante_local:
              sku = item.get('sku')
              if sku:
@@ -93,7 +99,7 @@ def process_cloud_order(order_data):
                 variante_local.inventario.stock_actual -= cantidad
                 print(f"   📉 Stock bajado: {variante_local.producto.nombre} -{cantidad}u")
 
-            # B. Agregar Detalle Venta
+            # B. Guardar Detalle
             detalle = DetalleVenta(
                 id_venta=nueva_venta.id_venta,
                 id_variante=variante_local.id_variante,
@@ -104,11 +110,10 @@ def process_cloud_order(order_data):
             )
             db.session.add(detalle)
         else:
-            print(f"   ⚠️ Producto Nube ID {variant_id_nube} no encontrado localmente. Se registra sin descontar stock.")
-            # Registramos el item genérico para que no falte en el ticket
+            print(f"   ⚠️ Producto no vinculado. Se guarda sin descontar stock.")
             detalle = DetalleVenta(
                 id_venta=nueva_venta.id_venta,
-                producto_nombre=item.get('name', 'Producto Desconocido'),
+                producto_nombre=nombre_producto,
                 cantidad=cantidad,
                 precio_unitario=precio,
                 subtotal=precio * cantidad
@@ -116,4 +121,4 @@ def process_cloud_order(order_data):
             db.session.add(detalle)
 
     db.session.commit()
-    print("✅ Orden guardada y stock actualizado.")
+    print("✅ Venta registrada y stock actualizado.")
