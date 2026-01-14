@@ -200,9 +200,14 @@ const InventoryPage = () => {
     };
 
     // --- Otros Manejadores ---
-    const handleOpenBarcode = (productName, variant) => {
+    const handleOpenBarcode = (productName, variant, price) => { // <--- Agregamos 'price'
         const skuToUse = variant.sku || `GEN-${variant.id_variante}`;
-        setSelectedVariantForBarcode({ nombre: productName, talle: variant.talle, sku: skuToUse });
+        setSelectedVariantForBarcode({
+            nombre: productName,
+            talle: variant.talle,
+            sku: skuToUse,
+            precio: price // <--- Guardamos el precio
+        });
         setIsBarcodeModalOpen(true);
     };
 
@@ -517,7 +522,7 @@ const InventoryPage = () => {
                                                 {product.variantes.map(v => (
                                                     <div
                                                         key={v.id_variante}
-                                                        onClick={() => handleOpenBarcode(product.nombre, v)}
+                                                        onClick={() => handleOpenBarcode(product.nombre, v, product.precio)}
                                                         className={`flex items-center px-2 py-1 rounded border text-xs cursor-pointer transition-all active:scale-95 shadow-sm ${getStockColor(v.stock)}`}
                                                         title="Clic para ver Código de Barras"
                                                     >
