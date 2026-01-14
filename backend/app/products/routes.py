@@ -590,7 +590,7 @@ def generate_batch_labels_pdf():
 
     if not items: return jsonify({"msg": "Lista vacía"}), 400
 
-    # Medidas etiqueta: 50mm x 25mm
+    # Medidas exactas
     LABEL_WIDTH = 50 * mm
     LABEL_HEIGHT = 25 * mm
     
@@ -600,55 +600,58 @@ def generate_batch_labels_pdf():
     for item in items:
         try:
             cantidad = int(item.get('cantidad', 1))
-            nombre = item.get('nombre', 'Producto')[:28] # Cortamos para que entre en una línea
+            # Truncamos un poco antes para asegurar márgenes
+            nombre = item.get('nombre', 'Producto')[:22] 
             talle = item.get('talle', '-')
             sku = item.get('sku', '0000')
 
-            # Formateamos el SKU central con espacios para que se parezca a la foto (ej: P 6 1 3 - X L)
-            # Esto le da ese look de "lectura humana"
-            sku_espaciado = " ".join(list(sku)) 
-
             for _ in range(cantidad):
                 
-                # 1. NOMBRE (Arriba - Pegado al borde superior)
-                c.setFont("Helvetica", 7) # Fuente normal, no bold (según foto)
-                # Y=22mm
+                # --- 1. NOMBRE (Arriba del todo) ---
+                # Subimos un poco la fuente a Bold para que se lea mejor en térmico
+                c.setFont("Helvetica-Bold", 8) 
+                # Y=21.5mm (Dejamos 3.5mm desde arriba)
                 c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT - 3.5*mm, nombre)
 
-                # 2. CÓDIGO DE BARRAS
-                # Lógica de auto-ajuste de ancho
-                bar_width = 0.55 
-                barcode = code128.Code128(sku, barHeight=10*mm, barWidth=bar_width)
+                # --- 2. CÓDIGO DE BARRAS (El Protagonista) ---
+                # CORRECCIÓN 1: Grosor base más alto (0.9 a 1.0 es ideal para 50mm)
+                # Si es muy fino, la impresora térmica lo empasta.
+                base_bar_width = 1.0 
                 
-                real_width = barcode.width
-                max_width = LABEL_WIDTH - 4*mm
+                # Altura de barra: 12mm (Casi el 50% de la etiqueta)
+                # Cuanto más altas las barras, más fácil es escanear rápido.
+                bar_height = 12 * mm
 
-                if real_width > max_width:
-                    factor = max_width / real_width
-                    bar_width = bar_width * factor
-                    barcode = code128.Code128(sku, barHeight=10*mm, barWidth=bar_width)
+                barcode = code128.Code128(sku, barHeight=bar_height, barWidth=base_bar_width)
+                
+                # Lógica de ajuste si el SKU es muy largo
+                real_width = barcode.width
+                max_allowed_width = LABEL_WIDTH - 6*mm # 3mm de margen a cada lado (CRÍTICO)
+
+                if real_width > max_allowed_width:
+                    factor = max_allowed_width / real_width
+                    # Nunca bajar de 0.6 o deja de leerse en impresoras baratas
+                    new_width = max(base_bar_width * factor, 0.6) 
+                    barcode = code128.Code128(sku, barHeight=bar_height, barWidth=new_width)
                     real_width = barcode.width
 
                 x_pos = (LABEL_WIDTH - real_width) / 2
                 
-                # Dibujamos las barras más arriba para dejar espacio al texto de abajo
-                # Y=9mm (Esto deja espacio para el texto grande abajo)
-                barcode.drawOn(c, x_pos, 9*mm)
+                # Dibujamos las barras en el CENTRO vertical
+                # Y=7.5mm. Esto deja espacio abajo para el Talle.
+                barcode.drawOn(c, x_pos, 7.5*mm)
 
-                # 3. SKU GRANDE CENTRAL (El detalle que faltaba)
-                # Justo debajo de las barras
-                c.setFont("Helvetica-Bold", 9)
-                c.drawCentredString(LABEL_WIDTH / 2, 5.5*mm, sku) 
-                # Nota: Si prefieres con espacios como "P 6 1 3", cambia 'sku' por 'sku_espaciado' arriba
+                # --- 3. PIE DE PÁGINA (Talle y SKU Legible) ---
+                # Eliminé el "SKU GRANDE CENTRAL" porque robaba espacio al código de barras.
+                # Ahora mostramos el SKU claro abajo a la derecha.
 
-                # 4. PIE DE PÁGINA (Talle y SKU pequeño)
-                # Talle a la izquierda (Bold)
-                c.setFont("Helvetica-Bold", 8)
-                c.drawString(2*mm, 1.5*mm, f"T: {talle}")
+                # Talle a la izquierda (Grande y Bold)
+                c.setFont("Helvetica-Bold", 11) # Aumenté tamaño
+                c.drawString(3*mm, 2.5*mm, f"{talle}")
 
-                # SKU pequeño a la derecha (Normal)
-                c.setFont("Helvetica", 6)
-                c.drawRightString(LABEL_WIDTH - 2*mm, 1.5*mm, sku)
+                # SKU a la derecha (Normal)
+                c.setFont("Helvetica", 7)
+                c.drawRightString(LABEL_WIDTH - 3*mm, 2.5*mm, sku)
 
                 c.showPage()
                 
@@ -660,6 +663,7 @@ def generate_batch_labels_pdf():
     buffer.seek(0)
     
     return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name='etiquetas.pdf')
+    
 # ==========================================
 # TIENDA NUBE: TEST Y PUBLICACIÓN
 # ==========================================
