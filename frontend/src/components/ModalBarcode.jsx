@@ -1,96 +1,84 @@
-import React, { useRef } from 'react';
-import Barcode from 'react-barcode';
-import { useReactToPrint } from 'react-to-print';
-import { X, Printer, Package } from 'lucide-react';
+import { X, Printer } from 'lucide-react';
 
 const ModalBarcode = ({ isOpen, onClose, productData }) => {
-  const componentRef = useRef();
-
-  const handlePrint = useReactToPrint({
-    content: () => componentRef.current,
-    documentTitle: productData ? `Etiqueta-${productData.sku}` : 'Etiqueta',
-  });
-
   if (!isOpen || !productData) return null;
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-in">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100">
+  const barcodeUrl = `/api/products/barcode/${productData.sku}`;
 
-        {/* Encabezado del Modal */}
-        <div className="flex justify-between items-center p-5 border-b bg-gray-50">
-          <h3 className="font-bold text-gray-800 flex items-center gap-2">
-            <Package className="text-blue-600" size={20} />
-            Imprimir Etiqueta
-          </h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 hover:bg-gray-200 p-1 rounded-full transition-colors"
-          >
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+
+      {/* CSS para Impresión */}
+      <style>
+        {`
+          @media print {
+            body * { visibility: hidden; }
+            .printable-area, .printable-area * { visibility: visible; }
+            .printable-area { 
+              position: absolute; 
+              left: 0; 
+              top: 0; 
+              width: 50mm; 
+              height: 25mm;
+              display: flex;
+              flex-direction: column;
+              background: white;
+            }
+          }
+        `}
+      </style>
+
+      <div className="bg-white rounded-lg shadow-xl w-full max-w-md overflow-hidden">
+
+        {/* Header */}
+        <div className="flex justify-between items-center p-4 border-b">
+          <h3 className="font-bold text-lg text-gray-800">Vista Previa</h3>
+          <button onClick={onClose} className="text-gray-500 hover:text-gray-700">
             <X size={24} />
           </button>
         </div>
 
-        {/* Área de Previsualización */}
-        <div className="p-8 bg-gray-100 flex justify-center items-center min-h-[300px]">
+        {/* Body Visual */}
+        <div className="p-8 flex flex-col items-center justify-center bg-gray-100">
 
-          {/* --- ESTA ES LA ETIQUETA QUE SE IMPRIME --- */}
-          <div
-            ref={componentRef}
-            className="bg-white p-4 border border-gray-300 shadow-sm w-[300px] h-[180px] flex flex-col items-center justify-center text-center"
-            // Estilo específico para impresión para asegurar fondo blanco y tamaños
-            style={{
-              printColorAdjust: 'exact',
-              WebkitPrintColorAdjust: 'exact'
-            }}
-          >
-            {/* 1. Nombre del Producto (Truncado si es muy largo) */}
-            <h2 className="text-sm font-bold text-gray-900 leading-tight mb-1 max-w-full overflow-hidden text-ellipsis whitespace-nowrap uppercase px-2">
+          {/* --- ETIQUETA IMPRIMIBLE (50mm x 25mm) --- */}
+          <div className="printable-area bg-white border border-gray-400 flex flex-col items-center overflow-hidden"
+            style={{ width: '50mm', height: '25mm', padding: '1mm' }}>
+
+            {/* 1. TEXTO SUPERIOR (Nombre pequeñito) */}
+            <p className="text-[8px] leading-none text-center truncate w-full mb-0.5 text-black">
               {productData.nombre}
-            </h2>
+            </p>
 
-            {/* 2. Talle y Categoría (Sin Precio) */}
-            <div className="flex items-center justify-center gap-2 mb-1">
-              <span className="text-xs text-gray-500 uppercase">Talle:</span>
-              <span className="text-2xl font-black text-gray-800">{productData.talle}</span>
-            </div>
-
-            {/* 3. Código de Barras */}
-            <div className="w-full flex justify-center overflow-hidden">
-              <Barcode
-                value={productData.sku}
-                width={1.8}      // Barras un poco más anchas
-                height={40}      // Altura justa
-                fontSize={12}    // Texto del código legible
-                margin={0}
-                displayValue={true}
-                background="#ffffff"
-                lineColor="#000000"
+            {/* 2. CÓDIGO DE BARRAS (Protagonista principal) */}
+            {/* flex-1 hace que ocupe todo el espacio vertical disponible */}
+            <div className="flex-1 w-full flex items-center justify-center overflow-hidden">
+              <img
+                src={barcodeUrl}
+                alt="Barcode"
+                className="w-full h-full object-fill grayscale" // object-fill estira la imagen para llenar el hueco
+                onError={(e) => e.target.style.display = 'none'}
               />
             </div>
 
-            {/* 4. Pie de página (Opcional: Nombre del negocio pequeño) */}
-            <p className="text-[8px] text-gray-400 mt-1 tracking-widest uppercase">
-              CAMPEONES
-            </p>
+            {/* 3. TEXTO INFERIOR (Talle y SKU en una línea) */}
+            <div className="flex justify-between w-full mt-0.5 px-1">
+              <span className="text-[9px] font-black text-black">T: {productData.talle}</span>
+              <span className="text-[7px] font-mono text-black">{productData.sku}</span>
+            </div>
+
           </div>
-          {/* ------------------------------------------ */}
+          {/* ----------------------------------------- */}
 
         </div>
 
-        {/* Pie del Modal con Botones */}
-        <div className="p-5 border-t bg-white flex justify-end gap-3">
+        {/* Footer */}
+        <div className="p-4 bg-gray-50 border-t flex justify-end">
           <button
-            onClick={onClose}
-            className="px-4 py-2 text-gray-600 font-bold hover:bg-gray-100 rounded-lg transition-colors"
+            className="flex items-center px-4 py-2 bg-slate-900 text-white rounded hover:bg-black font-bold shadow-lg"
+            onClick={() => window.print()}
           >
-            Cancelar
-          </button>
-          <button
-            onClick={handlePrint}
-            className="px-6 py-2 bg-slate-900 text-white font-bold rounded-lg hover:bg-black shadow-lg hover:shadow-xl transition-all flex items-center gap-2 active:scale-95"
-          >
-            <Printer size={18} />
+            <Printer size={18} className="mr-2" />
             Imprimir
           </button>
         </div>

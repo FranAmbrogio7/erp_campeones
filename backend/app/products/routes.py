@@ -590,32 +590,76 @@ def generate_batch_labels_pdf():
 
     if not items: return jsonify({"msg": "Lista vacía"}), 400
 
+    # Medidas etiqueta: 50mm x 25mm
     LABEL_WIDTH = 50 * mm
     LABEL_HEIGHT = 25 * mm
+    
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
 
     for item in items:
-        cantidad = int(item.get('cantidad', 1))
-        for _ in range(cantidad):
-            c.setFont("Helvetica-Bold", 6)
-            c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT - 5*mm, f"{item['nombre'][:25]}")
-            c.setFont("Helvetica", 6)
-            c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT - 7.5*mm, f"Talle: {item['talle']} - $ {float(item['precio']):,.0f}")
+        try:
+            cantidad = int(item.get('cantidad', 1))
+            nombre = item.get('nombre', 'Producto')[:28] # Cortamos para que entre en una línea
+            talle = item.get('talle', '-')
+            sku = item.get('sku', '0000')
 
-            barcode = code128.Code128(item['sku'], barHeight=8*mm, barWidth=0.9)
-            barcode.drawOn(c, 2*mm, 3*mm)
-            
-            c.setFont("Helvetica", 5)
-            c.drawCentredString(LABEL_WIDTH / 2, 1*mm, item['sku'])
+            # Formateamos el SKU central con espacios para que se parezca a la foto (ej: P 6 1 3 - X L)
+            # Esto le da ese look de "lectura humana"
+            sku_espaciado = " ".join(list(sku)) 
 
-            c.showPage()
+            for _ in range(cantidad):
+                
+                # 1. NOMBRE (Arriba - Pegado al borde superior)
+                c.setFont("Helvetica", 7) # Fuente normal, no bold (según foto)
+                # Y=22mm
+                c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT - 3.5*mm, nombre)
+
+                # 2. CÓDIGO DE BARRAS
+                # Lógica de auto-ajuste de ancho
+                bar_width = 0.55 
+                barcode = code128.Code128(sku, barHeight=10*mm, barWidth=bar_width)
+                
+                real_width = barcode.width
+                max_width = LABEL_WIDTH - 4*mm
+
+                if real_width > max_width:
+                    factor = max_width / real_width
+                    bar_width = bar_width * factor
+                    barcode = code128.Code128(sku, barHeight=10*mm, barWidth=bar_width)
+                    real_width = barcode.width
+
+                x_pos = (LABEL_WIDTH - real_width) / 2
+                
+                # Dibujamos las barras más arriba para dejar espacio al texto de abajo
+                # Y=9mm (Esto deja espacio para el texto grande abajo)
+                barcode.drawOn(c, x_pos, 9*mm)
+
+                # 3. SKU GRANDE CENTRAL (El detalle que faltaba)
+                # Justo debajo de las barras
+                c.setFont("Helvetica-Bold", 9)
+                c.drawCentredString(LABEL_WIDTH / 2, 5.5*mm, sku) 
+                # Nota: Si prefieres con espacios como "P 6 1 3", cambia 'sku' por 'sku_espaciado' arriba
+
+                # 4. PIE DE PÁGINA (Talle y SKU pequeño)
+                # Talle a la izquierda (Bold)
+                c.setFont("Helvetica-Bold", 8)
+                c.drawString(2*mm, 1.5*mm, f"T: {talle}")
+
+                # SKU pequeño a la derecha (Normal)
+                c.setFont("Helvetica", 6)
+                c.drawRightString(LABEL_WIDTH - 2*mm, 1.5*mm, sku)
+
+                c.showPage()
+                
+        except Exception as e:
+            print(f"Error PDF: {e}")
+            continue
 
     c.save()
     buffer.seek(0)
     
-    return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name='etiquetas_lote.pdf')
-
+    return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name='etiquetas.pdf')
 # ==========================================
 # TIENDA NUBE: TEST Y PUBLICACIÓN
 # ==========================================
