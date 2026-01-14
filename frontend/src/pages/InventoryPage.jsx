@@ -4,13 +4,14 @@ import { useAuth, api } from '../context/AuthContext';
 import {
     Package, QrCode, Search, Edit,
     ChevronLeft, ChevronRight, Shirt, Filter, XCircle,
-    Cloud, UploadCloud, Loader2, Plus, Save, Image as ImageIcon // Agregamos iconos necesarios
+    Cloud, UploadCloud, Loader2, Plus, Save, Image as ImageIcon,
+    Printer // <--- NUEVO ICONO IMPORTADO
 } from 'lucide-react';
 import ModalBarcode from '../components/ModalBarcode';
 import EditProductModal from '../components/EditProductModal';
 import { toast, Toaster } from 'react-hot-toast';
 
-// --- DEFINICIÓN DE CURVAS DE TALLES (Igual que en ProductsPage) ---
+// --- DEFINICIÓN DE CURVAS DE TALLES ---
 const SIZE_GRIDS = {
     'ADULTO': ['S', 'M', 'L', 'XL', 'XXL'],
     'NIÑOS': ['4', '6', '8', '10', '12', '14', '16'],
@@ -45,7 +46,7 @@ const InventoryPage = () => {
     });
     const [showFilters, setShowFilters] = useState(false);
 
-    // --- ESTADOS PARA CREACIÓN (Traídos de ProductsPage) ---
+    // --- ESTADOS PARA CREACIÓN ---
     const [showForm, setShowForm] = useState(false);
     const [selectedGridType, setSelectedGridType] = useState('ADULTO');
     const [newProduct, setNewProduct] = useState({
@@ -135,11 +136,10 @@ const InventoryPage = () => {
         }
     };
 
-    // --- MANEJO DE CREACIÓN DE PRODUCTO (Lógica de ProductsPage) ---
+    // --- MANEJO DE CREACIÓN DE PRODUCTO ---
     const handleSubmitCreate = async (e) => {
         e.preventDefault();
 
-        // Validaciones básicas
         if (!newProduct.categoria_id) {
             toast.error("Selecciona una categoría general");
             return;
@@ -155,12 +155,8 @@ const InventoryPage = () => {
             const formData = new FormData();
             formData.append('nombre', newProduct.nombre);
             formData.append('precio', newProduct.precio);
-
-            // --- LÓGICA DE CURVA DE TALLES ---
             const tallesToSend = SIZE_GRIDS[selectedGridType].join(',');
             formData.append('talle', tallesToSend);
-
-            // Stock inicial (se aplicará a CADA talle)
             formData.append('stock', newProduct.stock);
             formData.append('categoria_id', newProduct.categoria_id);
 
@@ -171,16 +167,13 @@ const InventoryPage = () => {
                 formData.append('imagen', selectedFile);
             }
 
-            // Enviamos al backend
             await api.post('/products', formData, {
                 headers: { 'Content-Type': 'multipart/form-data' }
             });
 
-            // Éxito
             toast.success(`Creado con curva: ${selectedGridType}`, { id: toastId });
             playSound('success');
 
-            // Limpiar formulario
             setShowForm(false);
             setNewProduct({
                 nombre: '', precio: '', stock: '10', sku: '',
@@ -188,8 +181,6 @@ const InventoryPage = () => {
             });
             setSelectedGridType('ADULTO');
             setSelectedFile(null);
-
-            // Recargar lista
             fetchProducts(1);
 
         } catch (e) {
@@ -200,13 +191,13 @@ const InventoryPage = () => {
     };
 
     // --- Otros Manejadores ---
-    const handleOpenBarcode = (productName, variant, price) => { // <--- Agregamos 'price'
+    const handleOpenBarcode = (productName, variant, price) => {
         const skuToUse = variant.sku || `GEN-${variant.id_variante}`;
         setSelectedVariantForBarcode({
             nombre: productName,
             talle: variant.talle,
             sku: skuToUse,
-            precio: price // <--- Guardamos el precio
+            precio: price
         });
         setIsBarcodeModalOpen(true);
     };
@@ -233,6 +224,47 @@ const InventoryPage = () => {
             toast.error(error.response?.data?.msg || "Error al publicar", { id: toastId });
         } finally {
             setProcessingId(null);
+        }
+    };
+
+    // --- NUEVO: FUNCIÓN PARA IMPRIMIR ETIQUETA INDIVIDUAL ---
+    const handlePrintSingleLabel = async (e, product, variant) => {
+        e.stopPropagation(); // Evita que se abra el modal de QR
+        const toastId = toast.loading("Generando PDF...");
+
+        try {
+            const itemParaImprimir = {
+                sku: variant.sku || `GEN-${variant.id_variante}`,
+                nombre: product.nombre,
+                talle: variant.talle,
+                cantidad: 1 // Solo una etiqueta
+            };
+
+            // Llamamos al mismo endpoint del LabelPrinterPage
+            const response = await api.post('/products/labels/batch-pdf', {
+                items: [itemParaImprimir]
+            }, {
+                responseType: 'blob'
+            });
+
+            // Crear URL del Blob y abrir en nueva ventana
+            const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
+            const printWindow = window.open(url, '_blank');
+
+            // Opcional: Imprimir automáticamente si el navegador lo permite
+            if (printWindow) {
+                printWindow.onload = () => {
+                    // printWindow.print(); // Descomentar si quieres que se abra el diálogo de impresión directo
+                };
+            }
+
+            toast.success("Etiqueta lista", { id: toastId });
+            playSound('success');
+
+        } catch (error) {
+            console.error("Error imprimiendo etiqueta", error);
+            toast.error("Error al generar PDF", { id: toastId });
+            playSound('error');
         }
     };
 
@@ -276,7 +308,6 @@ const InventoryPage = () => {
                             <Filter size={20} />
                         </button>
 
-                        {/* BOTÓN NUEVO (Ahora alterna el formulario inline) */}
                         <button
                             onClick={() => setShowForm(!showForm)}
                             className={`${showForm ? 'bg-gray-700' : 'bg-slate-900 hover:bg-black'} text-white px-4 py-2 rounded-lg font-bold flex items-center shadow-lg transition-all active:scale-95 whitespace-nowrap`}
@@ -321,14 +352,13 @@ const InventoryPage = () => {
                 )}
             </div>
 
-            {/* --- FORMULARIO DE CREACIÓN (Copiado de ProductsPage) --- */}
+            {/* FORMULARIO DE CREACIÓN */}
             {showForm && (
                 <div className="bg-white p-6 rounded-xl shadow border border-blue-200 animate-fade-in-down shrink-0">
                     <h3 className="font-bold text-lg mb-4 text-gray-700 flex items-center">
                         <Plus size={20} className="mr-2 text-blue-600" /> Agregar Nuevo Producto
                     </h3>
                     <form onSubmit={handleSubmitCreate} className="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
-
                         <div className="md:col-span-3">
                             <label className="block text-xs font-bold text-gray-500 mb-1">Nombre</label>
                             <input
@@ -340,7 +370,6 @@ const InventoryPage = () => {
                                 autoFocus
                             />
                         </div>
-
                         <div className="md:col-span-1">
                             <label className="block text-xs font-bold text-gray-500 mb-1">Categoría Gral.</label>
                             <select
@@ -355,7 +384,6 @@ const InventoryPage = () => {
                                 ))}
                             </select>
                         </div>
-
                         <div className="md:col-span-2">
                             <label className="block text-xs font-bold text-gray-500 mb-1">Categoría Específica</label>
                             <select
@@ -369,7 +397,6 @@ const InventoryPage = () => {
                                 ))}
                             </select>
                         </div>
-
                         <div className="md:col-span-2">
                             <label className="block text-xs font-bold text-gray-500 mb-1">Precio ($)</label>
                             <div className="relative">
@@ -383,8 +410,6 @@ const InventoryPage = () => {
                                 />
                             </div>
                         </div>
-
-                        {/* SELECTOR DE CURVA DE TALLES */}
                         <div className="md:col-span-1">
                             <label className="block text-xs font-bold text-gray-500 mb-1">Curva de Talles</label>
                             <select
@@ -396,12 +421,10 @@ const InventoryPage = () => {
                                     <option key={gridName} value={gridName}>{gridName}</option>
                                 ))}
                             </select>
-                            {/* Previsualización */}
                             <div className="text-[10px] text-blue-500 mt-1 truncate font-medium">
                                 {SIZE_GRIDS[selectedGridType].join(', ')}
                             </div>
                         </div>
-
                         <div className="md:col-span-1">
                             <label className="block text-xs font-bold text-gray-500 mb-1">Stock Inicial (c/u)</label>
                             <input
@@ -413,7 +436,6 @@ const InventoryPage = () => {
                                 onChange={e => setNewProduct({ ...newProduct, stock: e.target.value })}
                             />
                         </div>
-
                         <div className="md:col-span-6 bg-gray-50 p-3 rounded border border-dashed border-gray-300 mt-2">
                             <label className="block text-xs font-bold text-gray-500 mb-2 flex items-center cursor-pointer w-fit hover:text-blue-600">
                                 <ImageIcon size={16} className="mr-1" /> Imagen del Producto (Opcional)
@@ -425,7 +447,6 @@ const InventoryPage = () => {
                                 className="block w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
                             />
                         </div>
-
                         <button
                             type="submit"
                             className="md:col-span-6 w-full bg-green-600 text-white py-2 rounded font-bold hover:bg-green-700 mt-2 flex justify-center items-center shadow-md active:scale-[0.99] transition-transform"
@@ -516,19 +537,27 @@ const InventoryPage = () => {
                                             $ {product.precio.toLocaleString()}
                                         </td>
 
-                                        {/* 4. VARIANTES */}
+                                        {/* 4. VARIANTES (CON BOTÓN DE IMPRESIÓN) */}
                                         <td className="px-4 py-3">
                                             <div className="flex flex-wrap gap-2">
                                                 {product.variantes.map(v => (
                                                     <div
                                                         key={v.id_variante}
                                                         onClick={() => handleOpenBarcode(product.nombre, v, product.precio)}
-                                                        className={`flex items-center px-2 py-1 rounded border text-xs cursor-pointer transition-all active:scale-95 shadow-sm ${getStockColor(v.stock)}`}
-                                                        title="Clic para ver Código de Barras"
+                                                        className={`group/variant flex items-center pl-2 pr-1 py-1 rounded border text-xs cursor-pointer transition-all active:scale-95 shadow-sm ${getStockColor(v.stock)}`}
+                                                        title="Clic para ver detalles"
                                                     >
                                                         <span className="font-bold mr-1.5">{v.talle}</span>
-                                                        <span className="font-mono text-[10px] opacity-80 border-l border-current pl-1.5">{v.stock}</span>
-                                                        <QrCode size={10} className="ml-1.5 opacity-50" />
+                                                        <span className="font-mono text-[10px] opacity-80 border-l border-current pl-1.5 mr-1">{v.stock}</span>
+
+                                                        {/* BOTÓN IMPRIMIR ETIQUETA RÁPIDA */}
+                                                        <button
+                                                            onClick={(e) => handlePrintSingleLabel(e, product, v)}
+                                                            className="p-1 rounded-full hover:bg-black hover:text-white text-gray-400 transition-colors ml-1"
+                                                            title="Imprimir etiqueta (50x25mm)"
+                                                        >
+                                                            <Printer size={12} />
+                                                        </button>
                                                     </div>
                                                 ))}
                                                 {product.variantes.length === 0 && <span className="text-xs text-gray-400 italic">Sin stock</span>}
