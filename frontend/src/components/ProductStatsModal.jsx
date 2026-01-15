@@ -1,14 +1,16 @@
 import { useState, useMemo } from 'react';
 import { X, Search, ArrowUp, ArrowDown, Filter } from 'lucide-react';
 
-const ProductStatsModal = ({ isOpen, onClose, data, dateRange }) => {
+const ProductStatsModal = ({ isOpen, onClose, data = [], dateRange }) => {
+    // 1. Hooks siempre arriba (sin condiciones antes)
     const [searchTerm, setSearchTerm] = useState('');
     const [sortConfig, setSortConfig] = useState({ key: 'unidades', direction: 'desc' });
 
-    if (!isOpen) return null;
-
     // Lógica de Ordenamiento y Filtrado
     const processedData = useMemo(() => {
+        // Protección: Si no hay data, retornar array vacío para evitar errores
+        if (!data) return [];
+
         let filtered = [...data];
 
         // 1. Filtrar por nombre
@@ -45,6 +47,9 @@ const ProductStatsModal = ({ isOpen, onClose, data, dateRange }) => {
         return sortConfig.direction === 'asc' ? <ArrowUp size={14} className="ml-1" /> : <ArrowDown size={14} className="ml-1" />;
     };
 
+    // 2. AHORA SÍ: El retorno condicional va DESPUÉS de todos los hooks
+    if (!isOpen) return null;
+
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
             <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl h-[85vh] flex flex-col overflow-hidden">
@@ -56,7 +61,7 @@ const ProductStatsModal = ({ isOpen, onClose, data, dateRange }) => {
                             📊 Análisis Detallado de Productos
                         </h3>
                         <p className="text-sm text-gray-500 mt-1">
-                            Período: {dateRange.start} al {dateRange.end}
+                            Período: {dateRange?.start} al {dateRange?.end}
                         </p>
                     </div>
                     <button onClick={onClose} className="bg-white p-2 rounded-full text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors shadow-sm">

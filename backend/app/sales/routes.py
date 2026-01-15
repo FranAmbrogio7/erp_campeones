@@ -5,7 +5,7 @@ from flask import Blueprint, jsonify, request, Response
 from app.extensions import db
 # IMPORTAMOS DESDE TUS ARCHIVOS SEPARADOS
 from app.sales.models import Venta, DetalleVenta, MetodoPago, SesionCaja, MovimientoCaja, Reserva, DetalleReserva, Presupuesto, DetallePresupuesto, NotaCredito
-from app.products.models import Producto, ProductoVariante, Inventario
+from app.products.models import Producto, ProductoVariante, Inventario, Categoria
 from flask_jwt_extended import jwt_required
 from sqlalchemy import desc, func, extract
 from datetime import date, datetime, timedelta
