@@ -3,7 +3,8 @@ import { useAuth, api } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
 import {
     ShoppingCart, Package, BarChart3, Printer, Lock, Unlock,
-    ArrowRight, AlertCircle, TrendingUp, Clock, Globe, ExternalLink
+    ArrowRight, AlertCircle, TrendingUp, Clock, Globe, ExternalLink,
+    LayoutDashboard, Store
 } from 'lucide-react';
 
 const DashboardPage = () => {
@@ -51,7 +52,7 @@ const DashboardPage = () => {
     const cajaAbierta = data.financial.caja_status === 'abierta';
 
     return (
-        <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
+        <div className="max-w-6xl mx-auto space-y-8 animate-fade-in pb-10">
 
             {/* 1. HEADER: BIENVENIDA + RELOJ + RESUMEN */}
             <div className="flex flex-col md:flex-row justify-between items-end md:items-center border-b border-gray-100 pb-6">
@@ -85,9 +86,13 @@ const DashboardPage = () => {
             {/* 2. ACCESOS RÁPIDOS (GRID CENTRAL) */}
             <div>
                 <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Centro de Control</h2>
+
+                {/* GRILLA DE 4 COLUMNAS */}
+                {/* Row 1: Venta (2) + Inventario (1) + Caja (1) = 4 */}
+                {/* Row 2: Admin (1) + Web (1) + Etiquetas (1) + Stats (1) = 4 */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
 
-                    {/* PTO VENTA (Gigante) */}
+                    {/* 1. PTO VENTA (Doble Ancho) */}
                     <Link to="/caja" className="col-span-2 bg-gradient-to-br from-slate-800 to-black text-white p-6 rounded-3xl shadow-xl hover:shadow-2xl hover:scale-[1.01] transition-all group relative overflow-hidden flex flex-col justify-between min-h-[160px]">
                         <div className="relative z-10">
                             <div className="bg-white/10 w-fit p-3 rounded-2xl backdrop-blur-sm mb-4">
@@ -99,85 +104,100 @@ const DashboardPage = () => {
                         <ShoppingCart className="absolute -right-6 -bottom-6 text-white/5 rotate-12 transition-transform group-hover:rotate-0" size={180} />
                     </Link>
 
-                    {/* INVENTARIO */}
-                    <Link to="/inventario" className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all group">
+                    {/* 2. INVENTARIO */}
+                    <Link to="/inventario" className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all group flex flex-col justify-between">
                         <div className="bg-blue-50 w-12 h-12 rounded-xl flex items-center justify-center text-blue-600 mb-4 group-hover:scale-110 transition-transform">
                             <Package size={24} />
                         </div>
-                        <h3 className="font-bold text-gray-800 text-lg">Inventario</h3>
-                        <p className="text-xs text-gray-400 mt-1">Gestionar stock</p>
+                        <div>
+                            <h3 className="font-bold text-gray-800 text-lg">Inventario</h3>
+                            <p className="text-xs text-gray-400 mt-1">Gestionar stock</p>
+                        </div>
                     </Link>
 
-                    {/* CAJA */}
-                    <Link to="/caja-control" className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-purple-200 transition-all group relative overflow-hidden">
+                    {/* 3. CAJA */}
+                    <Link to="/caja-control" className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-purple-200 transition-all group relative overflow-hidden flex flex-col justify-between">
                         <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110 ${cajaAbierta ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
                             {cajaAbierta ? <Unlock size={24} /> : <Lock size={24} />}
                         </div>
-                        <h3 className="font-bold text-gray-800 text-lg">Caja</h3>
-                        <p className={`text-xs font-bold mt-1 ${cajaAbierta ? 'text-green-600' : 'text-red-500'}`}>
-                            {cajaAbierta ? 'Abierta' : 'Cerrada'}
-                        </p>
+                        <div>
+                            <h3 className="font-bold text-gray-800 text-lg">Caja</h3>
+                            <p className={`text-xs font-bold mt-1 ${cajaAbierta ? 'text-green-600' : 'text-red-500'}`}>
+                                {cajaAbierta ? 'Abierta' : 'Cerrada'}
+                            </p>
+                        </div>
                     </Link>
 
-                    {/* --- NUEVO: IR A TIENDA NUBE --- */}
+                    {/* --- SEGUNDA FILA --- */}
+
+                    {/* 4. PANEL ADMIN TIENDA NUBE */}
                     <a
                         href="https://campeones4.mitiendanube.com/admin/v2/dashboard/"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-400 transition-all group cursor-pointer"
+                        className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-sky-400 transition-all group cursor-pointer flex flex-col justify-between"
                     >
                         <div className="bg-sky-50 w-12 h-12 rounded-xl flex items-center justify-center text-sky-600 mb-4 group-hover:scale-110 transition-transform">
-                            <Globe size={24} />
+                            <LayoutDashboard size={24} />
                         </div>
-                        <div className="flex items-center justify-between">
-                            <h3 className="font-bold text-gray-800 text-lg">Panel Admin Tienda</h3>
-                            <ExternalLink size={14} className="text-gray-300 group-hover:text-sky-500" />
+                        <div>
+                            <div className="flex items-center justify-between">
+                                <h3 className="font-bold text-gray-800 text-lg">Admin Web</h3>
+                                <ExternalLink size={14} className="text-gray-300 group-hover:text-sky-500" />
+                            </div>
+                            <p className="text-xs text-gray-400 mt-1">Panel Tienda Nube</p>
                         </div>
-                        <p className="text-xs text-gray-400 mt-1">Administrar Tienda</p>
                     </a>
 
+                    {/* 5. VER TIENDA ONLINE */}
                     <a
                         href="https://www.campeonesindumentaria.com.ar/"
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-400 transition-all group cursor-pointer"
+                        className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-sky-400 transition-all group cursor-pointer flex flex-col justify-between"
                     >
                         <div className="bg-sky-50 w-12 h-12 rounded-xl flex items-center justify-center text-sky-600 mb-4 group-hover:scale-110 transition-transform">
-                            <Globe size={24} />
+                            <Store size={24} />
                         </div>
-                        <div className="flex items-center justify-between">
-                            <h3 className="font-bold text-gray-800 text-lg">Ver Tienda</h3>
-                            <ExternalLink size={14} className="text-gray-300 group-hover:text-sky-500" />
+                        <div>
+                            <div className="flex items-center justify-between">
+                                <h3 className="font-bold text-gray-800 text-lg">Ver Tienda</h3>
+                                <ExternalLink size={14} className="text-gray-300 group-hover:text-sky-500" />
+                            </div>
+                            <p className="text-xs text-gray-400 mt-1">Ir al sitio online</p>
                         </div>
-                        <p className="text-xs text-gray-400 mt-1">Ir a la web online</p>
                     </a>
 
-
-                    {/* ETIQUETAS */}
-                    <Link to="/etiquetas" className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-orange-200 transition-all group">
+                    {/* 6. ETIQUETAS */}
+                    <Link to="/etiquetas" className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-orange-200 transition-all group flex flex-col justify-between">
                         <div className="bg-orange-50 w-12 h-12 rounded-xl flex items-center justify-center text-orange-600 mb-4 group-hover:scale-110 transition-transform">
                             <Printer size={24} />
                         </div>
-                        <h3 className="font-bold text-gray-800 text-lg">Etiquetas</h3>
-                        <p className="text-xs text-gray-400 mt-1">Imprimir códigos</p>
+                        <div>
+                            <h3 className="font-bold text-gray-800 text-lg">Etiquetas</h3>
+                            <p className="text-xs text-gray-400 mt-1">Imprimir códigos</p>
+                        </div>
                     </Link>
 
-                    {/* REPORTES (Ancho doble para cerrar la grilla visualmente o simple segun preferencia, lo dejo simple para mantener estructura) */}
-                    <Link to="/etiquetas" className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-orange-200 transition-all group">
+                    {/* 7. REPORTES (Arreglado: Link y Color Correctos) */}
+                    <Link to="/reportes" className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all group flex flex-col justify-between relative overflow-hidden">
                         <div className="relative z-10">
                             <div className="bg-indigo-50 w-12 h-12 rounded-xl flex items-center justify-center text-indigo-600 mb-4 group-hover:scale-110 transition-transform">
                                 <BarChart3 size={24} />
                             </div>
-                            <h3 className="font-bold text-gray-800 text-lg">Reportes y Estadísticas</h3>
-                            <p className="text-xs text-gray-400 mt-1">Análisis detallado de ventas</p>
+                            <div>
+                                <h3 className="font-bold text-gray-800 text-lg">Reportes</h3>
+                                <p className="text-xs text-gray-400 mt-1">Ver estadísticas</p>
+                            </div>
                         </div>
-                        <TrendingUp className="text-indigo-50 absolute right-4 top-1/2 -translate-y-1/2 scale-150 opacity-50 group-hover:scale-125 transition-transform" size={100} />
+                        {/* Decoración sutil */}
+                        <TrendingUp className="text-indigo-50 absolute -right-2 top-10 scale-150 opacity-50 group-hover:scale-125 transition-transform" size={80} />
                     </Link>
 
                 </div>
             </div>
 
-            {/* 3. ALERTAS Y STOCK */}
+            {/* 3. ALERTAS Y STOCK (Sin cambios, solo ajuste de grid responsivo) */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
                 {/* Alertas */}
