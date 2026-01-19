@@ -3,7 +3,7 @@ import { useAuth, api } from '../context/AuthContext';
 import {
     Lock, Unlock, DollarSign, AlertTriangle, Save, MinusCircle,
     Wallet, CreditCard, Smartphone, Receipt, Eye, Search, Filter,
-    ChevronDown, ChevronUp, Clock
+    ChevronDown, ChevronUp, Clock, Cloud
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -18,7 +18,7 @@ const CashRegisterPage = () => {
 
     // Estados de UI/Filtros
     const [showSalesDetail, setShowSalesDetail] = useState(false);
-    const [filterMethod, setFilterMethod] = useState('Todos'); // Todos, Efectivo, Tarjeta, Transferencia
+    const [filterMethod, setFilterMethod] = useState('Todos'); // Todos, Efectivo, Tarjeta, Transferencia, Tienda Nube
 
     // Inputs Cierre
     const [montoInicial, setMontoInicial] = useState('');
@@ -63,6 +63,7 @@ const CashRegisterPage = () => {
     // --- LÓGICA DE FILTRADO ---
     const filteredSales = useMemo(() => {
         if (filterMethod === 'Todos') return salesList;
+        // Filtramos buscando el string en el nombre del método (ej: "Tienda Nube" o "Tarjeta Visa")
         return salesList.filter(v => v.metodo.includes(filterMethod));
     }, [salesList, filterMethod]);
 
@@ -234,7 +235,7 @@ const CashRegisterPage = () => {
                             </div>
                         </div>
 
-                        {/* SECCIÓN DETALLE DE VENTAS (NUEVO) */}
+                        {/* SECCIÓN DETALLE DE VENTAS */}
                         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
                             <div
                                 className="p-4 bg-gray-50 border-b border-gray-100 flex justify-between items-center cursor-pointer hover:bg-gray-100 transition-colors"
@@ -250,9 +251,9 @@ const CashRegisterPage = () => {
 
                             {showSalesDetail && (
                                 <div className="p-4 bg-slate-50/50 animate-fade-in">
-                                    {/* Filtros Rápidos */}
+                                    {/* FILTROS RÁPIDOS */}
                                     <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-                                        {['Todos', 'Efectivo', 'Tarjeta', 'Transferencia'].map(method => (
+                                        {['Todos', 'Efectivo', 'Tarjeta', 'Transferencia', 'Tienda Nube'].map(method => (
                                             <button
                                                 key={method}
                                                 onClick={() => setFilterMethod(method)}
@@ -261,6 +262,7 @@ const CashRegisterPage = () => {
                                                     : 'bg-white text-gray-500 border-gray-200 hover:border-gray-300'
                                                     }`}
                                             >
+                                                {method === 'Tienda Nube' && <Cloud size={10} className="inline mr-1" />}
                                                 {method}
                                             </button>
                                         ))}
@@ -286,10 +288,14 @@ const CashRegisterPage = () => {
                                                             <td className="p-3 font-mono text-gray-500">{v.fecha.split(' ')[1]}</td>
                                                             <td className="p-3 text-gray-700 truncate max-w-[150px]" title={v.items}>{v.items}</td>
                                                             <td className="p-3">
-                                                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border ${v.metodo.includes('Efectivo') ? 'bg-green-50 text-green-700 border-green-100' :
-                                                                    v.metodo.includes('Tarjeta') ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                                                                        'bg-purple-50 text-purple-700 border-purple-100'
-                                                                    }`}>{v.metodo}</span>
+                                                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold border flex w-fit items-center ${v.metodo.includes('Efectivo') ? 'bg-green-50 text-green-700 border-green-100' :
+                                                                        v.metodo.includes('Tarjeta') ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                                                                            v.metodo.includes('Nube') || v.metodo.includes('Tienda') ? 'bg-sky-50 text-sky-700 border-sky-100' :
+                                                                                'bg-purple-50 text-purple-700 border-purple-100'
+                                                                    }`}>
+                                                                    {(v.metodo.includes('Nube') || v.metodo.includes('Tienda')) && <Cloud size={10} className="mr-1" />}
+                                                                    {v.metodo}
+                                                                </span>
                                                             </td>
                                                             <td className="p-3 text-right font-bold text-gray-800">$ {v.total.toLocaleString()}</td>
                                                         </tr>
