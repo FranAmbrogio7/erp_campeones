@@ -1,17 +1,17 @@
 import { useEffect, useState } from 'react';
-import axios from 'axios';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, api } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
 import {
-    ShoppingCart, DollarSign, AlertTriangle, TrendingUp, Lock, Unlock,
-    ArrowRight, Calendar, Package, Activity
+    ShoppingCart, Package, BarChart3, Printer, Lock, Unlock,
+    ArrowRight, AlertCircle, TrendingUp, Clock, Globe, ExternalLink
 } from 'lucide-react';
-import { api } from '../context/AuthContext';
-
 
 const DashboardPage = () => {
     const { user } = useAuth();
     const [loading, setLoading] = useState(true);
+
+    // --- ESTADO DEL RELOJ ---
+    const [currentTime, setCurrentTime] = useState(new Date());
 
     const [data, setData] = useState({
         financial: { hoy: 0, mes: 0, tickets: 0, caja_status: 'cerrada' },
@@ -31,164 +31,212 @@ const DashboardPage = () => {
             }
         };
         if (api) fetchDashboard();
-    }, [api]);
 
-    if (loading) return <div className="p-10 animate-pulse text-gray-500">Analizando negocio...</div>;
+        // --- TEMPORIZADOR DEL RELOJ ---
+        const timer = setInterval(() => setCurrentTime(new Date()), 1000);
+        return () => clearInterval(timer); // Limpieza al salir
+    }, []);
+
+    // Formateo de Hora y Fecha
+    const formattedTime = currentTime.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const formattedDate = currentTime.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+    if (loading) return (
+        <div className="flex h-full items-center justify-center text-gray-400">
+            <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mr-3"></div>
+            Cargando sistema...
+        </div>
+    );
+
+    const cajaAbierta = data.financial.caja_status === 'abierta';
 
     return (
-        <div className="space-y-6">
+        <div className="max-w-6xl mx-auto space-y-8 animate-fade-in">
 
-            {/* 1. HEADER */}
-            <div className="flex justify-between items-end">
+            {/* 1. HEADER: BIENVENIDA + RELOJ + RESUMEN */}
+            <div className="flex flex-col md:flex-row justify-between items-end md:items-center border-b border-gray-100 pb-6">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800">Hola, {user?.nombre}</h1>
-                    <p className="text-gray-500 text-sm">Resumen de operaciones en tiempo real.</p>
+                    <h1 className="text-3xl font-black text-gray-800 tracking-tight flex items-center">
+                        Hola, {user?.nombre || 'Campeón'} 👋
+                    </h1>
+
+                    {/* RELOJ EN TIEMPO REAL */}
+                    <div className="flex items-center text-gray-500 mt-1 font-medium text-sm">
+                        <Clock size={16} className="mr-2 text-blue-600" />
+                        <span className="capitalize">{formattedDate}</span>
+                        <span className="mx-2">|</span>
+                        <span className="font-mono text-gray-800 font-bold bg-gray-100 px-2 rounded">{formattedTime}</span>
+                    </div>
                 </div>
-                <div className="hidden md:flex items-center bg-white px-4 py-2 rounded-full shadow-sm border border-gray-100">
-                    <div className={`w-3 h-3 rounded-full mr-2 ${data.financial.caja_status === 'abierta' ? 'bg-green-500 animate-pulse' : 'bg-red-500'}`}></div>
-                    <span className="text-xs font-bold text-gray-600 uppercase">
-                        Caja {data.financial.caja_status}
-                    </span>
+
+                {/* WIDGET FINANCIERO */}
+                <div className="mt-4 md:mt-0 flex items-center bg-white border border-gray-200 rounded-2xl p-2 shadow-sm">
+                    <div className="px-6 border-r border-gray-100">
+                        <p className="text-xs font-bold text-gray-400 uppercase">Ventas Hoy</p>
+                        <p className="text-xl font-black text-gray-800">$ {data.financial.hoy.toLocaleString()}</p>
+                    </div>
+                    <div className="px-6">
+                        <p className="text-xs font-bold text-gray-400 uppercase">Mes Actual</p>
+                        <p className="text-xl font-black text-blue-600">$ {data.financial.mes.toLocaleString()}</p>
+                    </div>
                 </div>
             </div>
 
-            {/* 2. KPI CARDS (Financiero) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {/* 2. ACCESOS RÁPIDOS (GRID CENTRAL) */}
+            <div>
+                <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Centro de Control</h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
 
-                {/* Ventas Hoy */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center relative overflow-hidden">
-                    <div className="relative z-10">
-                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Ventas Hoy</p>
-                        <h3 className="text-3xl font-black text-gray-800">$ {data.financial.hoy.toLocaleString()}</h3>
-                        <p className="text-xs text-green-600 font-bold mt-1 flex items-center">
-                            <ShoppingCart size={12} className="mr-1" /> {data.financial.tickets} operaciones
-                        </p>
-                    </div>
-                    <div className="bg-green-50 p-4 rounded-full text-green-600"><DollarSign size={32} /></div>
-                </div>
-
-                {/* Acumulado Mes */}
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
-                    <div>
-                        <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Acumulado Mes</p>
-                        <h3 className="text-3xl font-black text-gray-800">$ {data.financial.mes.toLocaleString()}</h3>
-                        <p className="text-xs text-blue-600 font-bold mt-1">
-                            {new Date().toLocaleString('es-ES', { month: 'long' })}
-                        </p>
-                    </div>
-                    <div className="bg-blue-50 p-4 rounded-full text-blue-600"><Calendar size={32} /></div>
-                </div>
-
-                {/* Accesos Rápidos */}
-                <div className="grid grid-rows-2 gap-3">
-                    <Link to="/caja" className="bg-blue-600 text-white rounded-xl flex items-center justify-center font-bold hover:bg-blue-700 transition-colors shadow-lg hover:shadow-blue-200">
-                        <ShoppingCart size={18} className="mr-2" /> NUEVA VENTA
+                    {/* PTO VENTA (Gigante) */}
+                    <Link to="/caja" className="col-span-2 bg-gradient-to-br from-slate-800 to-black text-white p-6 rounded-3xl shadow-xl hover:shadow-2xl hover:scale-[1.01] transition-all group relative overflow-hidden flex flex-col justify-between min-h-[160px]">
+                        <div className="relative z-10">
+                            <div className="bg-white/10 w-fit p-3 rounded-2xl backdrop-blur-sm mb-4">
+                                <ShoppingCart size={32} className="text-white" />
+                            </div>
+                            <h3 className="text-2xl font-bold">Punto de Venta</h3>
+                            <p className="text-slate-300 text-sm mt-1 group-hover:text-white transition-colors">Iniciar nueva operación</p>
+                        </div>
+                        <ShoppingCart className="absolute -right-6 -bottom-6 text-white/5 rotate-12 transition-transform group-hover:rotate-0" size={180} />
                     </Link>
-                    <Link to="/caja-control" className="bg-white text-gray-700 border border-gray-200 rounded-xl flex items-center justify-center font-bold hover:bg-gray-50 transition-colors">
-                        {data.financial.caja_status === 'abierta' ? <Lock size={18} className="mr-2 text-red-500" /> : <Unlock size={18} className="mr-2 text-green-500" />}
-                        {data.financial.caja_status === 'abierta' ? 'CERRAR CAJA' : 'ABRIR CAJA'}
+
+                    {/* INVENTARIO */}
+                    <Link to="/inventario" className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all group">
+                        <div className="bg-blue-50 w-12 h-12 rounded-xl flex items-center justify-center text-blue-600 mb-4 group-hover:scale-110 transition-transform">
+                            <Package size={24} />
+                        </div>
+                        <h3 className="font-bold text-gray-800 text-lg">Inventario</h3>
+                        <p className="text-xs text-gray-400 mt-1">Gestionar stock</p>
                     </Link>
+
+                    {/* CAJA */}
+                    <Link to="/caja-control" className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-purple-200 transition-all group relative overflow-hidden">
+                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110 ${cajaAbierta ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                            {cajaAbierta ? <Unlock size={24} /> : <Lock size={24} />}
+                        </div>
+                        <h3 className="font-bold text-gray-800 text-lg">Caja</h3>
+                        <p className={`text-xs font-bold mt-1 ${cajaAbierta ? 'text-green-600' : 'text-red-500'}`}>
+                            {cajaAbierta ? 'Abierta' : 'Cerrada'}
+                        </p>
+                    </Link>
+
+                    {/* --- NUEVO: IR A TIENDA NUBE --- */}
+                    <a
+                        href="https://campeones4.mitiendanube.com/admin/v2/dashboard/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-400 transition-all group cursor-pointer"
+                    >
+                        <div className="bg-sky-50 w-12 h-12 rounded-xl flex items-center justify-center text-sky-600 mb-4 group-hover:scale-110 transition-transform">
+                            <Globe size={24} />
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <h3 className="font-bold text-gray-800 text-lg">Panel Admin Tienda</h3>
+                            <ExternalLink size={14} className="text-gray-300 group-hover:text-sky-500" />
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">Administrar Tienda</p>
+                    </a>
+
+                    <a
+                        href="https://www.campeonesindumentaria.com.ar/"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-400 transition-all group cursor-pointer"
+                    >
+                        <div className="bg-sky-50 w-12 h-12 rounded-xl flex items-center justify-center text-sky-600 mb-4 group-hover:scale-110 transition-transform">
+                            <Globe size={24} />
+                        </div>
+                        <div className="flex items-center justify-between">
+                            <h3 className="font-bold text-gray-800 text-lg">Ver Tienda</h3>
+                            <ExternalLink size={14} className="text-gray-300 group-hover:text-sky-500" />
+                        </div>
+                        <p className="text-xs text-gray-400 mt-1">Ir a la web online</p>
+                    </a>
+
+
+                    {/* ETIQUETAS */}
+                    <Link to="/etiquetas" className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-orange-200 transition-all group">
+                        <div className="bg-orange-50 w-12 h-12 rounded-xl flex items-center justify-center text-orange-600 mb-4 group-hover:scale-110 transition-transform">
+                            <Printer size={24} />
+                        </div>
+                        <h3 className="font-bold text-gray-800 text-lg">Etiquetas</h3>
+                        <p className="text-xs text-gray-400 mt-1">Imprimir códigos</p>
+                    </Link>
+
+                    {/* REPORTES (Ancho doble para cerrar la grilla visualmente o simple segun preferencia, lo dejo simple para mantener estructura) */}
+                    <Link to="/etiquetas" className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-orange-200 transition-all group">
+                        <div className="relative z-10">
+                            <div className="bg-indigo-50 w-12 h-12 rounded-xl flex items-center justify-center text-indigo-600 mb-4 group-hover:scale-110 transition-transform">
+                                <BarChart3 size={24} />
+                            </div>
+                            <h3 className="font-bold text-gray-800 text-lg">Reportes y Estadísticas</h3>
+                            <p className="text-xs text-gray-400 mt-1">Análisis detallado de ventas</p>
+                        </div>
+                        <TrendingUp className="text-indigo-50 absolute right-4 top-1/2 -translate-y-1/2 scale-150 opacity-50 group-hover:scale-125 transition-transform" size={100} />
+                    </Link>
+
                 </div>
             </div>
 
-            {/* 3. SECCIÓN INFERIOR DIVIDIDA */}
+            {/* 3. ALERTAS Y STOCK */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-                {/* TABLA DE STOCK CRÍTICO (2/3 de ancho) */}
-                <div className="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden flex flex-col">
-                    <div className="p-5 border-b border-gray-50 flex justify-between items-center">
+                {/* Alertas */}
+                <div className="lg:col-span-2 bg-white rounded-3xl border border-gray-100 p-6">
+                    <div className="flex justify-between items-center mb-4">
                         <h3 className="font-bold text-gray-800 flex items-center">
-                            <AlertTriangle className="mr-2 text-orange-500" size={20} /> Alertas de Stock Bajo
+                            <AlertCircle size={20} className="text-orange-500 mr-2" />
+                            Atención Requerida
                         </h3>
-                        <Link to="/inventario" className="text-xs font-bold text-blue-600 hover:underline">Ver Inventario Completo</Link>
-                    </div>
-
-                    <div className="flex-1 overflow-auto">
-                        {data.low_stock.length === 0 ? (
-                            <div className="p-8 text-center text-gray-400">
-                                <Package size={48} className="mx-auto mb-2 opacity-20" />
-                                <p>¡Excelente! No hay productos con stock crítico.</p>
-                            </div>
-                        ) : (
-                            <table className="w-full text-sm text-left">
-                                <thead className="bg-gray-50 text-gray-500 font-medium text-xs uppercase">
-                                    <tr>
-                                        <th className="p-4">Producto</th>
-                                        <th className="p-4">Talle</th>
-                                        <th className="p-4">Estado</th>
-                                        <th className="p-4 text-right">Acción</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-gray-50">
-                                    {data.low_stock.map((item) => (
-                                        <tr key={`${item.id}-${item.talle}`} className="hover:bg-orange-50/50 transition-colors">
-                                            <td className="p-4 font-bold text-gray-700">{item.nombre}</td>
-                                            <td className="p-4">
-                                                <span className="bg-gray-100 text-gray-600 px-2 py-1 rounded text-xs font-bold border border-gray-200">
-                                                    {item.talle}
-                                                </span>
-                                            </td>
-                                            <td className="p-4">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="flex-1 h-2 w-24 bg-gray-200 rounded-full overflow-hidden">
-                                                        <div
-                                                            className={`h-full rounded-full ${item.stock === 0 ? 'bg-red-500' : 'bg-orange-400'}`}
-                                                            style={{ width: `${(item.stock / item.minimo) * 100}%` }}
-                                                        ></div>
-                                                    </div>
-                                                    <span className={`text-xs font-bold ${item.stock === 0 ? 'text-red-500' : 'text-orange-500'}`}>
-                                                        {item.stock} u.
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td className="p-4 text-right">
-                                                <Link to="/compras" className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-100 font-bold transition-colors">
-                                                    Reponer
-                                                </Link>
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                        {data.low_stock.length > 0 && (
+                            <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold animate-pulse">
+                                {data.low_stock.length} bajo stock
+                            </span>
                         )}
                     </div>
-                </div>
 
-                {/* ACTIVIDAD RECIENTE (1/3 de ancho) */}
-                <div className="bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col">
-                    <div className="p-5 border-b border-gray-50">
-                        <h3 className="font-bold text-gray-800 flex items-center">
-                            <Activity className="mr-2 text-purple-500" size={20} /> Últimos Movimientos
-                        </h3>
-                    </div>
-                    <div className="flex-1 p-4">
-                        {data.recent_activity.length === 0 ? (
-                            <p className="text-sm text-gray-400 text-center py-4">Sin actividad hoy.</p>
-                        ) : (
-                            <div className="space-y-4">
-                                {data.recent_activity.map((act, i) => (
-                                    <div key={i} className="flex justify-between items-center pb-3 border-b border-dashed border-gray-100 last:border-0">
-                                        <div className="flex items-center">
-                                            <div className="w-2 h-2 rounded-full bg-green-400 mr-3"></div>
-                                            <div>
-                                                <p className="text-sm font-bold text-gray-700">Venta Registrada</p>
-                                                <p className="text-xs text-gray-400">{act.metodo}</p>
-                                            </div>
+                    {data.low_stock.length === 0 ? (
+                        <div className="text-center py-8 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                            <p className="text-gray-400 font-medium">Todo en orden. Stock saludable. ✅</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {data.low_stock.slice(0, 3).map((item, idx) => (
+                                <div key={idx} className="flex justify-between items-center p-3 bg-orange-50/50 rounded-xl border border-orange-100">
+                                    <div className="flex items-center">
+                                        <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center border border-orange-100 text-orange-600 font-bold text-xs mr-3 shadow-sm">
+                                            {item.stock}u
                                         </div>
-                                        <div className="text-right">
-                                            <p className="font-black text-gray-800">$ {act.total.toLocaleString()}</p>
-                                            <p className="text-xs text-gray-400">{act.hora}</p>
+                                        <div>
+                                            <p className="font-bold text-gray-800 text-sm">{item.nombre}</p>
+                                            <p className="text-xs text-gray-500">Talle: {item.talle}</p>
                                         </div>
                                     </div>
-                                ))}
-                            </div>
-                        )}
-                        <Link to="/ventas" className="block text-center text-xs font-bold text-blue-600 mt-4 hover:underline">
-                            Ver Historial Completo
-                        </Link>
-                    </div>
+                                    <Link to="/compras" className="text-xs font-bold text-blue-600 hover:underline">Reponer</Link>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
 
+                {/* Resumen Diario */}
+                <div className="bg-slate-900 text-white rounded-3xl p-6 relative overflow-hidden flex flex-col justify-center">
+                    <h3 className="font-bold text-lg mb-6 relative z-10">Resumen Rápido</h3>
+
+                    <div className="space-y-6 relative z-10">
+                        <div className="flex justify-between items-center border-b border-white/10 pb-4">
+                            <span className="text-slate-400 text-sm">Tickets Hoy</span>
+                            <span className="text-2xl font-black text-green-400">{data.financial.tickets}</span>
+                        </div>
+
+                        <div className="pt-2">
+                            <Link to="/caja-control" className="w-full bg-white text-slate-900 py-3 rounded-xl font-bold flex justify-center items-center hover:bg-gray-200 transition-colors shadow-lg">
+                                Ir al Arqueo <ArrowRight size={16} className="ml-2" />
+                            </Link>
+                        </div>
+                    </div>
+
+                    <TrendingUp className="absolute -right-4 top-10 text-white/5" size={150} />
+                </div>
             </div>
         </div>
     );
