@@ -22,10 +22,10 @@ root
 
 cambio/devolucion:
 
-que permita realizar una venta sin codigo necesariamente, en caso de q no coincida la plata o sobre
+que permita realizar una venta sin codigo necesariamente, en caso de q no coincida la plata o sobre ✅
 
 
-funcion para añadir una venta sin codigo, en caso de que sea un producto que aun no se haya cargado en el inventario, que se pueda agregar un campo de texto completo para que el usuario pueda agregar el detalle del producto, ya que tambien hay situaciones en las que el cliente paga una parte en efectivo, y otra parte la transfiere, quiero una funcion para poder solucionar estos casos
+funcion para añadir una venta sin codigo, en caso de que sea un producto que aun no se haya cargado en el inventario, que se pueda agregar un campo de texto completo para que el usuario pueda agregar el detalle del producto, ya que tambien hay situaciones en las que el cliente paga una parte en efectivo, y otra parte la transfiere, quiero una funcion para poder solucionar estos casos ✅
 
 la nota de credito ya funciona, pero hay q validar cuando el monto a abonar es inferior a la nota de credito, que pasa con el saldo restante a favor del cliente? ✅
 
