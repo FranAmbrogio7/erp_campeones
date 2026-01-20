@@ -126,17 +126,21 @@ def get_payment_methods():
     metodos = MetodoPago.query.all()
     return jsonify([{"id": m.id_metodo_pago, "nombre": m.nombre} for m in metodos]), 200
 
-@bp.route('/scan/<string:sku>', methods=['GET'])
+@bp.route('/scan/<string:code>', methods=['GET']) # Cambiamos 'sku' por 'code' para ser genéricos
 @jwt_required()
-def scan_product(sku):
-    variante = ProductoVariante.query.filter_by(codigo_sku=sku).first()
+def scan_product(code):
+    # 1. Intentar buscar por SKU exacto (comportamiento original)
+    variante = ProductoVariante.query.filter_by(codigo_sku=code).first()
+    
+    # 2. Si no encuentra y el código es numérico, buscar por ID Interno
+    if not variante and code.isdigit():
+        variante = ProductoVariante.query.get(int(code))
 
-    if not variante:
+    if not variante: 
         return jsonify({"found": False, "msg": "Producto no encontrado"}), 404
-
-    # Verificamos si tiene inventario asociado
+        
     stock = variante.inventario.stock_actual if variante.inventario else 0
-
+    
     return jsonify({
         "found": True,
         "product": {
