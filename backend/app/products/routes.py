@@ -1,5 +1,8 @@
 import io
 import os
+import qrcode
+from PIL import Image
+from reportlab.lib.utils import ImageReader
 from werkzeug.utils import secure_filename
 from flask import jsonify, request, send_file, current_app
 from app.products import bp
@@ -301,17 +304,28 @@ def delete_product(id):
 # ==========================================
 # 7. Generar código de barras
 # ==========================================
+# backend/app/products/routes.py
+
 @bp.route('/barcode/<string:sku>', methods=['GET'])
-def generate_barcode(sku):
-    try:
-        EAN = barcode.get_barcode_class('code128')
-        my_barcode = EAN(sku, writer=ImageWriter())
-        fp = io.BytesIO()
-        my_barcode.write(fp)
-        fp.seek(0)
-        return send_file(fp, mimetype='image/png')
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+def get_barcode_image(sku):
+    # Generar QR
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L, # L = Menor redundancia (QR más simple/limpio)
+        box_size=10,
+        border=1, # Borde mínimo blanco
+    )
+    qr.add_data(sku)
+    qr.make(fit=True)
+
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    # Guardar en memoria
+    buffer = io.BytesIO()
+    img.save(buffer, format="PNG")
+    buffer.seek(0)
+    
+    return send_file(buffer, mimetype='image/png')
 
 
 # ==========================================
@@ -598,57 +612,52 @@ def generate_batch_labels_pdf():
     for item in items:
         try:
             cantidad = int(item.get('cantidad', 1))
-            nombre = item.get('nombre', 'Producto')[:25]
+            nombre = item.get('nombre', 'Producto')[:25] # Truncamos
             talle = item.get('talle', '-')
             sku = item.get('sku', '0000')
 
+            # Generamos el QR en memoria para este item
+            qr = qrcode.QRCode(box_size=10, border=0) # Sin borde para aprovechar espacio
+            qr.add_data(sku)
+            qr.make(fit=True)
+            img_qr = qr.make_image(fill_color="black", back_color="white")
+            
+            # Convertimos a formato que ReportLab entienda
+            img_buffer = io.BytesIO()
+            img_qr.save(img_buffer, format='PNG')
+            img_buffer.seek(0)
+            reportlab_img = ImageReader(img_buffer)
+
             for _ in range(cantidad):
-                # 1. NOMBRE (Arriba)
+                # --- DISEÑO HÍBRIDO (QR Izq - Texto Der) ---
+                
+                # 1. DIBUJAR QR (Cuadrado de 22x22mm a la izquierda)
+                # X=1.5mm, Y=1.5mm (Centrado verticalmente)
+                c.drawImage(reportlab_img, 1.5*mm, 1.5*mm, width=22*mm, height=22*mm)
+
+                # 2. TEXTOS (Columna Derecha)
+                # Nombre (Arriba derecha)
                 c.setFont("Helvetica-Bold", 6)
-                c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT - 2.5*mm, nombre)
+                # drawString ajustado para empezar después del QR (X=25mm)
+                c.drawString(25*mm, LABEL_HEIGHT - 4*mm, nombre[:20]) 
 
-                # 2. CÓDIGO DE BARRAS
-                # Calculamos el ancho ideal
-                bar_width = 0.8  # Ancho estándar legible
-                
-                # Pre-calculamos ancho total: (11 * len + 35) * bar_width aprox para Code128
-                # Si el SKU es muy largo (ej: >12 chars), reducimos el grosor inicial
-                if len(sku) > 10: bar_width = 0.6
-                if len(sku) > 14: bar_width = 0.5 
-
-                barcode = code128.Code128(sku, barHeight=12*mm, barWidth=bar_width)
-                
-                # Ajuste final si se sale de la etiqueta (con margen de seguridad de 2mm total)
-                real_width = barcode.width
-                max_allowed = LABEL_WIDTH - 2*mm 
-                
-                if real_width > max_allowed:
-                    factor = max_allowed / real_width
-                    # IMPORTANTE: No bajar de 0.35 para que la impresora lo pueda definir
-                    new_width = max(bar_width * factor, 0.35) 
-                    barcode = code128.Code128(sku, barHeight=12*mm, barWidth=new_width)
-                    real_width = barcode.width
-
-                x_pos = (LABEL_WIDTH - real_width) / 2
-                barcode.drawOn(c, x_pos, 7*mm) # Subimos un poco para dejar espacio al SKU texto
-
-                # 3. SKU TEXTO (Grande y legible abajo)
-                c.setFont("Helvetica-Bold", 9)
-                c.drawCentredString(LABEL_WIDTH / 2, 4*mm, sku)
-
-                # 4. TALLE (Abajo Izquierda)
+                # SKU (Medio derecha - Grande)
                 c.setFont("Helvetica-Bold", 8)
-                c.drawString(1.5*mm, 1*mm, f"T: {talle}")
+                c.drawString(25*mm, LABEL_HEIGHT - 9*mm, sku[:18]) # Si es muy largo se corta visualmente
+                
+                # Talle (Abajo derecha)
+                c.setFont("Helvetica-Bold", 10)
+                c.drawString(25*mm, 3*mm, f"T: {talle}")
 
                 c.showPage()
                 
         except Exception as e:
-            print(f"Error PDF: {e}")
+            print(f"Error PDF QR: {e}")
             continue
 
     c.save()
     buffer.seek(0)
-    return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name='etiquetas.pdf')
+    return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name='etiquetas_qr.pdf')
     
 # ==========================================
 # TIENDA NUBE: TEST Y PUBLICACIÓN
