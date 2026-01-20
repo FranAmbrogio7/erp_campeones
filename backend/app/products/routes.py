@@ -587,10 +587,8 @@ def bulk_stock_update():
 def generate_batch_labels_pdf():
     data = request.get_json()
     items = data.get('items', [])
-
     if not items: return jsonify({"msg": "Lista vacía"}), 400
 
-    # Medidas exactas
     LABEL_WIDTH = 50 * mm
     LABEL_HEIGHT = 25 * mm
     
@@ -600,58 +598,47 @@ def generate_batch_labels_pdf():
     for item in items:
         try:
             cantidad = int(item.get('cantidad', 1))
-            # Truncamos un poco antes para asegurar márgenes
-            nombre = item.get('nombre', 'Producto')[:22] 
+            nombre = item.get('nombre', 'Producto')[:25]
             talle = item.get('talle', '-')
             sku = item.get('sku', '0000')
 
             for _ in range(cantidad):
-                
-                # --- 1. NOMBRE (Arriba del todo) ---
-                # Subimos un poco la fuente a Bold para que se lea mejor en térmico
-                c.setFont("Helvetica-Bold", 8) 
-                # Y=21.5mm (Dejamos 3.5mm desde arriba)
-                c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT - 3.5*mm, nombre)
+                # 1. NOMBRE (Arriba)
+                c.setFont("Helvetica-Bold", 6)
+                c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT - 2.5*mm, nombre)
 
-                # --- 2. CÓDIGO DE BARRAS (El Protagonista) ---
-                # CORRECCIÓN 1: Grosor base más alto (0.9 a 1.0 es ideal para 50mm)
-                # Si es muy fino, la impresora térmica lo empasta.
-                base_bar_width = 1.0 
+                # 2. CÓDIGO DE BARRAS
+                # Calculamos el ancho ideal
+                bar_width = 0.8  # Ancho estándar legible
                 
-                # Altura de barra: 12mm (Casi el 50% de la etiqueta)
-                # Cuanto más altas las barras, más fácil es escanear rápido.
-                bar_height = 12 * mm
+                # Pre-calculamos ancho total: (11 * len + 35) * bar_width aprox para Code128
+                # Si el SKU es muy largo (ej: >12 chars), reducimos el grosor inicial
+                if len(sku) > 10: bar_width = 0.6
+                if len(sku) > 14: bar_width = 0.5 
 
-                barcode = code128.Code128(sku, barHeight=bar_height, barWidth=base_bar_width)
+                barcode = code128.Code128(sku, barHeight=12*mm, barWidth=bar_width)
                 
-                # Lógica de ajuste si el SKU es muy largo
+                # Ajuste final si se sale de la etiqueta (con margen de seguridad de 2mm total)
                 real_width = barcode.width
-                max_allowed_width = LABEL_WIDTH - 6*mm # 3mm de margen a cada lado (CRÍTICO)
-
-                if real_width > max_allowed_width:
-                    factor = max_allowed_width / real_width
-                    # Nunca bajar de 0.6 o deja de leerse en impresoras baratas
-                    new_width = max(base_bar_width * factor, 0.6) 
-                    barcode = code128.Code128(sku, barHeight=bar_height, barWidth=new_width)
+                max_allowed = LABEL_WIDTH - 2*mm 
+                
+                if real_width > max_allowed:
+                    factor = max_allowed / real_width
+                    # IMPORTANTE: No bajar de 0.35 para que la impresora lo pueda definir
+                    new_width = max(bar_width * factor, 0.35) 
+                    barcode = code128.Code128(sku, barHeight=12*mm, barWidth=new_width)
                     real_width = barcode.width
 
                 x_pos = (LABEL_WIDTH - real_width) / 2
-                
-                # Dibujamos las barras en el CENTRO vertical
-                # Y=7.5mm. Esto deja espacio abajo para el Talle.
-                barcode.drawOn(c, x_pos, 7.5*mm)
+                barcode.drawOn(c, x_pos, 7*mm) # Subimos un poco para dejar espacio al SKU texto
 
-                # --- 3. PIE DE PÁGINA (Talle y SKU Legible) ---
-                # Eliminé el "SKU GRANDE CENTRAL" porque robaba espacio al código de barras.
-                # Ahora mostramos el SKU claro abajo a la derecha.
+                # 3. SKU TEXTO (Grande y legible abajo)
+                c.setFont("Helvetica-Bold", 9)
+                c.drawCentredString(LABEL_WIDTH / 2, 4*mm, sku)
 
-                # Talle a la izquierda (Grande y Bold)
-                c.setFont("Helvetica-Bold", 11) # Aumenté tamaño
-                c.drawString(3*mm, 2.5*mm, f"{talle}")
-
-                # SKU a la derecha (Normal)
-                c.setFont("Helvetica", 7)
-                c.drawRightString(LABEL_WIDTH - 3*mm, 2.5*mm, sku)
+                # 4. TALLE (Abajo Izquierda)
+                c.setFont("Helvetica-Bold", 8)
+                c.drawString(1.5*mm, 1*mm, f"T: {talle}")
 
                 c.showPage()
                 
@@ -661,7 +648,6 @@ def generate_batch_labels_pdf():
 
     c.save()
     buffer.seek(0)
-    
     return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name='etiquetas.pdf')
     
 # ==========================================
