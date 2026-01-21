@@ -2,13 +2,18 @@ import React from 'react';
 
 export const Ticket = React.forwardRef(({ saleData }, ref) => {
   const empty = !saleData;
-
-  const { items = [], total = 0, fecha = "", id_venta = "", cliente = "" } = saleData || {};
+  // Extraemos metodo_pago si viene, sino por defecto vacío
+  const { items = [], total = 0, fecha = "", id_venta = "", cliente = "", metodo_pago = "" } = saleData || {};
 
   return (
     <div
       ref={ref}
-      className="p-4 bg-white text-black font-mono text-xs leading-tight"
+      // CAMBIOS CLAVE AQUÍ:
+      // 1. font-sans: Se ve mucho más moderno y nítido que font-mono.
+      // 2. uppercase: Todo en mayúsculas facilita la lectura rápida.
+      // 3. text-black: Asegura negro puro.
+      // 4. font-bold: Ayuda a que la impresora térmica "queme" mejor el papel.
+      className="p-4 bg-white text-black font-sans text-xs font-bold leading-tight uppercase"
       style={{ width: '80mm', margin: '0 auto' }}
     >
       <style>
@@ -22,41 +27,67 @@ export const Ticket = React.forwardRef(({ saleData }, ref) => {
         `}
       </style>
 
-      <div className="ticket-content flex flex-col items-center text-center pb-8">
+      <div className="ticket-content flex flex-col items-center pb-8">
 
-        <h1 className="text-xl font-black uppercase mb-1">CAMPEONES</h1>
-        <p className="text-[10px] uppercase mb-4">Indumentaria & Merchandising</p>
+        {/* --- HEADER --- */}
+        <div className="text-center mb-4">
+          <h1 className="text-2xl font-black tracking-tighter">CAMPEONES</h1>
+          <p className="text-[10px] mt-1">Indumentaria & Merch</p>
+        </div>
 
-        <div className="w-full border-b border-black border-dashed mb-2"></div>
+        {/* Separador Sólido (se imprime mejor que el dashed a veces) */}
+        <div className="w-full border-b-2 border-black mb-3"></div>
 
         {!empty && (
           <>
-            <div className="w-full text-left mb-2">
-              <p>Fecha: {fecha}</p>
-              <p>Ticket #: {id_venta}</p>
-              <p>Cliente: {cliente}</p>
+            {/* --- INFO VENTA --- */}
+            <div className="w-full mb-3 space-y-1">
+              <div className="flex justify-between">
+                <span>Fecha:</span>
+                <span>{fecha}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Ticket #:</span>
+                <span>{id_venta}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Cliente:</span>
+                <span className="truncate max-w-[150px] text-right">{cliente || 'Consumidor Final'}</span>
+              </div>
+              {/* Agregamos Método de Pago si existe */}
+              {metodo_pago && (
+                <div className="flex justify-between">
+                  <span>Pago:</span>
+                  <span>{metodo_pago}</span>
+                </div>
+              )}
             </div>
 
-            <div className="w-full border-b border-black border-dashed mb-2"></div>
+            <div className="w-full border-b border-black border-dashed mb-3"></div>
 
-            <table className="w-full text-left mb-2">
+            {/* --- TABLA PRODUCTOS --- */}
+            <table className="w-full text-left mb-3">
               <thead>
-                <tr className="uppercase">
-                  <th className="w-1/2 pb-1">Prod</th>
-                  <th className="w-1/4 pb-1 text-right">Cant</th>
-                  <th className="w-1/4 pb-1 text-right">$$</th>
+                <tr className="border-b border-black">
+                  <th className="pb-1 w-[55%]">Descrip</th>
+                  <th className="pb-1 w-[15%] text-center">Cant</th>
+                  <th className="pb-1 w-[30%] text-right">Total</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="leading-none">
                 {items.map((item, i) => (
                   <tr key={i}>
-                    <td className="py-1 pr-1 truncate max-w-[120px]">
-                      {item.nombre}
-                      <br />
-                      <span className="text-[10px]">{item.talle}</span>
+                    {/* Nombre del producto un poco más grande */}
+                    <td className="py-2 pr-1 align-top">
+                      <span className="block">{item.nombre}</span>
+                      {item.talle && item.talle !== '-' && (
+                        <span className="text-[10px] bg-black text-white px-1 rounded-sm mt-0.5 inline-block">
+                          T: {item.talle}
+                        </span>
+                      )}
                     </td>
-                    <td className="py-1 text-right align-top">{item.cantidad}</td>
-                    <td className="py-1 text-right align-top">
+                    <td className="py-2 text-center align-top text-sm">{item.cantidad}</td>
+                    <td className="py-2 text-right align-top text-sm">
                       $ {item.subtotal?.toLocaleString()}
                     </td>
                   </tr>
@@ -64,20 +95,34 @@ export const Ticket = React.forwardRef(({ saleData }, ref) => {
               </tbody>
             </table>
 
-            <div className="w-full border-b border-black border-dashed mb-2"></div>
+            <div className="w-full border-b-2 border-black mb-3"></div>
 
-            <div className="w-full flex justify-between text-lg font-bold mb-4">
-              <span>TOTAL</span>
-              <span>$ {parseFloat(total).toLocaleString()}</span>
+            {/* --- TOTAL --- */}
+            <div className="w-full flex justify-between items-center mb-6 text-xl">
+              <span className="font-black">TOTAL</span>
+              <span className="font-black bg-black text-white px-2 py-1 rounded-sm">
+                $ {parseFloat(total).toLocaleString()}
+              </span>
             </div>
           </>
         )}
 
-        <p className="mb-1">¡Gracias por tu compra!</p>
-        <p className="mt-2 text-[10px]">Documento no valido como factura.</p>
-        <p className="mt-2 text-[10px]">www.campeonesindumentaria.com.ar</p>
-        <p className="mt-2 text-[10px] font-bold text-transform: uppercase">No se aceptan cambios sin etiqueta.</p>
+        {/* --- FOOTER --- */}
+        <div className="text-center space-y-2">
+          <p className="font-black text-sm">¡Gracias por tu compra!</p>
 
+          <div className="text-[9px] font-medium normal-case"> {/* normal-case para la web */}
+            www.campeonesindumentaria.com.ar
+          </div>
+
+          <div className="border border-black p-2 mt-2">
+            <p className="text-[9px] font-bold">
+              NO SE ACEPTAN CAMBIOS<br />SIN ESTA ETIQUETA/TICKET
+            </p>
+          </div>
+
+          <p className="text-[8px] mt-2 text-gray-500">Documento no válido como factura.</p>
+        </div>
 
       </div>
     </div>
