@@ -5,7 +5,7 @@ import {
     Package, QrCode, Search, Edit,
     ChevronLeft, ChevronRight, Shirt, Filter, XCircle,
     Cloud, UploadCloud, Loader2, Plus, Save, Image as ImageIcon,
-    Printer // <--- NUEVO ICONO IMPORTADO
+    Printer, RefreshCw // <--- NUEVO ICONO IMPORTADO
 } from 'lucide-react';
 import ModalBarcode from '../components/ModalBarcode';
 import EditProductModal from '../components/EditProductModal';
@@ -61,6 +61,27 @@ const InventoryPage = () => {
     const [editingProduct, setEditingProduct] = useState(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [imageModalSrc, setImageModalSrc] = useState(null);
+
+    const [isSyncing, setIsSyncing] = useState(false);
+
+    const handleForceSync = async () => {
+        if (!window.confirm("¿Estás seguro? Esto actualizará el stock de Tienda Nube para que coincida exactamente con el de este ERP.")) return;
+
+        setIsSyncing(true);
+        const toastId = toast.loading("Sincronizando con Tienda Nube...");
+
+        try {
+            const res = await api.post('/products/sync/force-tiendanube');
+            toast.success(res.data.detalles, { id: toastId, duration: 5000 });
+            playSound('success');
+        } catch (error) {
+            console.error(error);
+            toast.error("Error al sincronizar", { id: toastId });
+            playSound('error');
+        } finally {
+            setIsSyncing(false);
+        }
+    };
 
     const playSound = (type) => {
         try {
@@ -306,6 +327,15 @@ const InventoryPage = () => {
                             title="Filtros avanzados"
                         >
                             <Filter size={20} />
+                        </button>
+
+                        <button
+                            onClick={handleForceSync}
+                            disabled={isSyncing}
+                            className="p-2 bg-white text-blue-600 border border-blue-200 hover:bg-blue-50 rounded-lg flex items-center justify-center transition-all shadow-sm disabled:opacity-50"
+                            title="Forzar sincronización de Stock con Tienda Nube"
+                        >
+                            <RefreshCw size={20} className={isSyncing ? "animate-spin" : ""} />
                         </button>
 
                         <button

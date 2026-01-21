@@ -706,3 +706,43 @@ def publish_product_to_cloud(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"msg": "Se subió pero falló al guardar IDs locales", "error": str(e)}), 500
+
+
+# ==========================================
+# 15. Forzar sincronización con Tienda Nube
+# ==========================================
+@bp.route('/sync/force-tiendanube', methods=['POST'])
+@jwt_required()
+def force_sync_tiendanube():
+    try:
+        # 1. Buscar todos los productos que tienen vínculo (tiendanube_id no nulo)
+        productos_vinculados = Producto.query.filter(Producto.tiendanube_id.isnot(None)).all()
+        
+        actualizados = 0
+        errores = 0
+
+        for prod in productos_vinculados:
+            for variante in prod.variantes:
+                # Solo sincronizamos si la variante también está vinculada
+                if variante.tiendanube_variant_id:
+                    stock_erp = variante.inventario.stock_actual if variante.inventario else 0
+                    
+                    try:
+                        # Enviamos el stock del ERP a Tienda Nube
+                        tn_service.update_variant_stock(
+                            prod.tiendanube_id, 
+                            variante.tiendanube_variant_id, 
+                            stock_erp
+                        )
+                        actualizados += 1
+                    except Exception as e:
+                        print(f"Error sync variante {variante.sku}: {e}")
+                        errores += 1
+
+        return jsonify({
+            "msg": "Sincronización completada", 
+            "detalles": f"Se actualizaron {actualizados} variantes en Tienda Nube. ({errores} errores)"
+        }), 200
+
+    except Exception as e:
+        return jsonify({"msg": "Error general en sincronización", "error": str(e)}), 500
