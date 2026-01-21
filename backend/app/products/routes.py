@@ -1,6 +1,7 @@
 import io
 import os
 import qrcode
+import threading
 from PIL import Image
 from reportlab.lib.utils import ImageReader
 from werkzeug.utils import secure_filename
@@ -715,34 +716,71 @@ def publish_product_to_cloud(id):
 @jwt_required()
 def force_sync_tiendanube():
     try:
-        # 1. Buscar todos los productos que tienen vínculo (tiendanube_id no nulo)
-        productos_vinculados = Producto.query.filter(Producto.tiendanube_id.isnot(None)).all()
+        # 1. FASE RÁPIDA: Leer Base de Datos Local
+        # Recopilamos toda la info necesaria ANTES de lanzar el hilo
+        productos = Producto.query.filter(Producto.tiendanube_id.isnot(None)).all()
+        lista_para_sync = []
         
-        actualizados = 0
-        errores = 0
-
-        for prod in productos_vinculados:
-            for variante in prod.variantes:
-                # Solo sincronizamos si la variante también está vinculada
-                if variante.tiendanube_variant_id:
-                    stock_erp = variante.inventario.stock_actual if variante.inventario else 0
+        for prod in productos:
+            for var in prod.variantes:
+                if var.tiendanube_variant_id:
+                    # Obtenemos el stock actual de la DB
+                    stock_db = var.inventario.stock_actual if var.inventario else 0
                     
-                    try:
-                        # Enviamos el stock del ERP a Tienda Nube
-                        tn_service.update_variant_stock(
-                            prod.tiendanube_id, 
-                            variante.tiendanube_variant_id, 
-                            stock_erp
-                        )
-                        actualizados += 1
-                    except Exception as e:
-                        print(f"Error sync variante {variante.sku}: {e}")
-                        errores += 1
+                    # Guardamos en una lista plana solo los datos puros
+                    lista_para_sync.append({
+                        'sku': var.codigo_sku,
+                        'prod_id': prod.tiendanube_id,
+                        'var_id': var.tiendanube_variant_id,
+                        'stock': stock_db
+                    })
+        
+        if not lista_para_sync:
+             return jsonify({"msg": "No hay productos vinculados para sincronizar"}), 200
 
+        # 2. FASE DE LANZAMIENTO: Iniciar Hilo
+        # Creamos el hilo pasándole la lista de datos
+        hilo = threading.Thread(target=run_sync_background, args=(lista_para_sync,))
+        # Lo iniciamos como 'daemon' para que no bloquee el cierre del server si fuera necesario
+        hilo.daemon = True 
+        hilo.start()
+
+        # 3. RESPUESTA INMEDIATA
+        # Le decimos al Frontend que ya arrancó, aunque no haya terminado.
         return jsonify({
-            "msg": "Sincronización completada", 
-            "detalles": f"Se actualizaron {actualizados} variantes en Tienda Nube. ({errores} errores)"
-        }), 200
+            "msg": "Sincronización iniciada en segundo plano", 
+            "detalles": f"Se están procesando {len(lista_para_sync)} variantes. El proceso continuará en el servidor."
+        }), 202
 
     except Exception as e:
-        return jsonify({"msg": "Error general en sincronización", "error": str(e)}), 500
+        print(f"Error iniciando sync: {e}")
+        return jsonify({"msg": "Error general al iniciar sincronización", "error": str(e)}), 500
+
+
+
+# Función auxiliar que correrá "en las sombras"
+def run_sync_background(items_list):
+    """
+    Esta función se ejecuta en un hilo paralelo.
+    No bloquea al usuario ni al servidor.
+    """
+    print(f"🔄 [BACKGROUND] Iniciando Sync Masiva de {len(items_list)} variantes...")
+    actualizados = 0
+    errores = 0
+    
+    # Recorremos la lista PRE-CALCULADA (así no tocamos la DB en el hilo, que es más seguro)
+    for item in items_list:
+        try:
+            tn_service.update_variant_stock(
+                item['prod_id'], 
+                item['var_id'], 
+                item['stock']
+            )
+            # Logueamos progreso en la consola del servidor
+            print(f"✅ TN Sync OK: {item['sku']} -> Stock {item['stock']}")
+            actualizados += 1
+        except Exception as e:
+            print(f"❌ TN Sync Error {item['sku']}: {e}")
+            errores += 1
+            
+    print(f"🏁 [BACKGROUND] Sync Finalizada. Exitos: {actualizados} | Errores: {errores}")
