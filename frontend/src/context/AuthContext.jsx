@@ -1,5 +1,6 @@
-import { createContext, useState, useContext, useEffect } from 'react';
+import { createContext, useState, useContext, useEffect, useCallback } from 'react';
 import axios from 'axios';
+import { toast } from 'react-hot-toast'; // <--- IMPORTANTE: Importar Toast
 
 const AuthContext = createContext();
 
@@ -8,21 +9,12 @@ export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '/api',
 });
 
-// Interceptor para agregar el token a cada petición
+// Interceptor de SOLICITUD (Request): Agrega el token saliente
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token');
-
   if (token) {
-    // Limpieza de comillas
     const cleanToken = token.replace(/"/g, '');
-
-    // --- AGREGA ESTA LÍNEA PARA VER EN CONSOLA ---
-    console.log("📤 Enviando Token:", cleanToken);
-    // ---------------------------------------------
-
     config.headers.Authorization = `Bearer ${cleanToken}`;
-  } else {
-    console.warn("⚠️ No hay token en localStorage");
   }
   return config;
 });
@@ -46,17 +38,12 @@ export const AuthProvider = ({ children }) => {
     try {
       const res = await api.post('/auth/login', { email, password });
 
-      // AQUÍ ESTABA EL PROBLEMA PROBABLEMENTE:
-      // El backend devuelve: { success: true, token: "...", user: {...} }
-
       if (res.data.success) {
         const { token, user } = res.data;
 
-        // Guardar en LocalStorage
         localStorage.setItem('token', token);
         localStorage.setItem('user', JSON.stringify(user));
 
-        // Guardar en Estado
         setToken(token);
         setUser(user);
 
@@ -67,7 +54,6 @@ export const AuthProvider = ({ children }) => {
 
     } catch (error) {
       console.error("Error en Login:", error);
-      // Devolver mensaje claro
       return {
         success: false,
         message: error.response?.data?.msg || "Error de conexión con el servidor"
@@ -76,13 +62,50 @@ export const AuthProvider = ({ children }) => {
   };
 
   // --- FUNCIÓN LOGOUT ---
-  const logout = () => {
+  // Usamos useCallback para que sea estable y no cause re-renders innecesarios
+  const logout = useCallback(() => {
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     setToken(null);
     setUser(null);
-    window.location.href = '/login'; // Redirigir forzadamente
-  };
+    window.location.href = '/login';
+  }, []);
+
+  // =================================================================
+  //  NUEVO: INTERCEPTOR DE RESPUESTA (Response) - "El Portero"
+  // =================================================================
+  useEffect(() => {
+    // Configuramos el interceptor
+    const interceptor = api.interceptors.response.use(
+      (response) => response, // Si todo sale bien, pasa la respuesta
+      (error) => {
+        // Si hay error, verificamos si es por sesión vencida
+        if (error.response && (error.response.status === 401 || error.response.status === 422)) {
+
+          // Solo actuamos si actualmente creemos que estamos logueados
+          if (localStorage.getItem('token')) {
+            console.warn("⚠️ Sesión expirada detectada por el interceptor.");
+
+            // 1. Ejecutar Logout
+            logout();
+
+            // 2. Avisar al usuario (El toast se verá en la pantalla de login)
+            toast.error("Tu sesión ha expirado. Ingresa nuevamente.", {
+              duration: 5000,
+              icon: '🔒'
+            });
+          }
+        }
+        return Promise.reject(error); // Rechazamos para que el componente maneje su error localmente si quiere
+      }
+    );
+
+    // LIMPIEZA: Eyectar el interceptor cuando el componente se desmonte o cambie
+    // Esto es vital para no tener interceptores duplicados
+    return () => {
+      api.interceptors.response.eject(interceptor);
+    };
+  }, [logout]); // Dependemos de logout
 
   const value = {
     user,
