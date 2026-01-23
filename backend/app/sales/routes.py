@@ -1,7 +1,8 @@
 #backend/app/sales/routes.py
 import csv
+import io
 from io import StringIO
-from flask import Blueprint, jsonify, request, Response
+from flask import Blueprint, jsonify, request, Response, send_file
 from app.extensions import db
 # IMPORTAMOS DESDE TUS ARCHIVOS SEPARADOS
 from app.sales.models import Venta, DetalleVenta, MetodoPago, SesionCaja, MovimientoCaja, Reserva, DetalleReserva, Presupuesto, DetallePresupuesto, NotaCredito
@@ -10,6 +11,10 @@ from flask_jwt_extended import jwt_required
 from sqlalchemy import desc, func, extract
 from datetime import date, datetime, timedelta
 from app.services.tiendanube_service import tn_service
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import A4
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 bp = Blueprint('sales', __name__)
 
@@ -1074,3 +1079,94 @@ def checkout():
         import traceback
         traceback.print_exc()
         return jsonify({"msg": "Error procesando venta", "error": str(e)}), 500
+
+
+
+@bp.route('/caja/<int:id>/pdf', methods=['GET'])
+@jwt_required()
+def export_caja_pdf(id):
+    sesion = SesionCaja.query.get_or_404(id)
+    
+    # Buscar ventas de esa sesión
+    ventas = Venta.query.filter(
+        Venta.fecha_venta >= sesion.fecha_apertura, 
+        Venta.fecha_venta <= sesion.fecha_cierre
+    ).order_by(Venta.fecha_venta.asc()).all()
+
+    # Configuración del PDF
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
+    elements = []
+    styles = getSampleStyleSheet()
+
+    # 1. TÍTULO
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], alignment=1, spaceAfter=20)
+    elements.append(Paragraph(f"Reporte de Cierre de Caja #{sesion.id_sesion}", title_style))
+
+    # 2. DATOS GENERALES (Apertura, Cierre, Diferencia)
+    datos_grales = [
+        ["Apertura:", sesion.fecha_apertura.strftime('%d/%m/%Y %H:%M')],
+        ["Cierre:", sesion.fecha_cierre.strftime('%d/%m/%Y %H:%M')],
+        ["Caja Inicial:", f"$ {sesion.monto_inicial:,.2f}"],
+        ["Total Sistema:", f"$ {sesion.total_ventas_sistema:,.2f}"],
+        ["Total Real (Efvo):", f"$ {sesion.total_real:,.2f}"],
+        ["Diferencia:", f"$ {sesion.diferencia:,.2f}"]
+    ]
+    t_info = Table(datos_grales, colWidths=[120, 200])
+    t_info.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
+        ('FONTSIZE', (0,0), (-1,-1), 10),
+        ('TEXTCOLOR', (0,5), (1,5), colors.red if sesion.diferencia < 0 else colors.green),
+        ('FONTNAME', (0,5), (1,5), 'Helvetica-Bold'),
+    ]))
+    elements.append(t_info)
+    elements.append(Spacer(1, 20))
+
+    # 3. TABLA DE VENTAS
+    # Encabezados
+    data_ventas = [['Hora', 'Ticket', 'Método', 'Items (Resumen)', 'Total']]
+    
+    total_acumulado = 0
+    for v in ventas:
+        hora = v.fecha_venta.strftime('%H:%M')
+        metodo = v.metodo.nombre if v.metodo else "-"
+        # Resumen breve de items (ej: "Camiseta Boca x2...")
+        resumen_items = f"{len(v.detalles)} items"
+        if len(v.detalles) > 0:
+            primer_item = v.detalles[0].producto_nombre or "Prod"
+            resumen_items = f"{primer_item[:20]}..." if len(v.detalles) == 1 else f"{primer_item[:15]}... (+{len(v.detalles)-1})"
+
+        data_ventas.append([
+            hora, 
+            f"#{v.id_venta}", 
+            metodo, 
+            resumen_items, 
+            f"$ {v.total:,.0f}"
+        ])
+        total_acumulado += v.total
+
+    # Fila final de total
+    data_ventas.append(['', '', '', 'TOTAL VENTAS:', f"$ {total_acumulado:,.0f}"])
+
+    # Estilos de la tabla grande
+    table = Table(data_ventas, colWidths=[50, 60, 100, 200, 80])
+    table.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1e293b')), # Slate 800 header
+        ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('ALIGN', (-1,0), (-1,-1), 'RIGHT'), # Alinear montos a la derecha
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,-1), 9),
+        ('BOTTOMPADDING', (0,0), (-1,0), 8),
+        ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor('#f1f5f9')), # Footer gris claro
+        ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+    ]))
+    
+    elements.append(table)
+
+    # Generar PDF
+    doc.build(elements)
+    buffer.seek(0)
+    
+    return send_file(buffer, mimetype='application/pdf', as_attachment=False, download_name=f'cierre_{id}.pdf')
