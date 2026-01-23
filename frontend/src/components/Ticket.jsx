@@ -2,17 +2,11 @@ import React from 'react';
 
 export const Ticket = React.forwardRef(({ saleData }, ref) => {
   const empty = !saleData;
-  // Extraemos metodo_pago si viene, sino por defecto vacío
   const { items = [], total = 0, fecha = "", id_venta = "", cliente = "", metodo_pago = "" } = saleData || {};
 
   return (
     <div
       ref={ref}
-      // CAMBIOS CLAVE AQUÍ:
-      // 1. font-sans: Se ve mucho más moderno y nítido que font-mono.
-      // 2. uppercase: Todo en mayúsculas facilita la lectura rápida.
-      // 3. text-black: Asegura negro puro.
-      // 4. font-bold: Ayuda a que la impresora térmica "queme" mejor el papel.
       className="p-4 bg-white text-black font-sans text-xs font-bold leading-tight uppercase"
       style={{ width: '80mm', margin: '0 auto' }}
     >
@@ -35,7 +29,6 @@ export const Ticket = React.forwardRef(({ saleData }, ref) => {
           <p className="text-[10px] mt-1">Indumentaria & Merch</p>
         </div>
 
-        {/* Separador Sólido (se imprime mejor que el dashed a veces) */}
         <div className="w-full border-b-2 border-black mb-3"></div>
 
         {!empty && (
@@ -54,7 +47,6 @@ export const Ticket = React.forwardRef(({ saleData }, ref) => {
                 <span>Cliente:</span>
                 <span className="truncate max-w-[150px] text-right">{cliente || 'Consumidor Final'}</span>
               </div>
-              {/* Agregamos Método de Pago si existe */}
               {metodo_pago && (
                 <div className="flex justify-between">
                   <span>Pago:</span>
@@ -77,7 +69,6 @@ export const Ticket = React.forwardRef(({ saleData }, ref) => {
               <tbody className="leading-none">
                 {items.map((item, i) => (
                   <tr key={i}>
-                    {/* Nombre del producto un poco más grande */}
                     <td className="py-2 pr-1 align-top">
                       <span className="block">{item.nombre}</span>
                       {item.talle && item.talle !== '-' && (
@@ -111,7 +102,8 @@ export const Ticket = React.forwardRef(({ saleData }, ref) => {
         <div className="text-center space-y-2">
           <p className="font-black text-sm">¡Gracias por tu compra!</p>
 
-          <div className="text-[9px] font-medium normal-case"> {/* normal-case para la web */}
+          {/* CAMBIO 1: URL más grande (11px) y negrita */}
+          <div className="text-[11px] font-bold normal-case">
             www.campeonesindumentaria.com.ar
           </div>
 
@@ -121,7 +113,10 @@ export const Ticket = React.forwardRef(({ saleData }, ref) => {
             </p>
           </div>
 
-          <p className="text-[8px] mt-2 text-gray-500">Documento no válido como factura.</p>
+          {/* CAMBIO 2: Texto legal en NEGRO (no gris), más grande (10px) y negrita */}
+          <p className="text-[10px] mt-2 font-bold text-black">
+            Documento no válido como factura.
+          </p>
         </div>
 
       </div>
