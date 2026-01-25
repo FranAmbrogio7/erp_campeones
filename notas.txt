@@ -33,6 +33,6 @@ la nota de credito ya funciona, pero hay q validar cuando el monto a abonar es i
 boton para sincronizar todo el stock con tienda nube
 
 en la pagina de reservas, cuando el cliente salda el total de la reserva, esa venta se debe registrar en el historial de ventas, en un primer momento se guarda la venta con la plata de la seña, y posteriormente se debe abonar el saldo restante, pero como manejas esas condiciones en el historial de ventas? para que no tenga diferencias en la caja del dia
-
+cambio en pospage
 
 
