@@ -132,7 +132,7 @@ const Sidebar = () => {
           <div className="p-1 bg-white/10 rounded-full shadow-inner mb-3 ring-2 ring-slate-800">
             <img src={logoImg} alt="Logo" className="w-16 h-16 rounded-full object-cover" />
           </div>
-          <h1 className="text-lg font-black tracking-wider text-white uppercase">CAMPEONES</h1>
+          <h1 className="text-lg font-black tracking-wider text-white uppercase">TÁNTO</h1>
           <p className="text-[10px] font-bold text-blue-500 tracking-[0.3em] uppercase">Sistema de Gestión</p>
         </div>
       </Link>

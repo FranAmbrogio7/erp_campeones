@@ -9,7 +9,8 @@ import ReservationModal from '../components/ReservationModal';
 import {
   ShoppingCart, Trash2, Plus, Minus, ScanBarcode, Banknote,
   CreditCard, Smartphone, Lock, ArrowRight, Printer, Clock,
-  Search, Shirt, CalendarClock, X, AlertTriangle, Receipt, Edit3
+  Search, Shirt, CalendarClock, X, AlertTriangle, Receipt, Edit3,
+  Maximize2 // <--- IMPORTAMOS ESTE ICONO NUEVO
 } from 'lucide-react';
 
 // Sonidos para feedback inmediato (UX)
@@ -32,6 +33,9 @@ const POSPage = () => {
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [manualTerm, setManualTerm] = useState('');
   const [manualResults, setManualResults] = useState([]);
+
+  // NUEVO: ESTADO PARA ZOOM DE IMAGEN
+  const [zoomImage, setZoomImage] = useState(null);
 
   // Pagos y Totales
   const [paymentMethods, setPaymentMethods] = useState([]);
@@ -74,16 +78,15 @@ const POSPage = () => {
     if (!customItemData.description || !customItemData.price) return;
 
     const newItem = {
-      // Generamos un ID temporal único para que React no se queje
       id_variante: `custom-${Date.now()}`,
       sku: 'MANUAL',
       nombre: customItemData.description.toUpperCase(),
       talle: '-',
       precio: parseFloat(customItemData.price),
       cantidad: 1,
-      stock_actual: 9999, // Stock infinito para que no bloquee la venta
+      stock_actual: 9999,
       subtotal: parseFloat(customItemData.price),
-      is_custom: true // BANDERA IMPORTANTE para el backend
+      is_custom: true
     };
 
     setCart(prev => [...prev, newItem]);
@@ -93,7 +96,6 @@ const POSPage = () => {
     setIsCustomModalOpen(false);
   };
 
-  // --- AUDIO HELPER MEJORADO ---
   const playSound = (type) => {
     try {
       const audio = SOUNDS[type];
@@ -137,21 +139,18 @@ const POSPage = () => {
     init();
   }, [token]);
 
-  // Foco Automático Inteligente
+  // Foco Automático
   useEffect(() => {
-    if (!isRegisterOpen || isEditingPrice || isConfirmModalOpen || isReservationModalOpen) return;
+    if (!isRegisterOpen || isEditingPrice || isConfirmModalOpen || isReservationModalOpen || zoomImage) return;
 
-    // Si hay un método de crédito seleccionado, quizás queramos foco allí, 
-    // pero por defecto priorizamos seguir vendiendo.
     if (isSearchMode) {
       searchInputRef.current?.focus();
     } else {
-      // Solo enfocamos el escáner si NO estamos escribiendo la nota de crédito
       if (document.activeElement !== creditNoteInputRef.current) {
         inputRef.current?.focus();
       }
     }
-  }, [cart, isRegisterOpen, isEditingPrice, isConfirmModalOpen, isReservationModalOpen, isSearchMode]);
+  }, [cart, isRegisterOpen, isEditingPrice, isConfirmModalOpen, isReservationModalOpen, isSearchMode, zoomImage]);
 
   // --- BÚSQUEDA MANUAL ---
   useEffect(() => {
@@ -206,7 +205,7 @@ const POSPage = () => {
 
   // --- CARRITO ---
   const addToCart = (product) => {
-    setCustomTotal(null); // Reseteamos precio editado al agregar cosas
+    setCustomTotal(null);
     setCart((prevCart) => {
       const existing = prevCart.find(i => i.id_variante === product.id_variante);
       if (existing) {
@@ -232,8 +231,8 @@ const POSPage = () => {
     setCart(prev => prev.map(item => {
       if (item.id_variante === id) {
         const newQty = item.cantidad + delta;
-        if (newQty < 1) return item; // Mínimo 1
-        if (newQty > item.stock_actual) return item; // Máximo stock real
+        if (newQty < 1) return item;
+        if (newQty > item.stock_actual) return item;
         return { ...item, cantidad: newQty, subtotal: newQty * item.precio };
       }
       return item;
@@ -257,12 +256,10 @@ const POSPage = () => {
       playSound('error');
       return;
     }
-    // Validación Nota Crédito (Flexible con acentos)
     const metodoNombre = selectedMethod.nombre.toLowerCase();
     if ((metodoNombre.includes('credito') || metodoNombre.includes('crédito')) && !creditNoteCode.trim()) {
       toast.error("Debes ingresar el código de la Nota");
       playSound('error');
-      // Enfocar el input de nota si está vacío
       setTimeout(() => creditNoteInputRef.current?.focus(), 200);
       return;
     }
@@ -279,30 +276,18 @@ const POSPage = () => {
       let notaParaEnviar = esMedioNota ? creditNoteCode : (appliedNote?.codigo || null);
       let metodoParaEnviar = selectedMethod.id;
 
-      // 1. VALIDACIÓN INTELIGENTE DE NOTA DE CRÉDITO
       if (esMedioNota) {
         try {
-          // Verificar saldo real en backend
           const check = await api.get(`/sales/notas-credito/validar/${creditNoteCode}`);
           const saldoNota = check.data.monto;
 
-          // CASO A: La nota NO alcanza (Pago Mixto)
           if (saldoNota < totalFinal) {
             const restante = totalFinal - saldoNota;
-
-            // Guardamos la nota para usarla en el siguiente intento
             setAppliedNote({ codigo: creditNoteCode, monto: saldoNota });
-
-            // Actualizamos el total a cobrar por la diferencia
             setCustomTotal(restante);
-
-            // Limpiamos selección para que elija el otro medio
             setSelectedMethod(null);
-            setCreditNoteCode(''); // Limpiamos el input visual
-
+            setCreditNoteCode('');
             toast.dismiss(toastId);
-
-            // Alerta visual clara
             toast((t) => (
               <div className="text-sm">
                 <p className="font-bold">⚠️ Saldo Parcial</p>
@@ -311,13 +296,9 @@ const POSPage = () => {
                 <p className="mt-2 text-xs text-gray-500">Seleccione Efectivo o Tarjeta para completar.</p>
               </div>
             ), { duration: 6000, icon: '💰' });
-
             playSound('beep');
-            return; // DETENEMOS AQUÍ para que el usuario elija el segundo pago
+            return;
           }
-
-          // CASO B: La nota alcanza o sobra -> Seguimos normal
-
         } catch (e) {
           toast.error(e.response?.data?.msg || "Código de Nota inválido", { id: toastId });
           playSound('error');
@@ -325,13 +306,12 @@ const POSPage = () => {
         }
       }
 
-      // 2. ARMAR PAYLOAD (Si llegamos aquí, es porque ya se paga todo)
       const payload = {
         items: cart,
         subtotal_calculado: subtotalCalculado,
-        total_final: totalFinal, // Este será el monto restante si fue mixto
+        total_final: totalFinal,
         metodo_pago_id: metodoParaEnviar,
-        codigo_nota_credito: notaParaEnviar // Enviamos la nota aunque pague con efectivo el resto
+        codigo_nota_credito: notaParaEnviar
       };
 
       const res = await api.post('/sales/checkout', payload);
@@ -347,8 +327,6 @@ const POSPage = () => {
 
       playSound('beep');
       toast.success(`Venta #${res.data.id} Exitosa`, { id: toastId });
-
-      // Resetear todo
       setCart([]); setSkuInput(''); setSelectedMethod(null);
       setCustomTotal(null); setCreditNoteCode(''); setAppliedNote(null);
       fetchRecentSales();
@@ -359,10 +337,8 @@ const POSPage = () => {
     }
   };
 
-  // --- ANULAR VENTA (PÁNICO) ---
   const handleVoidSale = async (ventaId) => {
     if (!window.confirm(`⚠️ ¿ANULAR VENTA #${ventaId}?\n\nSe devolverá el stock inmediatamente.`)) return;
-
     const toastId = toast.loading("Anulando...");
     try {
       await api.delete(`/sales/${ventaId}/anular`);
@@ -386,7 +362,6 @@ const POSPage = () => {
     setTimeout(() => { reactToPrintFn(); }, 200);
   };
 
-  // --- RESERVAS ---
   const handleReservationClick = () => {
     if (cart.length === 0) return;
     setIsReservationModalOpen(true);
@@ -411,7 +386,6 @@ const POSPage = () => {
     }
   };
 
-  // --- HELPERS UI ---
   const getPaymentIcon = (n) => {
     const name = n.toLowerCase();
     if (name.includes('tarjeta')) return <CreditCard size={20} />;
@@ -428,7 +402,6 @@ const POSPage = () => {
     return 'bg-gray-100 text-gray-600 border-gray-200';
   };
 
-  // --- RENDER ---
   if (isRegisterOpen === false) return (
     <div className="h-[80vh] flex flex-col items-center justify-center p-6 text-center animate-fade-in">
       <div className="bg-red-50 p-6 rounded-full text-red-500 mb-6 shadow-sm"><Lock size={64} /></div>
@@ -457,14 +430,9 @@ const POSPage = () => {
             </h2>
 
             <div className="flex gap-2">
-              {/* --- BOTÓN NUEVO --- */}
-              <button
-                onClick={() => setIsCustomModalOpen(true)}
-                className="text-xs px-3 py-1.5 rounded-lg border font-bold flex items-center bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100 transition-colors"
-              >
+              <button onClick={() => setIsCustomModalOpen(true)} className="text-xs px-3 py-1.5 rounded-lg border font-bold flex items-center bg-yellow-50 text-yellow-700 border-yellow-200 hover:bg-yellow-100 transition-colors">
                 <Plus size={14} className="mr-1" /> Ítem Libre
               </button>
-              {/* ------------------- */}
 
               <button
                 onClick={() => { setIsSearchMode(!isSearchMode); setManualTerm(''); setManualResults([]); }}
@@ -490,9 +458,32 @@ const POSPage = () => {
                 <div className="absolute top-full left-0 right-0 bg-white border shadow-2xl rounded-b-xl mt-1 max-h-80 overflow-y-auto z-50">
                   {manualResults.map(p => (
                     <div key={p.id} className="p-3 border-b hover:bg-gray-50 flex gap-3 cursor-pointer group" onClick={() => { }}>
-                      <div className="w-12 h-12 bg-gray-100 rounded-lg shrink-0 flex items-center justify-center border overflow-hidden">
-                        {p.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${p.imagen}`} className="w-full h-full object-cover" /> : <Shirt size={20} className="text-gray-300" />}
+
+                      {/* --- AQUI ESTÁ EL CAMBIO PRINCIPAL: IMAGEN CLICKEABLE --- */}
+                      <div
+                        className="w-12 h-12 bg-gray-100 rounded-lg shrink-0 flex items-center justify-center border overflow-hidden cursor-zoom-in relative group/img"
+                        onClick={(e) => {
+                          // Evitamos que el click se propague si tuviéramos un click en la fila entera
+                          if (p.imagen) {
+                            e.stopPropagation();
+                            setZoomImage(`${api.defaults.baseURL}/static/uploads/${p.imagen}`);
+                          }
+                        }}
+                      >
+                        {p.imagen ? (
+                          <>
+                            <img src={`${api.defaults.baseURL}/static/uploads/${p.imagen}`} className="w-full h-full object-cover transition-transform group-hover/img:scale-110" />
+                            {/* Icono sutil de zoom al hacer hover */}
+                            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 flex items-center justify-center transition-opacity">
+                              <Maximize2 size={16} className="text-white" />
+                            </div>
+                          </>
+                        ) : (
+                          <Shirt size={20} className="text-gray-300" />
+                        )}
                       </div>
+                      {/* --------------------------------------------------------- */}
+
                       <div className="flex-1">
                         <div className="flex justify-between font-bold text-sm text-gray-800">
                           <span>{p.nombre}</span>
@@ -533,7 +524,6 @@ const POSPage = () => {
                 autoFocus
                 disabled={isEditingPrice || isConfirmModalOpen}
               />
-
               <button
                 type="submit"
                 disabled={isEditingPrice || isConfirmModalOpen}
@@ -639,19 +629,13 @@ const POSPage = () => {
         {/* Zona de Cobro */}
         <div className="p-4 bg-white border-t-2 border-gray-100 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-20">
 
-          {/* INDICADOR DE NOTA APLICADA (Pago Mixto) */}
           {appliedNote && (
             <div className="mb-3 bg-green-50 border border-green-200 p-3 rounded-lg flex justify-between items-center animate-pulse">
               <div>
                 <span className="text-xs font-bold text-green-700 block">NOTA APLICADA</span>
                 <span className="text-sm font-mono text-gray-700">{appliedNote.codigo} (-${appliedNote.monto.toLocaleString()})</span>
               </div>
-              <button
-                onClick={() => { setAppliedNote(null); setCustomTotal(null); toast("Nota quitada"); }}
-                className="text-red-400 hover:text-red-600 p-1"
-              >
-                <X size={16} />
-              </button>
+              <button onClick={() => { setAppliedNote(null); setCustomTotal(null); toast("Nota quitada"); }} className="text-red-400 hover:text-red-600 p-1"><X size={16} /></button>
             </div>
           )}
 
@@ -673,7 +657,6 @@ const POSPage = () => {
               ))}
             </div>
 
-            {/* INPUT DE NOTA DE CRÉDITO (Corregido para tildes y mayúsculas) */}
             {selectedMethod &&
               (selectedMethod.nombre.toLowerCase().includes('credito') || selectedMethod.nombre.toLowerCase().includes('crédito')) && (
                 <div className="mt-3 bg-yellow-50 p-3 rounded-lg border border-yellow-200 animate-fade-in shadow-sm">
@@ -691,7 +674,6 @@ const POSPage = () => {
               )}
           </div>
 
-          {/* TOTAL Y EDICIÓN (Mejorado con Icono) */}
           <div className="flex justify-between items-end mb-4 border-b border-dashed pb-3">
             <div>
               <span className="text-gray-500 font-medium text-xs uppercase">Total a Cobrar</span>
@@ -717,7 +699,6 @@ const POSPage = () => {
                   <span className={`text-3xl font-black tracking-tighter transition-colors ${descuentoVisual !== 0 ? 'text-blue-600' : 'text-slate-800'}`}>
                     $ {totalFinal.toLocaleString()}
                   </span>
-                  {/* ICONO DE EDICIÓN VISIBLE */}
                   <div className="ml-2 p-1 rounded-full bg-gray-100 text-gray-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors">
                     <Edit3 size={16} />
                   </div>
@@ -794,6 +775,25 @@ const POSPage = () => {
                 </div>
               </div>
             )}
+
+            {/* MODAL ZOOM IMAGEN (NUEVO) */}
+            {zoomImage && (
+              <div
+                className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in cursor-zoom-out"
+                onClick={() => setZoomImage(null)}
+              >
+                <img
+                  src={zoomImage}
+                  className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain"
+                  alt="Zoom Producto"
+                  onClick={(e) => e.stopPropagation()} // Para que no se cierre si tocas la imagen misma
+                />
+                <button className="absolute top-4 right-4 text-white/50 hover:text-white transition-colors bg-black/20 p-2 rounded-full">
+                  <X size={40} />
+                </button>
+              </div>
+            )}
+
           </div>
         </div>
       </div>
