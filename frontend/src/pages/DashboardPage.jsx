@@ -35,7 +35,7 @@ const DashboardPage = () => {
 
         // --- TEMPORIZADOR DEL RELOJ ---
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
-        return () => clearInterval(timer); // Limpieza al salir
+        return () => clearInterval(timer);
     }, []);
 
     // Formateo de Hora y Fecha
@@ -43,204 +43,189 @@ const DashboardPage = () => {
     const formattedDate = currentTime.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
 
     if (loading) return (
-        <div className="flex h-full items-center justify-center text-gray-400">
+        <div className="flex h-full items-center justify-center text-gray-400 p-10">
             <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mr-3"></div>
-            Cargando sistema...
+            Cargando...
         </div>
     );
 
     const cajaAbierta = data.financial.caja_status === 'abierta';
 
     return (
-        <div className="max-w-6xl mx-auto space-y-8 animate-fade-in pb-10">
+        // Padding lateral reducido en móvil (px-4) y aumentado en PC (md:px-0)
+        // Padding inferior extra (pb-24) para scroll en móviles
+        <div className="max-w-6xl mx-auto space-y-6 md:space-y-8 animate-fade-in pb-24 md:pb-10 px-4 md:px-0">
 
-            {/* 1. HEADER: BIENVENIDA + RELOJ + RESUMEN */}
-            <div className="flex flex-col md:flex-row justify-between items-end md:items-center border-b border-gray-100 pb-6">
-                <div>
-                    <h1 className="text-3xl font-black text-gray-800 tracking-tight flex items-center">
+            {/* 1. HEADER: ADAPTABLE */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-gray-100 pb-4 md:pb-6">
+                <div className="w-full md:w-auto">
+                    {/* Título un poco más chico en móvil para que no ocupe tanto */}
+                    <h1 className="text-2xl md:text-3xl font-black text-gray-800 tracking-tight flex items-center">
                         Hola, {user?.nombre || 'Campeón'} 👋
                     </h1>
 
-                    {/* RELOJ EN TIEMPO REAL */}
-                    <div className="flex items-center text-gray-500 mt-1 font-medium text-sm">
-                        <Clock size={16} className="mr-2 text-blue-600" />
+                    <div className="flex items-center text-gray-500 mt-1 font-medium text-xs md:text-sm">
+                        <Clock size={14} className="mr-2 text-blue-600" />
                         <span className="capitalize">{formattedDate}</span>
                         <span className="mx-2">|</span>
                         <span className="font-mono text-gray-800 font-bold bg-gray-100 px-2 rounded">{formattedTime}</span>
                     </div>
                 </div>
 
-                {/* WIDGET FINANCIERO */}
-                <div className="mt-4 md:mt-0 flex items-center bg-white border border-gray-200 rounded-2xl p-2 shadow-sm">
-                    <div className="px-6 border-r border-gray-100">
-                        <p className="text-xs font-bold text-gray-400 uppercase">Ventas Hoy</p>
-                        <p className="text-xl font-black text-gray-800">$ {data.financial.hoy.toLocaleString()}</p>
+                {/* WIDGET FINANCIERO: FULL WIDTH EN MÓVIL */}
+                <div className="w-full md:w-auto mt-4 md:mt-0 flex items-center justify-between md:justify-start bg-white border border-gray-200 rounded-2xl p-3 md:p-2 shadow-sm">
+                    <div className="flex-1 md:flex-none px-2 md:px-6 border-r border-gray-100 text-center md:text-left">
+                        <p className="text-[10px] md:text-xs font-bold text-gray-400 uppercase">Ventas Hoy</p>
+                        <p className="text-lg md:text-xl font-black text-gray-800">$ {data.financial.hoy.toLocaleString()}</p>
                     </div>
-                    <div className="px-6">
-                        <p className="text-xs font-bold text-gray-400 uppercase">Mes Actual</p>
-                        <p className="text-xl font-black text-blue-600">$ {data.financial.mes.toLocaleString()}</p>
+                    <div className="flex-1 md:flex-none px-2 md:px-6 text-center md:text-left">
+                        <p className="text-[10px] md:text-xs font-bold text-gray-400 uppercase">Mes Actual</p>
+                        <p className="text-lg md:text-xl font-black text-blue-600">$ {data.financial.mes.toLocaleString()}</p>
                     </div>
                 </div>
             </div>
 
-            {/* 2. ACCESOS RÁPIDOS (GRID CENTRAL) */}
+            {/* 2. ACCESOS RÁPIDOS (GRID) */}
             <div>
-                <h2 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4">Centro de Control</h2>
+                <h2 className="text-xs md:text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 md:mb-4">Centro de Control</h2>
 
-                {/* GRILLA DE 4 COLUMNAS */}
-                {/* Row 1: Venta (2) + Inventario (1) + Caja (1) = 4 */}
-                {/* Row 2: Admin (1) + Web (1) + Etiquetas (1) + Stats (1) = 4 */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {/* Grid gap reducido en móvil (gap-3) */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
 
-                    {/* 1. PTO VENTA (Doble Ancho) */}
-                    <Link to="/caja" className="col-span-2 bg-gradient-to-br from-slate-800 to-black text-white p-6 rounded-3xl shadow-xl hover:shadow-2xl hover:scale-[1.01] transition-all group relative overflow-hidden flex flex-col justify-between min-h-[160px]">
+                    {/* PTO VENTA (Gigante) - Touch Friendly */}
+                    <Link
+                        to="/caja"
+                        className="col-span-2 bg-gradient-to-br from-slate-800 to-black text-white p-5 md:p-6 rounded-3xl shadow-xl active:scale-[0.98] transition-all group relative overflow-hidden flex flex-col justify-between min-h-[140px] md:min-h-[160px]"
+                    >
                         <div className="relative z-10">
-                            <div className="bg-white/10 w-fit p-3 rounded-2xl backdrop-blur-sm mb-4">
-                                <ShoppingCart size={32} className="text-white" />
+                            <div className="bg-white/10 w-fit p-2.5 md:p-3 rounded-2xl backdrop-blur-sm mb-3 md:mb-4">
+                                <ShoppingCart size={28} className="text-white" />
                             </div>
-                            <h3 className="text-2xl font-bold">Punto de Venta</h3>
-                            <p className="text-slate-300 text-sm mt-1 group-hover:text-white transition-colors">Iniciar nueva operación</p>
+                            <h3 className="text-xl md:text-2xl font-bold">Punto de Venta</h3>
+                            <p className="text-slate-300 text-xs md:text-sm mt-1">Iniciar nueva operación</p>
                         </div>
-                        <ShoppingCart className="absolute -right-6 -bottom-6 text-white/5 rotate-12 transition-transform group-hover:rotate-0" size={180} />
+                        <ShoppingCart className="absolute -right-6 -bottom-6 text-white/5 rotate-12" size={160} />
                     </Link>
 
-                    {/* 2. INVENTARIO */}
-                    <Link to="/inventario" className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-blue-200 transition-all group flex flex-col justify-between">
-                        <div className="bg-blue-50 w-12 h-12 rounded-xl flex items-center justify-center text-blue-600 mb-4 group-hover:scale-110 transition-transform">
-                            <Package size={24} />
+                    {/* BOTONES SECUNDARIOS: Padding ajustado y efecto 'active' */}
+                    <Link to="/inventario" className="bg-white p-4 md:p-6 rounded-3xl border border-gray-100 shadow-sm active:scale-95 transition-all flex flex-col justify-between h-32 md:h-auto">
+                        <div className="bg-blue-50 w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center text-blue-600 mb-2">
+                            <Package size={20} />
                         </div>
                         <div>
-                            <h3 className="font-bold text-gray-800 text-lg">Inventario</h3>
-                            <p className="text-xs text-gray-400 mt-1">Gestionar stock</p>
+                            <h3 className="font-bold text-gray-800 text-sm md:text-lg">Inventario</h3>
+                            <p className="text-[10px] md:text-xs text-gray-400 leading-tight">Gestionar stock</p>
                         </div>
                     </Link>
 
-                    {/* 3. CAJA */}
-                    <Link to="/caja-control" className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-purple-200 transition-all group relative overflow-hidden flex flex-col justify-between">
-                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 transition-transform group-hover:scale-110 ${cajaAbierta ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                            {cajaAbierta ? <Unlock size={24} /> : <Lock size={24} />}
+                    <Link to="/caja-control" className="bg-white p-4 md:p-6 rounded-3xl border border-gray-100 shadow-sm active:scale-95 transition-all relative overflow-hidden flex flex-col justify-between h-32 md:h-auto">
+                        <div className={`w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center mb-2 ${cajaAbierta ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                            {cajaAbierta ? <Unlock size={20} /> : <Lock size={20} />}
                         </div>
                         <div>
-                            <h3 className="font-bold text-gray-800 text-lg">Caja</h3>
-                            <p className={`text-xs font-bold mt-1 ${cajaAbierta ? 'text-green-600' : 'text-red-500'}`}>
+                            <h3 className="font-bold text-gray-800 text-sm md:text-lg">Caja</h3>
+                            <p className={`text-[10px] md:text-xs font-bold ${cajaAbierta ? 'text-green-600' : 'text-red-500'}`}>
                                 {cajaAbierta ? 'Abierta' : 'Cerrada'}
                             </p>
                         </div>
                     </Link>
 
-                    {/* --- SEGUNDA FILA --- */}
-
-                    {/* 4. PANEL ADMIN TIENDA NUBE */}
-                    <a
-                        href="https://campeones4.mitiendanube.com/admin/v2/dashboard/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-sky-400 transition-all group cursor-pointer flex flex-col justify-between"
-                    >
-                        <div className="bg-sky-50 w-12 h-12 rounded-xl flex items-center justify-center text-sky-600 mb-4 group-hover:scale-110 transition-transform">
-                            <LayoutDashboard size={24} />
+                    {/* --- BOTONES WEB --- */}
+                    <a href="https://campeones4.mitiendanube.com/admin/v2/dashboard/" target="_blank" rel="noopener noreferrer" className="bg-white p-4 md:p-6 rounded-3xl border border-gray-100 shadow-sm active:scale-95 transition-all flex flex-col justify-between h-32 md:h-auto">
+                        <div className="bg-sky-50 w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center text-sky-600 mb-2">
+                            <LayoutDashboard size={20} />
                         </div>
                         <div>
                             <div className="flex items-center justify-between">
-                                <h3 className="font-bold text-gray-800 text-lg">Admin Web</h3>
-                                <ExternalLink size={14} className="text-gray-300 group-hover:text-sky-500" />
+                                <h3 className="font-bold text-gray-800 text-sm md:text-lg">Admin Web</h3>
                             </div>
-                            <p className="text-xs text-gray-400 mt-1">Panel Tienda Nube</p>
+                            <p className="text-[10px] md:text-xs text-gray-400 leading-tight">Tienda Nube</p>
                         </div>
                     </a>
 
-                    {/* 5. VER TIENDA ONLINE */}
-                    <a
-                        href="https://www.campeonesindumentaria.com.ar/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-sky-400 transition-all group cursor-pointer flex flex-col justify-between"
-                    >
-                        <div className="bg-sky-50 w-12 h-12 rounded-xl flex items-center justify-center text-sky-600 mb-4 group-hover:scale-110 transition-transform">
-                            <Store size={24} />
+                    <a href="https://www.campeonesindumentaria.com.ar/" target="_blank" rel="noopener noreferrer" className="bg-white p-4 md:p-6 rounded-3xl border border-gray-100 shadow-sm active:scale-95 transition-all flex flex-col justify-between h-32 md:h-auto">
+                        <div className="bg-sky-50 w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center text-sky-600 mb-2">
+                            <Store size={20} />
                         </div>
                         <div>
                             <div className="flex items-center justify-between">
-                                <h3 className="font-bold text-gray-800 text-lg">Ver Tienda</h3>
-                                <ExternalLink size={14} className="text-gray-300 group-hover:text-sky-500" />
+                                <h3 className="font-bold text-gray-800 text-sm md:text-lg">Ver Tienda</h3>
                             </div>
-                            <p className="text-xs text-gray-400 mt-1">Ir al sitio online</p>
+                            <p className="text-[10px] md:text-xs text-gray-400 leading-tight">Sitio Online</p>
                         </div>
                     </a>
 
-                    {/* 6. ETIQUETAS */}
-                    <Link to="/etiquetas" className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-orange-200 transition-all group flex flex-col justify-between">
-                        <div className="bg-orange-50 w-12 h-12 rounded-xl flex items-center justify-center text-orange-600 mb-4 group-hover:scale-110 transition-transform">
-                            <Printer size={24} />
+                    {/* --- UTILIDADES --- */}
+                    <Link to="/etiquetas" className="bg-white p-4 md:p-6 rounded-3xl border border-gray-100 shadow-sm active:scale-95 transition-all flex flex-col justify-between h-32 md:h-auto">
+                        <div className="bg-orange-50 w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center text-orange-600 mb-2">
+                            <Printer size={20} />
                         </div>
                         <div>
-                            <h3 className="font-bold text-gray-800 text-lg">Etiquetas</h3>
-                            <p className="text-xs text-gray-400 mt-1">Imprimir códigos</p>
+                            <h3 className="font-bold text-gray-800 text-sm md:text-lg">Etiquetas</h3>
+                            <p className="text-[10px] md:text-xs text-gray-400 leading-tight">Imprimir</p>
                         </div>
                     </Link>
 
-                    {/* 7. REPORTES (Arreglado: Link y Color Correctos) */}
-                    <Link to="/reportes" className="bg-white p-6 rounded-3xl border border-gray-100 shadow-sm hover:shadow-md hover:border-indigo-200 transition-all group flex flex-col justify-between relative overflow-hidden">
+                    <Link to="/reportes" className="bg-white p-4 md:p-6 rounded-3xl border border-gray-100 shadow-sm active:scale-95 transition-all flex flex-col justify-between relative overflow-hidden h-32 md:h-auto">
                         <div className="relative z-10">
-                            <div className="bg-indigo-50 w-12 h-12 rounded-xl flex items-center justify-center text-indigo-600 mb-4 group-hover:scale-110 transition-transform">
-                                <BarChart3 size={24} />
+                            <div className="bg-indigo-50 w-10 h-10 md:w-12 md:h-12 rounded-xl flex items-center justify-center text-indigo-600 mb-2">
+                                <BarChart3 size={20} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-gray-800 text-lg">Reportes</h3>
-                                <p className="text-xs text-gray-400 mt-1">Ver estadísticas</p>
+                                <h3 className="font-bold text-gray-800 text-sm md:text-lg">Reportes</h3>
+                                <p className="text-[10px] md:text-xs text-gray-400 leading-tight">Estadísticas</p>
                             </div>
                         </div>
-                        {/* Decoración sutil */}
-                        <TrendingUp className="text-indigo-50 absolute -right-2 top-10 scale-150 opacity-50 group-hover:scale-125 transition-transform" size={80} />
+                        <TrendingUp className="text-indigo-50 absolute -right-2 top-8 scale-150 opacity-50" size={60} />
                     </Link>
 
                 </div>
             </div>
 
-            {/* 3. ALERTAS Y STOCK (Sin cambios, solo ajuste de grid responsivo) */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* 3. ALERTAS Y RESUMEN (Stack vertical en móvil) */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-6">
 
-                {/* Alertas */}
-                <div className="lg:col-span-2 bg-white rounded-3xl border border-gray-100 p-6">
+                {/* ALERTAS */}
+                <div className="lg:col-span-2 bg-white rounded-3xl border border-gray-100 p-5 md:p-6">
                     <div className="flex justify-between items-center mb-4">
-                        <h3 className="font-bold text-gray-800 flex items-center">
-                            <AlertCircle size={20} className="text-orange-500 mr-2" />
+                        <h3 className="font-bold text-gray-800 flex items-center text-sm md:text-base">
+                            <AlertCircle size={18} className="text-orange-500 mr-2" />
                             Atención Requerida
                         </h3>
                         {data.low_stock.length > 0 && (
-                            <span className="bg-orange-100 text-orange-700 px-3 py-1 rounded-full text-xs font-bold animate-pulse">
+                            <span className="bg-orange-100 text-orange-700 px-2 py-1 rounded-full text-[10px] md:text-xs font-bold animate-pulse">
                                 {data.low_stock.length} bajo stock
                             </span>
                         )}
                     </div>
 
                     {data.low_stock.length === 0 ? (
-                        <div className="text-center py-8 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
-                            <p className="text-gray-400 font-medium">Todo en orden. Stock saludable. ✅</p>
+                        <div className="text-center py-6 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                            <p className="text-gray-400 font-medium text-xs md:text-sm">Todo en orden. Stock saludable. ✅</p>
                         </div>
                     ) : (
                         <div className="space-y-3">
                             {data.low_stock.slice(0, 3).map((item, idx) => (
                                 <div key={idx} className="flex justify-between items-center p-3 bg-orange-50/50 rounded-xl border border-orange-100">
                                     <div className="flex items-center">
-                                        <div className="w-10 h-10 rounded-lg bg-white flex items-center justify-center border border-orange-100 text-orange-600 font-bold text-xs mr-3 shadow-sm">
-                                            {item.stock}u
+                                        <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg bg-white flex items-center justify-center border border-orange-100 text-orange-600 font-bold text-xs mr-3 shadow-sm shrink-0">
+                                            {item.stock}
                                         </div>
-                                        <div>
-                                            <p className="font-bold text-gray-800 text-sm">{item.nombre}</p>
-                                            <p className="text-xs text-gray-500">Talle: {item.talle}</p>
+                                        <div className="truncate max-w-[120px] md:max-w-none">
+                                            <p className="font-bold text-gray-800 text-xs md:text-sm truncate">{item.nombre}</p>
+                                            <p className="text-[10px] text-gray-500">T: {item.talle}</p>
                                         </div>
                                     </div>
-                                    <Link to="/compras" className="text-xs font-bold text-blue-600 hover:underline">Reponer</Link>
+                                    <Link to="/compras" className="text-xs font-bold text-blue-600 hover:underline shrink-0 ml-2">Reponer</Link>
                                 </div>
                             ))}
                         </div>
                     )}
                 </div>
 
-                {/* Resumen Diario */}
-                <div className="bg-slate-900 text-white rounded-3xl p-6 relative overflow-hidden flex flex-col justify-center">
-                    <h3 className="font-bold text-lg mb-6 relative z-10">Resumen Rápido</h3>
+                {/* RESUMEN RÁPIDO */}
+                <div className="bg-slate-900 text-white rounded-3xl p-5 md:p-6 relative overflow-hidden flex flex-col justify-center">
+                    <h3 className="font-bold text-base md:text-lg mb-6 relative z-10">Resumen Rápido</h3>
 
                     <div className="space-y-6 relative z-10">
                         <div className="flex justify-between items-center border-b border-white/10 pb-4">
@@ -249,12 +234,11 @@ const DashboardPage = () => {
                         </div>
 
                         <div className="pt-2">
-                            <Link to="/caja-control" className="w-full bg-white text-slate-900 py-3 rounded-xl font-bold flex justify-center items-center hover:bg-gray-200 transition-colors shadow-lg">
+                            <Link to="/caja-control" className="w-full bg-white text-slate-900 py-3 rounded-xl font-bold flex justify-center items-center hover:bg-gray-200 active:scale-95 transition-all shadow-lg text-sm md:text-base">
                                 Ir al Arqueo <ArrowRight size={16} className="ml-2" />
                             </Link>
                         </div>
                     </div>
-
                     <TrendingUp className="absolute -right-4 top-10 text-white/5" size={150} />
                 </div>
             </div>
