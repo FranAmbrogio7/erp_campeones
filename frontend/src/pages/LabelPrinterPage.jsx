@@ -1,8 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { useLabelQueue } from '../context/LabelContext';
-import { Printer, Trash2, RotateCcw, FileText, Search, Plus, Layers } from 'lucide-react';
+import {
+    Printer, Trash2, RotateCcw, FileText, Search, Plus, Layers,
+    X, Maximize2, ImageOff, Shirt
+} from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import { api } from '../context/AuthContext';
 
@@ -18,6 +21,12 @@ const LabelPrinterPage = () => {
     const [searchResults, setSearchResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
 
+    // Estado para Zoom de Imagen
+    const [zoomImage, setZoomImage] = useState(null);
+
+    // Ref para detectar clic fuera del buscador
+    const searchRef = useRef(null);
+
     // --- EFECTO DE BÚSQUEDA (Debounce) ---
     useEffect(() => {
         const delaySearch = setTimeout(async () => {
@@ -28,7 +37,6 @@ const LabelPrinterPage = () => {
 
             setIsSearching(true);
             try {
-                // Usamos el mismo endpoint de búsqueda de productos
                 const res = await api.get(`/products?search=${searchTerm}&limit=5`);
                 setSearchResults(res.data.products);
             } catch (e) {
@@ -36,29 +44,44 @@ const LabelPrinterPage = () => {
             } finally {
                 setIsSearching(false);
             }
-        }, 500); // Espera 500ms antes de buscar
+        }, 500);
 
         return () => clearTimeout(delaySearch);
     }, [searchTerm]);
 
-    // --- ACCIONES DE AGREGADO ---
+    // --- EFECTO: CERRAR AL CLICKEAR AFUERA ---
+    useEffect(() => {
+        function handleClickOutside(event) {
+            if (searchRef.current && !searchRef.current.contains(event.target)) {
+                setSearchResults([]); // Cierra resultados pero mantiene el texto
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
 
-    // 1. Agregar un solo talle
-    const handleAddSingle = (product, variant) => {
-        addToQueue(product, variant);
-        // Opcional: No limpiamos el buscador para permitir agregar más talles del mismo producto rápidamente
+    // --- MANEJO DE TECLADO (ESCAPE) ---
+    const handleKeyDown = (e) => {
+        if (e.key === 'Escape') {
+            setSearchResults([]); // Cerrar lista
+            e.currentTarget.blur(); // Quitar foco opcionalmente
+        }
     };
 
-    // 2. Agregar todos los talles (Curva completa)
+    // --- ACCIONES DE AGREGADO ---
+    const handleAddSingle = (product, variant) => {
+        addToQueue(product, variant);
+        // No cerramos resultados para permitir carga rápida de varios talles
+    };
+
     const handleAddFullCurve = (product) => {
         let count = 0;
         product.variantes.forEach(variant => {
-            // addToQueue ya maneja la validación de duplicados internamente o en el contexto
             addToQueue(product, variant);
             count++;
         });
         toast.success(`Agregados ${count} talles de ${product.nombre}`);
-        setSearchTerm(''); // Limpiamos al agregar todo
+        setSearchTerm('');
         setSearchResults([]);
     };
 
@@ -71,9 +94,7 @@ const LabelPrinterPage = () => {
         try {
             const response = await api.post('/products/labels/batch-pdf', {
                 items: printQueue
-            }, {
-                responseType: 'blob'
-            });
+            }, { responseType: 'blob' });
 
             const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
             const printWindow = window.open(url);
@@ -83,7 +104,6 @@ const LabelPrinterPage = () => {
             if (window.confirm("¿Se imprimieron correctamente? Limpiar cola.")) {
                 clearQueue();
             }
-
         } catch (e) {
             console.error(e);
             toast.error("Error generando etiquetas", { id: toastId });
@@ -93,9 +113,28 @@ const LabelPrinterPage = () => {
     };
 
     return (
-        <div className="p-6 max-w-5xl mx-auto space-y-6">
+        <div className="p-6 max-w-5xl mx-auto space-y-6 animate-fade-in">
             <Toaster position="top-center" />
 
+            {/* MODAL ZOOM IMAGEN */}
+            {zoomImage && (
+                <div
+                    className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm cursor-zoom-out animate-fade-in"
+                    onClick={() => setZoomImage(null)}
+                >
+                    <img
+                        src={zoomImage}
+                        className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain border-2 border-white/20"
+                        alt="Zoom Producto"
+                        onClick={(e) => e.stopPropagation()}
+                    />
+                    <button className="absolute top-4 right-4 text-white/50 hover:text-white bg-black/50 p-2 rounded-full transition-all hover:bg-red-600">
+                        <X size={32} />
+                    </button>
+                </div>
+            )}
+
+            {/* HEADER */}
             <div className="flex justify-between items-center border-b pb-4">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800 flex items-center">
@@ -110,15 +149,16 @@ const LabelPrinterPage = () => {
                 </div>
             </div>
 
-            {/* --- NUEVO SECCIÓN: BUSCADOR INTEGRADO --- */}
-            <div className="bg-white p-4 rounded-xl shadow-sm border border-blue-100 relative z-50">
+            {/* --- SECCIÓN BUSCADOR --- */}
+            <div className="bg-white p-5 rounded-xl shadow-sm border border-blue-100 relative z-50" ref={searchRef}>
                 <label className="block text-xs font-bold text-blue-600 uppercase mb-2">Buscar producto para etiquetar</label>
                 <div className="relative">
                     <input
-                        placeholder="Escribe el nombre (Ej: Boca)..."
-                        className="w-full pl-10 p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none shadow-sm"
+                        placeholder="Escribe el nombre, código o características..."
+                        className="w-full pl-10 p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none shadow-sm transition-all"
                         value={searchTerm}
                         onChange={e => setSearchTerm(e.target.value)}
+                        onKeyDown={handleKeyDown} // <--- ESCAPE KEY
                         autoFocus
                     />
                     <Search className="absolute left-3 top-3 text-gray-400" size={18} />
@@ -130,38 +170,70 @@ const LabelPrinterPage = () => {
                     )}
                 </div>
 
-                {/* RESULTADOS DE BÚSQUEDA FLOTANTES */}
+                {/* RESULTADOS DE BÚSQUEDA */}
                 {searchResults.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 bg-white shadow-xl border border-gray-200 rounded-b-xl mt-1 overflow-hidden">
+                    <div className="absolute top-full left-0 right-0 bg-white shadow-xl border border-gray-200 rounded-b-xl mt-1 overflow-hidden max-h-[400px] overflow-y-auto">
                         {searchResults.map(prod => (
-                            <div key={prod.id} className="p-3 hover:bg-blue-50 border-b last:border-0 group transition-colors">
-                                <div className="flex justify-between items-center mb-2">
-                                    {/* Opción 1: Agregar Todo */}
-                                    <div
-                                        className="flex items-center cursor-pointer"
-                                        onClick={() => handleAddFullCurve(prod)}
-                                    >
-                                        <p className="font-bold text-sm text-gray-800 group-hover:text-blue-600">{prod.nombre}</p>
-                                        <span className="ml-3 text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded flex items-center hover:bg-blue-200 transition-colors">
-                                            <Layers size={10} className="mr-1" /> Agregar Todos
-                                        </span>
-                                    </div>
-                                    <span className="text-xs text-gray-400">$ {prod.precio.toLocaleString()}</span>
+                            <div key={prod.id} className="p-3 hover:bg-blue-50 border-b last:border-0 group transition-colors flex gap-4 items-start">
+
+                                {/* 1. IMAGEN CON ZOOM */}
+                                <div
+                                    className="w-12 h-12 bg-gray-100 rounded-lg shrink-0 border overflow-hidden relative cursor-zoom-in group/img"
+                                    onClick={() => prod.imagen && setZoomImage(`${api.defaults.baseURL}/static/uploads/${prod.imagen}`)}
+                                >
+                                    {prod.imagen ? (
+                                        <>
+                                            <img
+                                                src={`${api.defaults.baseURL}/static/uploads/${prod.imagen}`}
+                                                className="w-full h-full object-cover"
+                                                alt={prod.nombre}
+                                            />
+                                            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 flex items-center justify-center transition-opacity">
+                                                <Maximize2 size={16} className="text-white" />
+                                            </div>
+                                        </>
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-gray-300">
+                                            <Shirt size={20} />
+                                        </div>
+                                    )}
                                 </div>
 
-                                {/* Opción 2: Agregar Variante Individual */}
-                                <div className="flex flex-wrap gap-2">
-                                    {prod.variantes.map(v => (
-                                        <button
-                                            key={v.id_variante}
-                                            onClick={() => handleAddSingle(prod, v)}
-                                            className="text-xs flex items-center bg-white border border-gray-200 text-gray-600 px-2 py-1 rounded hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm"
-                                            title={`Agregar etiqueta Talle ${v.talle}`}
+                                {/* 2. DATOS Y ACCIONES */}
+                                <div className="flex-1">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div
+                                            className="cursor-pointer"
+                                            onClick={() => handleAddFullCurve(prod)}
                                         >
-                                            <span className="font-bold mr-1">{v.talle}</span>
-                                            <Plus size={10} />
-                                        </button>
-                                    ))}
+                                            <p className="font-bold text-sm text-gray-800 group-hover:text-blue-600 transition-colors leading-tight">
+                                                {prod.nombre}
+                                            </p>
+                                            <div className="flex items-center mt-1">
+                                                <span className="text-xs font-mono text-gray-400 mr-2">{prod.sku_base || 'S/SKU'}</span>
+                                                <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded flex items-center hover:bg-blue-200 transition-colors">
+                                                    <Layers size={10} className="mr-1" /> Agregar Todos
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded">
+                                            $ {prod.precio.toLocaleString()}
+                                        </span>
+                                    </div>
+
+                                    <div className="flex flex-wrap gap-2">
+                                        {prod.variantes.map(v => (
+                                            <button
+                                                key={v.id_variante}
+                                                onClick={() => handleAddSingle(prod, v)}
+                                                className="text-xs flex items-center bg-white border border-gray-200 text-gray-600 px-2 py-1 rounded hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm active:scale-95"
+                                                title={`Agregar etiqueta Talle ${v.talle}`}
+                                            >
+                                                <span className="font-bold mr-1">{v.talle}</span>
+                                                <Plus size={10} />
+                                            </button>
+                                        ))}
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -169,8 +241,9 @@ const LabelPrinterPage = () => {
                 )}
             </div>
 
-            {/* --- TABLA DE COLA DE IMPRESIÓN --- */}
+            {/* --- TABLA DE COLA --- */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative z-0">
+                {/* ... (Esta parte se mantiene igual que antes, funcionalmente correcta) ... */}
                 <table className="w-full text-sm text-left">
                     <thead className="bg-gray-100 text-gray-500 uppercase text-xs">
                         <tr>
