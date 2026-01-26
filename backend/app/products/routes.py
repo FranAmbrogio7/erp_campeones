@@ -19,6 +19,8 @@ from reportlab.graphics import renderPDF
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
 from reportlab.lib.pagesizes import A4
+from reportlab.platypus import Paragraph
+from reportlab.lib.styles import ParagraphStyle
 from app.services.tiendanube_service import tn_service # <--- SERVICIO IMPORTADO
 
 
@@ -604,6 +606,7 @@ def generate_batch_labels_pdf():
     items = data.get('items', [])
     if not items: return jsonify({"msg": "Lista vacía"}), 400
 
+    # Tamaño de etiqueta: 50mm x 25mm
     LABEL_WIDTH = 50 * mm
     LABEL_HEIGHT = 25 * mm
     
@@ -613,53 +616,82 @@ def generate_batch_labels_pdf():
     for item in items:
         try:
             cantidad = int(item.get('cantidad', 1))
-            nombre = item.get('nombre', 'Producto')[:25] # Truncamos
+            
+            # NOTA: Quitamos el [:25] para permitir que el Paragraph maneje
+            # nombres largos en múltiples líneas.
+            nombre = item.get('nombre', 'Producto') 
+            
             talle = item.get('talle', '-')
             sku = item.get('sku', '0000')
 
-            # Generamos el QR en memoria para este item
-            qr = qrcode.QRCode(box_size=10, border=0) # Sin borde para aprovechar espacio
+            # --- 1. Generamos el QR en memoria ---
+            qr = qrcode.QRCode(box_size=10, border=0) # Sin borde para maximizar espacio
             qr.add_data(sku)
             qr.make(fit=True)
             img_qr = qr.make_image(fill_color="black", back_color="white")
             
-            # Convertimos a formato que ReportLab entienda
+            # Convertimos a formato compatible con ReportLab
             img_buffer = io.BytesIO()
             img_qr.save(img_buffer, format='PNG')
             img_buffer.seek(0)
             reportlab_img = ImageReader(img_buffer)
 
+            # --- 2. Dibujamos la etiqueta 'cantidad' veces ---
             for _ in range(cantidad):
-                # --- DISEÑO HÍBRIDO (QR Izq - Texto Der) ---
                 
-                # 1. DIBUJAR QR (Cuadrado de 22x22mm a la izquierda)
-                # X=1.5mm, Y=1.5mm (Centrado verticalmente)
+                # A. DIBUJAR QR (Izquierda)
+                # Posición (x, y) y tamaño (w, h)
                 c.drawImage(reportlab_img, 1.5*mm, 1.5*mm, width=22*mm, height=22*mm)
 
-                # 2. TEXTOS (Columna Derecha)
-                # Nombre (Arriba derecha)
-                c.setFont("Helvetica-Bold", 6)
-                # drawString ajustado para empezar después del QR (X=25mm)
-                c.drawString(25*mm, LABEL_HEIGHT - 4*mm, nombre[:20]) 
-
-                # SKU (Medio derecha - Grande)
-                c.setFont("Helvetica-Bold", 8)
-                c.drawString(25*mm, LABEL_HEIGHT - 9*mm, sku[:18]) # Si es muy largo se corta visualmente
+                # B. NOMBRE DEL PRODUCTO (Derecha - Multilínea)
+                # Definimos el estilo del texto
+                style = ParagraphStyle(
+                    'LabelName',
+                    fontName='Helvetica-Bold',
+                    fontSize=6,      # Letra pequeña para que entre
+                    leading=7,       # Interlineado
+                    alignment=0,     # 0 = Izquierda
+                    wordWrap='CJK'   # Ayuda a romper palabras largas si es necesario
+                )
                 
-                # Talle (Abajo derecha)
+                # Creamos el objeto Párrafo
+                p = Paragraph(nombre, style)
+                
+                # wrapOn calcula cuánto espacio ocupa el texto realmente (ancho, alto)
+                # Le damos un ancho máximo de 24mm (espacio derecho disponible)
+                w, h = p.wrapOn(c, 24*mm, 15*mm) 
+                
+                # Dibujamos el texto.
+                # Lógica Y: Queremos que el tope esté a 23mm. 
+                # Como drawOn dibuja desde abajo del párrafo, restamos la altura (h).
+                p.drawOn(c, 25*mm, 23*mm - h)
+
+                # C. SKU (Abajo del nombre o posición fija segura)
+                # Lo ponemos fijo abajo a la derecha, sobre el talle
+                c.setFont("Helvetica-Bold", 8)
+                # Cortamos visualmente el SKU si es larguísimo para que no tape el QR
+                c.drawString(25*mm, 8*mm, sku[:18])
+
+                # D. TALLE (Esquina inferior derecha)
                 c.setFont("Helvetica-Bold", 10)
                 c.drawString(25*mm, 3*mm, f"T: {talle}")
 
+                # Finalizamos esta etiqueta (página)
                 c.showPage()
                 
         except Exception as e:
-            print(f"Error PDF QR: {e}")
+            print(f"Error generando etiqueta PDF para {item.get('sku')}: {e}")
             continue
 
     c.save()
     buffer.seek(0)
-    return send_file(buffer, mimetype='application/pdf', as_attachment=True, download_name='etiquetas_qr.pdf')
     
+    return send_file(
+        buffer, 
+        mimetype='application/pdf', 
+        as_attachment=True, 
+        download_name='etiquetas_qr.pdf'
+    )
 # ==========================================
 # TIENDA NUBE: TEST Y PUBLICACIÓN
 # ==========================================
