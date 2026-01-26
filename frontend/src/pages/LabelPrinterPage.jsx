@@ -11,6 +11,7 @@ import { api } from '../context/AuthContext';
 
 const LabelPrinterPage = () => {
     const { token } = useAuth();
+    // Importante: printQueue y updateQuantity son necesarios para la nueva lógica
     const { printQueue, addToQueue, updateQuantity, removeFromQueue, clearQueue } = useLabelQueue();
 
     // Estados para Generación de PDF
@@ -37,7 +38,7 @@ const LabelPrinterPage = () => {
 
             setIsSearching(true);
             try {
-                const res = await api.get(`/products?search=${searchTerm}&limit=5`);
+                const res = await api.get(`/products?search=${searchTerm}&limit=50`);
                 setSearchResults(res.data.products);
             } catch (e) {
                 console.error(e);
@@ -68,19 +69,49 @@ const LabelPrinterPage = () => {
         }
     };
 
-    // --- ACCIONES DE AGREGADO ---
+    // --- ACCIONES DE AGREGADO INTELIGENTE ---
+
+    // 1. Agregar Individual (Sumativo)
     const handleAddSingle = (product, variant) => {
-        addToQueue(product, variant);
-        // No cerramos resultados para permitir carga rápida de varios talles
+        // Buscamos si ya existe en la cola visual actual
+        const existingItem = printQueue.find(item => item.sku === variant.sku);
+
+        if (existingItem) {
+            // Si existe, le sumamos 1 a su cantidad actual
+            const newQty = existingItem.cantidad + 1;
+            updateQuantity(variant.sku, newQty);
+
+            // Feedback visual rápido
+            toast.success(`+1 ${variant.talle} (Total: ${newQty})`, {
+                id: `add-${variant.sku}`, // Evita spam de toasts
+                duration: 1000,
+                icon: '➕'
+            });
+        } else {
+            // Si no existe, lo agregamos (empieza en 1)
+            addToQueue(product, variant);
+            toast.success(`Agregado: ${variant.talle}`, { duration: 1000 });
+        }
+        // No cerramos resultados para permitir clicks rápidos repetidos
     };
 
+    // 2. Agregar Curva Completa (Sumativo)
     const handleAddFullCurve = (product) => {
-        let count = 0;
+        let addedCount = 0;
+
         product.variantes.forEach(variant => {
-            addToQueue(product, variant);
-            count++;
+            // Misma lógica: verificar si existe para sumar
+            const existingItem = printQueue.find(item => item.sku === variant.sku);
+
+            if (existingItem) {
+                updateQuantity(variant.sku, existingItem.cantidad + 1);
+            } else {
+                addToQueue(product, variant);
+            }
+            addedCount++;
         });
-        toast.success(`Agregados ${count} talles de ${product.nombre}`);
+
+        toast.success(`Se agregaron/sumaron ${addedCount} variantes de ${product.nombre}`);
         setSearchTerm('');
         setSearchResults([]);
     };
@@ -221,12 +252,12 @@ const LabelPrinterPage = () => {
                                         </span>
                                     </div>
 
-                                    <div className="flex flex-wrap gap-2">
+                                    <div className="flex flex-wrap gap-2 select-none">
                                         {prod.variantes.map(v => (
                                             <button
                                                 key={v.id_variante}
                                                 onClick={() => handleAddSingle(prod, v)}
-                                                className="text-xs flex items-center bg-white border border-gray-200 text-gray-600 px-2 py-1 rounded hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm active:scale-95"
+                                                className="text-xs flex items-center bg-white border border-gray-200 text-gray-600 px-2 py-1 rounded hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm active:scale-95 active:bg-blue-700"
                                                 title={`Agregar etiqueta Talle ${v.talle}`}
                                             >
                                                 <span className="font-bold mr-1">{v.talle}</span>
@@ -243,7 +274,6 @@ const LabelPrinterPage = () => {
 
             {/* --- TABLA DE COLA --- */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative z-0">
-                {/* ... (Esta parte se mantiene igual que antes, funcionalmente correcta) ... */}
                 <table className="w-full text-sm text-left">
                     <thead className="bg-gray-100 text-gray-500 uppercase text-xs">
                         <tr>
@@ -268,12 +298,22 @@ const LabelPrinterPage = () => {
                                     <td className="p-4 font-mono text-xs text-gray-600">{item.sku}</td>
                                     <td className="p-4 text-center">
                                         <div className="flex items-center justify-center">
+                                            {/* Botones - y + para facilitar ajuste fino */}
+                                            <button
+                                                onClick={() => updateQuantity(item.sku, item.cantidad - 1)}
+                                                className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-l font-bold text-gray-600"
+                                                disabled={item.cantidad <= 1}
+                                            >-</button>
                                             <input
                                                 type="number" min="1"
-                                                className="w-16 p-2 border border-gray-300 rounded-lg text-center font-bold text-lg focus:border-blue-500 outline-none"
+                                                className="w-14 p-1 border-y border-gray-200 text-center font-bold text-lg focus:border-blue-500 outline-none"
                                                 value={item.cantidad}
-                                                onChange={(e) => updateQuantity(item.sku, e.target.value)}
+                                                onChange={(e) => updateQuantity(item.sku, parseInt(e.target.value) || 1)}
                                             />
+                                            <button
+                                                onClick={() => updateQuantity(item.sku, item.cantidad + 1)}
+                                                className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-r font-bold text-gray-600"
+                                            >+</button>
                                         </div>
                                     </td>
                                     <td className="p-4 text-right">
