@@ -342,16 +342,15 @@ def update_product(id):
     
     try:
         # A. ACTUALIZACIÓN LOCAL -------------------------
-        
-        # 1. Datos de texto (FormData)
+        # (Esta parte queda igual que tu código original)
         if 'nombre' in request.form: prod.nombre = request.form['nombre']
-        if 'precio' in request.form: prod.precio = float(request.form['precio']) # Asegurar float
+        if 'precio' in request.form: prod.precio = float(request.form['precio'])
         if 'categoria_id' in request.form: 
             prod.id_categoria = request.form['categoria_id'] or None
         if 'categoria_especifica_id' in request.form:
             prod.id_categoria_especifica = request.form['categoria_especifica_id'] or None
 
-        # 2. Imagen
+        # Imagen
         if 'imagen' in request.files:
             file = request.files['imagen']
             if file.filename != '':
@@ -364,37 +363,57 @@ def update_product(id):
                 file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], filename))
                 prod.imagen = filename
 
+        # Guardamos cambios locales primero
         db.session.commit()
 
         # B. SINCRONIZACIÓN CON TIENDA NUBE ------------
-        # Si el producto está vinculado, enviamos los cambios.
         if prod.tiendanube_id:
             print(f"🔄 Sincronizando '{prod.nombre}' con Tienda Nube...")
 
-            # 1. Datos básicos
+            # 1. Datos básicos (Nombre, Descripción)
             tn_service.update_product_data(
                 tn_product_id=prod.tiendanube_id,
                 nombre=prod.nombre,
                 descripcion=prod.descripcion
             )
             
-            # 2. Stock y PRECIO por variante
+            # 2. Actualizar variantes YA VINCULADAS (Precio y Stock)
+            # Nota: Asegúrate de que tu modelo use 'tiendanube_id' o 'tiendanube_variant_id' consistentemente.
+            # En el servicio usamos 'tiendanube_id' para la variante.
             for var in prod.variantes:
-                if var.tiendanube_variant_id:
-                    # Sync Stock (si se hubiera tocado por otro lado)
+                # Usamos getattr para soportar ambos nombres por si acaso
+                tn_var_id = getattr(var, 'tiendanube_id', None) or getattr(var, 'tiendanube_variant_id', None)
+                
+                if tn_var_id:
+                    # Sync Stock
                     if var.inventario:
                         tn_service.update_variant_stock(
                             tn_product_id=prod.tiendanube_id,
-                            tn_variant_id=var.tiendanube_variant_id,
+                            tn_variant_id=tn_var_id,
                             new_stock=var.inventario.stock_actual
                         )
                     
-                    # Sync PRECIO (Aquí aplica el aumento web definido en el servicio)
+                    # Sync PRECIO
                     tn_service.update_variant_price(
                         tn_product_id=prod.tiendanube_id,
-                        tn_variant_id=var.tiendanube_variant_id,
+                        tn_variant_id=tn_var_id,
                         precio_local=prod.precio
                     )
+
+            # ============================================================
+            # 3. NUEVO: SUBIR VARIANTES FALTANTES (La magia nueva ✨)
+            # ============================================================
+            try:
+                # Esta función recorre las variantes, encuentra las que no tienen ID y las crea
+                nuevas_creadas = tn_service.sync_missing_variants(prod)
+                
+                if nuevas_creadas:
+                    db.session.commit() # Guardamos los IDs nuevos que nos devolvió Tienda Nube
+                    print("💾 Nuevas variantes vinculadas correctamente.")
+            
+            except Exception as e_sync:
+                print(f"⚠️ Error al crear variantes nuevas en TN: {e_sync}")
+            # ============================================================
         
         return jsonify({"msg": "Producto actualizado y sincronizado"}), 200
 
