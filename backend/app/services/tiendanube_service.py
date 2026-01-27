@@ -240,9 +240,7 @@ class TiendaNubeService:
     def sync_missing_variants(self, local_prod):
         """
         Recorre las variantes del producto local.
-        Si alguna NO tiene tiendanube_id, la crea en la nube.
-        
-        RETORNA: True si hubo cambios (para que el controlador haga db.session.commit()), False si no.
+        Si alguna NO tiene tiendanube_variant_id, la crea en la nube.
         """
         # Si el producto padre no está en la nube, no podemos agregarle hijos.
         if not local_prod.tiendanube_id:
@@ -254,17 +252,17 @@ class TiendaNubeService:
         print(f"🔄 Verificando variantes nuevas para: {local_prod.nombre}...")
 
         for var in local_prod.variantes:
-            # Si la variante NO tiene ID de nube, significa que es nueva en el ERP
-            if not var.tiendanube_id:
+            # --- CORRECCIÓN AQUÍ (Antes decía var.tiendanube_id) ---
+            if not var.tiendanube_variant_id:
                 print(f"   ✨ Variante nueva detectada en ERP (SKU: {var.codigo_sku}). Creando en TN...")
                 
                 # Llamamos a la API
                 resp = self.create_variant_in_cloud(local_prod.tiendanube_id, var)
                 
                 if resp['success']:
-                    # ÉXITO: Asignamos el nuevo ID al objeto de base de datos (En memoria)
-                    # NOTA: El ID viene como entero, lo convertimos a string si tu modelo lo usa así
-                    var.tiendanube_id = str(resp['tn_data']['id'])
+                    # ÉXITO: Asignamos el nuevo ID al objeto
+                    # --- CORRECCIÓN AQUÍ TAMBIÉN ---
+                    var.tiendanube_variant_id = str(resp['tn_data']['id'])
                     hubo_cambios = True
                 else:
                     print(f"   ❌ Falló la creación de la variante {var.codigo_sku}")
