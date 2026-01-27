@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
+
 const CashHistoryPage = () => {
     const { token } = useAuth();
     const [loading, setLoading] = useState(true);
@@ -172,8 +173,8 @@ const CashHistoryPage = () => {
                                                         {/* DIFERENCIA (Visualmente clara) */}
                                                         <td className="p-4 text-center">
                                                             <div className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-bold border ${isPerfect ? 'bg-green-50 text-green-700 border-green-100' :
-                                                                    isSurplus ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                                                                        'bg-red-50 text-red-700 border-red-100'
+                                                                isSurplus ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                                                                    'bg-red-50 text-red-700 border-red-100'
                                                                 }`}>
                                                                 {isPerfect && <CheckCircle2 size={12} className="mr-1.5" />}
                                                                 {!isPerfect && <AlertCircle size={12} className="mr-1.5" />}
