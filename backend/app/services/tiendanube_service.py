@@ -188,5 +188,88 @@ class TiendaNubeService:
             print(f"🔥 Error conexión API: {e}")
             return None
 
+    
+    # ==========================================
+    # NUEVOS MÉTODOS PARA SINCRONIZAR VARIANTES
+    # ==========================================
+
+    def create_variant_in_cloud(self, tn_product_id, local_variant):
+        """
+        Crea una variante específica en un producto existente de Tienda Nube.
+        Se usa cuando agregas un talle nuevo en el ERP y quieres que aparezca en la web.
+        """
+        try:
+            if not self.access_token or not self.api_url:
+                return {"success": False, "error": "No credenciales"}
+
+            # 1. Preparar datos (Precio con aumento web y Stock)
+            precio_web = self.calcular_precio_web(local_variant.precio)
+            
+            # Manejo seguro del stock (si no tiene inventario, va 0)
+            stock_val = local_variant.inventario.stock_actual if local_variant.inventario else 0
+            
+            # Manejo del nombre del talle (compatible con tu lógica anterior)
+            # Intenta buscar .talla, sino .talle, sino pone "Único"
+            nombre_talle = getattr(local_variant, 'talla', None) or getattr(local_variant, 'talle', "Único")
+
+            # 2. Payload para Tienda Nube
+            payload = {
+                "price": precio_web,
+                "stock": int(stock_val),
+                "sku": local_variant.codigo_sku or "",
+                # IMPORTANTE: TN necesita el valor de la propiedad (ej: "XL") dentro de "values"
+                "values": [{"es": nombre_talle}] 
+            }
+
+            # 3. Request POST
+            url = f"{self.api_url}/products/{tn_product_id}/variants"
+            response = requests.post(url, json=payload, headers=self._get_headers())
+
+            if response.status_code == 201:
+                print(f"✅ TN Sync: Variante '{nombre_talle}' creada exitosamente.")
+                return {"success": True, "tn_data": response.json()}
+            else:
+                error_msg = f"API Error {response.status_code}: {response.text}"
+                print(f"❌ {error_msg}")
+                return {"success": False, "error": error_msg}
+
+        except Exception as e:
+            print(f"🔥 Error excepción create_variant: {e}")
+            return {"success": False, "error": str(e)}
+
+    def sync_missing_variants(self, local_prod):
+        """
+        Recorre las variantes del producto local.
+        Si alguna NO tiene tiendanube_id, la crea en la nube.
+        
+        RETORNA: True si hubo cambios (para que el controlador haga db.session.commit()), False si no.
+        """
+        # Si el producto padre no está en la nube, no podemos agregarle hijos.
+        if not local_prod.tiendanube_id:
+            print("⚠️ El producto padre no está vinculado a TN. Primero vincúlalo completo.")
+            return False 
+
+        hubo_cambios = False
+        
+        print(f"🔄 Verificando variantes nuevas para: {local_prod.nombre}...")
+
+        for var in local_prod.variantes:
+            # Si la variante NO tiene ID de nube, significa que es nueva en el ERP
+            if not var.tiendanube_id:
+                print(f"   ✨ Variante nueva detectada en ERP (SKU: {var.codigo_sku}). Creando en TN...")
+                
+                # Llamamos a la API
+                resp = self.create_variant_in_cloud(local_prod.tiendanube_id, var)
+                
+                if resp['success']:
+                    # ÉXITO: Asignamos el nuevo ID al objeto de base de datos (En memoria)
+                    # NOTA: El ID viene como entero, lo convertimos a string si tu modelo lo usa así
+                    var.tiendanube_id = str(resp['tn_data']['id'])
+                    hubo_cambios = True
+                else:
+                    print(f"   ❌ Falló la creación de la variante {var.codigo_sku}")
+        
+        return hubo_cambios
+
 # Instancia global para importar en otros lados
 tn_service = TiendaNubeService()
