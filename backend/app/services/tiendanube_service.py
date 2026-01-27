@@ -192,7 +192,6 @@ class TiendaNubeService:
     # ==========================================
     # NUEVOS MÉTODOS PARA SINCRONIZAR VARIANTES
     # ==========================================
-
     def create_variant_in_cloud(self, tn_product_id, local_variant):
         """
         Crea una variante específica en un producto existente de Tienda Nube.
@@ -202,14 +201,20 @@ class TiendaNubeService:
             if not self.access_token or not self.api_url:
                 return {"success": False, "error": "No credenciales"}
 
-            # 1. Preparar datos (Precio con aumento web y Stock)
-            precio_web = self.calcular_precio_web(local_variant.precio)
+            # --- CORRECCIÓN AQUÍ ---
+            # El precio vive en el producto padre, no en la variante.
+            # Accedemos al padre a través de la relación .producto
+            prod_padre = local_variant.producto
+            precio_base = prod_padre.precio if prod_padre else 0
+            
+            # Calculamos el precio web con el aumento
+            precio_web = self.calcular_precio_web(precio_base)
+            # -----------------------
             
             # Manejo seguro del stock (si no tiene inventario, va 0)
             stock_val = local_variant.inventario.stock_actual if local_variant.inventario else 0
             
-            # Manejo del nombre del talle (compatible con tu lógica anterior)
-            # Intenta buscar .talla, sino .talle, sino pone "Único"
+            # Manejo del nombre del talle
             nombre_talle = getattr(local_variant, 'talla', None) or getattr(local_variant, 'talle', "Único")
 
             # 2. Payload para Tienda Nube
@@ -217,7 +222,6 @@ class TiendaNubeService:
                 "price": precio_web,
                 "stock": int(stock_val),
                 "sku": local_variant.codigo_sku or "",
-                # IMPORTANTE: TN necesita el valor de la propiedad (ej: "XL") dentro de "values"
                 "values": [{"es": nombre_talle}] 
             }
 
@@ -236,7 +240,6 @@ class TiendaNubeService:
         except Exception as e:
             print(f"🔥 Error excepción create_variant: {e}")
             return {"success": False, "error": str(e)}
-
     def sync_missing_variants(self, local_prod):
         """
         Recorre las variantes del producto local.
