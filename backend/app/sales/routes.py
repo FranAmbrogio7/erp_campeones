@@ -758,7 +758,7 @@ def cancelar_reserva(id):
 
 
 
-@bp.route('/presupuestos', methods=['POST'])
+@bp.route('/presupuestos', methods=['GET', 'POST'])
 @jwt_required()
 def create_budget():
     data = request.get_json()
@@ -1170,3 +1170,41 @@ def export_caja_pdf(id):
     buffer.seek(0)
     
     return send_file(buffer, mimetype='application/pdf', as_attachment=False, download_name=f'cierre_{id}.pdf')
+
+
+@bp.route('/presupuestos', methods=['GET'])
+@jwt_required()
+def list_presupuestos():
+    try:
+        # Últimos 50 presupuestos
+        history = Presupuesto.query.order_by(Presupuesto.fecha.desc()).limit(50).all()
+        
+        output = []
+        for p in history:
+            items_formatted = []
+            # Asumiendo que la relación se llama 'detalles' en tu modelo
+            for item in p.detalles: 
+                items_formatted.append({
+                    'sku': item.sku,
+                    'nombre': item.nombre_producto,
+                    'talle': item.talle,
+                    'cantidad': item.cantidad,
+                    'precio': item.precio_unitario,
+                    'subtotal': item.subtotal,
+                    'id_variante': getattr(item, 'id_variante', None) or item.sku # Fallback
+                })
+
+            output.append({
+                'id': p.id,
+                'fecha': p.fecha.isoformat(), # Convierte datetime a string
+                'cliente': p.cliente,
+                'total': p.total,
+                'descuento': getattr(p, 'descuento_porcentaje', 0),
+                'items': items_formatted
+            })
+            
+        return jsonify(output), 200
+        
+    except Exception as e:
+        print(f"Error listando presupuestos: {e}")
+        return jsonify([]), 500
