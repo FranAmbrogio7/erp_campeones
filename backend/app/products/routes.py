@@ -476,9 +476,13 @@ def add_variant():
         prod_id = data.get('id_producto')
         talla = data.get('talla')
         
+        # 1. Validar duplicados locales
         existe = ProductoVariante.query.filter_by(id_producto=prod_id, talla=talla).first()
         if existe: return jsonify({"msg": "Ese talle ya existe"}), 400
 
+        # 2. Crear Variante Local
+        prod_padre = Producto.query.get(prod_id) # Obtenemos el producto padre
+        
         nueva_var = ProductoVariante(
             id_producto=prod_id,
             talla=talla,
@@ -486,19 +490,44 @@ def add_variant():
             color='Standard'
         )
         db.session.add(nueva_var)
-        db.session.flush()
+        db.session.flush() # Generar ID local
 
+        # 3. Crear Inventario Local
         nuevo_inv = Inventario(
             id_variante=nueva_var.id_variante,
             stock_actual=int(data.get('stock', 0))
         )
         db.session.add(nuevo_inv)
         
+        # Guardamos en DB local para asegurar que existe antes de enviarla
         db.session.commit()
         
-        return jsonify({"msg": "Variante agregada"}), 201
+        # -------------------------------------------------------
+        # 4. SINCRONIZACIÓN AUTOMÁTICA (El cambio clave)
+        # -------------------------------------------------------
+        if prod_padre.tiendanube_id:
+            print(f"✨ Creando variante '{talla}' en Tienda Nube...")
+            try:
+                # Llamamos al servicio para crearla en la nube
+                resp = tn_service.create_variant_in_cloud(prod_padre.tiendanube_id, nueva_var)
+                
+                if resp['success']:
+                    # Guardamos el ID que nos devuelve Tienda Nube
+                    # IMPORTANTE: Usamos 'tiendanube_variant_id' según tu esquema
+                    nueva_var.tiendanube_variant_id = str(resp['tn_data']['id'])
+                    db.session.commit()
+                    print(f"✅ Variante vinculada con ID: {nueva_var.tiendanube_variant_id}")
+                else:
+                    print(f"⚠️ Error API Tienda Nube: {resp.get('error')}")
+            except Exception as e_tn:
+                print(f"⚠️ Error excepción Tienda Nube: {e_tn}")
+        # -------------------------------------------------------
+        
+        return jsonify({"msg": "Variante agregada y sincronizada"}), 201
+
     except Exception as e:
         db.session.rollback()
+        print(f"Error add_variant: {e}")
         return jsonify({"msg": str(e)}), 500
 
 # ==========================================
