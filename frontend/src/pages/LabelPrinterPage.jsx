@@ -1,20 +1,16 @@
 import { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, api } from '../context/AuthContext';
 import { useLabelQueue } from '../context/LabelContext';
 import {
     Printer, Trash2, RotateCcw, FileText, Search, Plus, Layers,
-    X, Maximize2, ImageOff, Shirt
+    X, Maximize2, Shirt, Filter
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
-import { api } from '../context/AuthContext';
 
 const LabelPrinterPage = () => {
     const { token } = useAuth();
-    // Importante: printQueue y updateQuantity son necesarios para la nueva lógica
     const { printQueue, addToQueue, updateQuantity, removeFromQueue, clearQueue } = useLabelQueue();
 
-    // Estados para Generación de PDF
     const [isGenerating, setIsGenerating] = useState(false);
 
     // --- ESTADOS DEL BUSCADOR ---
@@ -22,24 +18,69 @@ const LabelPrinterPage = () => {
     const [searchResults, setSearchResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
 
-    // Estado para Zoom de Imagen
-    const [zoomImage, setZoomImage] = useState(null);
+    // --- ESTADOS DE CATEGORÍAS (DOBLE CARGA) ---
+    const [genCats, setGenCats] = useState([]);  // Categorías Generales
+    const [specCats, setSpecCats] = useState([]); // Categorías Específicas (Ligas)
 
-    // Ref para detectar clic fuera del buscador
+    // El valor del filtro será compuesto: "cat-1", "spec-5", etc.
+    const [selectedFilter, setSelectedFilter] = useState('');
+
+    const [zoomImage, setZoomImage] = useState(null);
     const searchRef = useRef(null);
 
-    // --- EFECTO DE BÚSQUEDA (Debounce) ---
+    // --- 1. CARGAR AMBAS LISTAS AL INICIO ---
+    useEffect(() => {
+        const loadAllCategories = async () => {
+            try {
+                // Hacemos las dos peticiones en paralelo
+                const [resGen, resSpec] = await Promise.all([
+                    api.get('/products/categories'),
+                    api.get('/products/specific-categories')
+                ]);
+
+                // Asignamos asegurando que sean arrays
+                setGenCats(Array.isArray(resGen.data) ? resGen.data : []);
+                setSpecCats(Array.isArray(resSpec.data) ? resSpec.data : []);
+
+            } catch (e) {
+                console.error("Error cargando filtros:", e);
+                toast.error("Error cargando categorías");
+            }
+        };
+        loadAllCategories();
+    }, []);
+
+    // --- 2. EFECTO DE BÚSQUEDA INTELIGENTE ---
     useEffect(() => {
         const delaySearch = setTimeout(async () => {
-            if (!searchTerm.trim()) {
+            // Si está todo vacío, limpiamos
+            if (!searchTerm.trim() && !selectedFilter) {
                 setSearchResults([]);
                 return;
             }
 
             setIsSearching(true);
             try {
-                const res = await api.get(`/products?search=${searchTerm}&limit=50`);
-                setSearchResults(res.data.products);
+                const params = new URLSearchParams();
+
+                // A. Texto
+                if (searchTerm.trim()) params.append('search', searchTerm);
+
+                // B. Filtro de Categoría (Desglosamos el valor "tipo-id")
+                if (selectedFilter) {
+                    const [type, id] = selectedFilter.split('-');
+
+                    if (type === 'cat') {
+                        params.append('category_id', id);
+                    } else if (type === 'spec') {
+                        params.append('specific_id', id);
+                    }
+                }
+
+                params.append('limit', 50);
+
+                const res = await api.get(`/products?${params.toString()}`);
+                setSearchResults(res.data.products || []);
             } catch (e) {
                 console.error(e);
             } finally {
@@ -48,95 +89,62 @@ const LabelPrinterPage = () => {
         }, 500);
 
         return () => clearTimeout(delaySearch);
-    }, [searchTerm]);
+    }, [searchTerm, selectedFilter]); // Se activa al cambiar texto o filtro
 
-    // --- EFECTO: CERRAR AL CLICKEAR AFUERA ---
+    // --- MANEJADORES DE CIERRE ---
     useEffect(() => {
         function handleClickOutside(event) {
             if (searchRef.current && !searchRef.current.contains(event.target)) {
-                setSearchResults([]); // Cierra resultados pero mantiene el texto
+                setSearchResults([]);
             }
         }
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // --- MANEJO DE TECLADO (ESCAPE) ---
     const handleKeyDown = (e) => {
         if (e.key === 'Escape') {
-            setSearchResults([]); // Cerrar lista
-            e.currentTarget.blur(); // Quitar foco opcionalmente
+            setSearchResults([]);
+            e.currentTarget.blur();
         }
     };
 
-    // --- ACCIONES DE AGREGADO INTELIGENTE ---
-
-    // 1. Agregar Individual (Sumativo)
+    // --- FUNCIONES DE LA COLA (Sin cambios) ---
     const handleAddSingle = (product, variant) => {
-        // Buscamos si ya existe en la cola visual actual
         const existingItem = printQueue.find(item => item.sku === variant.sku);
-
         if (existingItem) {
-            // Si existe, le sumamos 1 a su cantidad actual
-            const newQty = existingItem.cantidad + 1;
-            updateQuantity(variant.sku, newQty);
-
-            // Feedback visual rápido
-            toast.success(`+1 ${variant.talle} (Total: ${newQty})`, {
-                id: `add-${variant.sku}`, // Evita spam de toasts
-                duration: 1000,
-                icon: '➕'
-            });
+            updateQuantity(variant.sku, existingItem.cantidad + 1);
+            toast.success(`+1 ${variant.talle}`, { id: `add-${variant.sku}`, duration: 1000, icon: '➕' });
         } else {
-            // Si no existe, lo agregamos (empieza en 1)
             addToQueue(product, variant);
             toast.success(`Agregado: ${variant.talle}`, { duration: 1000 });
         }
-        // No cerramos resultados para permitir clicks rápidos repetidos
     };
 
-    // 2. Agregar Curva Completa (Sumativo)
     const handleAddFullCurve = (product) => {
         let addedCount = 0;
-
         product.variantes.forEach(variant => {
-            // Misma lógica: verificar si existe para sumar
             const existingItem = printQueue.find(item => item.sku === variant.sku);
-
-            if (existingItem) {
-                updateQuantity(variant.sku, existingItem.cantidad + 1);
-            } else {
-                addToQueue(product, variant);
-            }
+            if (existingItem) updateQuantity(variant.sku, existingItem.cantidad + 1);
+            else addToQueue(product, variant);
             addedCount++;
         });
-
-        toast.success(`Se agregaron/sumaron ${addedCount} variantes de ${product.nombre}`);
+        toast.success(`Agregados ${addedCount} talles`);
         setSearchTerm('');
         setSearchResults([]);
     };
 
-    // --- GENERAR PDF ---
     const handlePrintBatch = async () => {
         if (printQueue.length === 0) return;
         setIsGenerating(true);
         const toastId = toast.loading("Generando PDF...");
-
         try {
-            const response = await api.post('/products/labels/batch-pdf', {
-                items: printQueue
-            }, { responseType: 'blob' });
-
+            const response = await api.post('/products/labels/batch-pdf', { items: printQueue }, { responseType: 'blob' });
             const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }));
-            const printWindow = window.open(url);
-
+            window.open(url);
             toast.success("PDF Generado", { id: toastId });
-
-            if (window.confirm("¿Se imprimieron correctamente? Limpiar cola.")) {
-                clearQueue();
-            }
+            if (window.confirm("¿Se imprimieron correctamente? Limpiar cola.")) clearQueue();
         } catch (e) {
-            console.error(e);
             toast.error("Error generando etiquetas", { id: toastId });
         } finally {
             setIsGenerating(false);
@@ -147,21 +155,11 @@ const LabelPrinterPage = () => {
         <div className="p-6 max-w-5xl mx-auto space-y-6 animate-fade-in">
             <Toaster position="top-center" />
 
-            {/* MODAL ZOOM IMAGEN */}
+            {/* ZOOM IMAGEN */}
             {zoomImage && (
-                <div
-                    className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm cursor-zoom-out animate-fade-in"
-                    onClick={() => setZoomImage(null)}
-                >
-                    <img
-                        src={zoomImage}
-                        className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain border-2 border-white/20"
-                        alt="Zoom Producto"
-                        onClick={(e) => e.stopPropagation()}
-                    />
-                    <button className="absolute top-4 right-4 text-white/50 hover:text-white bg-black/50 p-2 rounded-full transition-all hover:bg-red-600">
-                        <X size={32} />
-                    </button>
+                <div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm cursor-zoom-out animate-fade-in" onClick={() => setZoomImage(null)}>
+                    <img src={zoomImage} className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain border-2 border-white/20" alt="Zoom" onClick={(e) => e.stopPropagation()} />
+                    <button className="absolute top-4 right-4 text-white/50 hover:text-white bg-black/50 p-2 rounded-full hover:bg-red-600"><X size={32} /></button>
                 </div>
             )}
 
@@ -183,67 +181,91 @@ const LabelPrinterPage = () => {
             {/* --- SECCIÓN BUSCADOR --- */}
             <div className="bg-white p-5 rounded-xl shadow-sm border border-blue-100 relative z-50" ref={searchRef}>
                 <label className="block text-xs font-bold text-blue-600 uppercase mb-2">Buscar producto para etiquetar</label>
-                <div className="relative">
-                    <input
-                        placeholder="Escribe el nombre, código o características..."
-                        className="w-full pl-10 p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none shadow-sm transition-all"
-                        value={searchTerm}
-                        onChange={e => setSearchTerm(e.target.value)}
-                        onKeyDown={handleKeyDown} // <--- ESCAPE KEY
-                        autoFocus
-                    />
-                    <Search className="absolute left-3 top-3 text-gray-400" size={18} />
+
+                <div className="flex gap-2 relative">
+                    {/* INPUT TEXTO */}
+                    <div className="relative flex-1">
+                        <input
+                            placeholder="Nombre, código..."
+                            className="w-full pl-10 p-3 border rounded-l-lg focus:ring-2 focus:ring-blue-500 outline-none shadow-sm transition-all"
+                            value={searchTerm}
+                            onChange={e => setSearchTerm(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            autoFocus
+                        />
+                        <Search className="absolute left-3 top-3 text-gray-400" size={18} />
+                    </div>
+
+                    {/* SELECTOR UNIFICADO (Generales + Específicas) */}
+                    <div className="relative w-1/3 md:w-1/4">
+                        <select
+                            className="w-full p-3 pl-9 border border-l-0 rounded-r-lg bg-gray-50 text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none font-medium text-sm h-full cursor-pointer hover:bg-gray-100 transition-colors"
+                            value={selectedFilter}
+                            onChange={(e) => setSelectedFilter(e.target.value)}
+                        >
+                            <option value="">Todas</option>
+
+                            {/* GRUPO 1: CATEGORÍAS GENERALES */}
+                            {genCats.length > 0 && (
+                                <optgroup label="Categorías">
+                                    {genCats.map(c => (
+                                        <option key={`cat-${c.id}`} value={`cat-${c.id}`}>
+                                            {c.nombre}
+                                        </option>
+                                    ))}
+                                </optgroup>
+                            )}
+
+                            {/* GRUPO 2: CATEGORÍAS ESPECÍFICAS (LIGAS) */}
+                            {specCats.length > 0 && (
+                                <optgroup label="Tipos / Ligas">
+                                    {specCats.map(c => (
+                                        <option key={`spec-${c.id}`} value={`spec-${c.id}`}>
+                                            {c.nombre}
+                                        </option>
+                                    ))}
+                                </optgroup>
+                            )}
+                        </select>
+                        <Filter className="absolute left-3 top-3.5 text-blue-500 pointer-events-none" size={16} />
+                    </div>
 
                     {isSearching && (
-                        <div className="absolute right-3 top-3">
+                        <div className="absolute right-3 top-3 z-10">
                             <div className="animate-spin h-4 w-4 border-2 border-blue-500 rounded-full border-t-transparent"></div>
                         </div>
                     )}
                 </div>
 
-                {/* RESULTADOS DE BÚSQUEDA */}
+                {/* RESULTADOS */}
                 {searchResults.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 bg-white shadow-xl border border-gray-200 rounded-b-xl mt-1 overflow-hidden max-h-[400px] overflow-y-auto">
+                    <div className="absolute top-full left-0 right-0 bg-white shadow-xl border border-gray-200 rounded-b-xl mt-1 overflow-hidden max-h-[400px] overflow-y-auto z-50">
                         {searchResults.map(prod => (
                             <div key={prod.id} className="p-3 hover:bg-blue-50 border-b last:border-0 group transition-colors flex gap-4 items-start">
-
-                                {/* 1. IMAGEN CON ZOOM */}
                                 <div
                                     className="w-12 h-12 bg-gray-100 rounded-lg shrink-0 border overflow-hidden relative cursor-zoom-in group/img"
                                     onClick={() => prod.imagen && setZoomImage(`${api.defaults.baseURL}/static/uploads/${prod.imagen}`)}
                                 >
                                     {prod.imagen ? (
                                         <>
-                                            <img
-                                                src={`${api.defaults.baseURL}/static/uploads/${prod.imagen}`}
-                                                className="w-full h-full object-cover"
-                                                alt={prod.nombre}
-                                            />
+                                            <img src={`${api.defaults.baseURL}/static/uploads/${prod.imagen}`} className="w-full h-full object-cover" alt={prod.nombre} />
                                             <div className="absolute inset-0 bg-black/20 opacity-0 group-hover/img:opacity-100 flex items-center justify-center transition-opacity">
                                                 <Maximize2 size={16} className="text-white" />
                                             </div>
                                         </>
-                                    ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-gray-300">
-                                            <Shirt size={20} />
-                                        </div>
-                                    )}
+                                    ) : (<div className="w-full h-full flex items-center justify-center text-gray-300"><Shirt size={20} /></div>)}
                                 </div>
 
-                                {/* 2. DATOS Y ACCIONES */}
                                 <div className="flex-1">
                                     <div className="flex justify-between items-start mb-2">
-                                        <div
-                                            className="cursor-pointer"
-                                            onClick={() => handleAddFullCurve(prod)}
-                                        >
+                                        <div className="cursor-pointer" onClick={() => handleAddFullCurve(prod)}>
                                             <p className="font-bold text-sm text-gray-800 group-hover:text-blue-600 transition-colors leading-tight">
                                                 {prod.nombre}
                                             </p>
-                                            <div className="flex items-center mt-1">
-                                                <span className="text-xs font-mono text-gray-400 mr-2">{prod.sku_base || 'S/SKU'}</span>
-                                                <span className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded flex items-center hover:bg-blue-200 transition-colors">
-                                                    <Layers size={10} className="mr-1" /> Agregar Todos
+                                            <div className="flex items-center mt-1 space-x-2">
+                                                <span className="text-xs font-mono text-gray-400">{prod.sku_base || 'S/SKU'}</span>
+                                                <span className="text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded border border-gray-200">
+                                                    {prod.categoria || prod.liga || '-'}
                                                 </span>
                                             </div>
                                         </div>
@@ -258,7 +280,6 @@ const LabelPrinterPage = () => {
                                                 key={v.id_variante}
                                                 onClick={() => handleAddSingle(prod, v)}
                                                 className="text-xs flex items-center bg-white border border-gray-200 text-gray-600 px-2 py-1 rounded hover:bg-blue-600 hover:text-white hover:border-blue-600 transition-all shadow-sm active:scale-95 active:bg-blue-700"
-                                                title={`Agregar etiqueta Talle ${v.talle}`}
                                             >
                                                 <span className="font-bold mr-1">{v.talle}</span>
                                                 <Plus size={10} />
@@ -272,7 +293,7 @@ const LabelPrinterPage = () => {
                 )}
             </div>
 
-            {/* --- TABLA DE COLA --- */}
+            {/* TABLA DE COLA */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden relative z-0">
                 <table className="w-full text-sm text-left">
                     <thead className="bg-gray-100 text-gray-500 uppercase text-xs">
@@ -286,7 +307,7 @@ const LabelPrinterPage = () => {
                     <tbody className="divide-y">
                         {printQueue.length === 0 ? (
                             <tr><td colSpan="4" className="p-10 text-center text-gray-400 italic">
-                                La lista está vacía.<br />Usa el buscador de arriba para agregar etiquetas.
+                                La lista está vacía.<br />Usa el buscador para agregar etiquetas.
                             </td></tr>
                         ) : (
                             printQueue.map((item) => (
@@ -298,53 +319,23 @@ const LabelPrinterPage = () => {
                                     <td className="p-4 font-mono text-xs text-gray-600">{item.sku}</td>
                                     <td className="p-4 text-center">
                                         <div className="flex items-center justify-center">
-                                            {/* Botones - y + para facilitar ajuste fino */}
-                                            <button
-                                                onClick={() => updateQuantity(item.sku, item.cantidad - 1)}
-                                                className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-l font-bold text-gray-600"
-                                                disabled={item.cantidad <= 1}
-                                            >-</button>
-                                            <input
-                                                type="number" min="1"
-                                                className="w-14 p-1 border-y border-gray-200 text-center font-bold text-lg focus:border-blue-500 outline-none"
-                                                value={item.cantidad}
-                                                onChange={(e) => updateQuantity(item.sku, parseInt(e.target.value) || 1)}
-                                            />
-                                            <button
-                                                onClick={() => updateQuantity(item.sku, item.cantidad + 1)}
-                                                className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-r font-bold text-gray-600"
-                                            >+</button>
+                                            <button onClick={() => updateQuantity(item.sku, item.cantidad - 1)} className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-l font-bold text-gray-600" disabled={item.cantidad <= 1}>-</button>
+                                            <input type="number" min="1" className="w-14 p-1 border-y border-gray-200 text-center font-bold text-lg focus:border-blue-500 outline-none" value={item.cantidad} onChange={(e) => updateQuantity(item.sku, parseInt(e.target.value) || 1)} />
+                                            <button onClick={() => updateQuantity(item.sku, item.cantidad + 1)} className="w-8 h-8 bg-gray-100 hover:bg-gray-200 rounded-r font-bold text-gray-600">+</button>
                                         </div>
                                     </td>
                                     <td className="p-4 text-right">
-                                        <button
-                                            onClick={() => removeFromQueue(item.sku)}
-                                            className="text-gray-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition-colors"
-                                            title="Quitar de la lista"
-                                        >
-                                            <Trash2 size={18} />
-                                        </button>
+                                        <button onClick={() => removeFromQueue(item.sku)} className="text-gray-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-full transition-colors"><Trash2 size={18} /></button>
                                     </td>
                                 </tr>
                             ))
                         )}
                     </tbody>
                 </table>
-
                 <div className="p-4 bg-gray-50 border-t flex justify-between items-center sticky bottom-0">
-                    <div className="text-gray-600 font-medium">
-                        Total Etiquetas: <span className="font-black text-gray-900 text-lg ml-2">{printQueue.reduce((acc, i) => acc + i.cantidad, 0)}</span>
-                    </div>
-                    <button
-                        onClick={handlePrintBatch}
-                        disabled={printQueue.length === 0 || isGenerating}
-                        className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold flex items-center hover:bg-black shadow-lg disabled:bg-gray-300 disabled:cursor-not-allowed transition-all active:scale-95"
-                    >
-                        {isGenerating ? (
-                            <span className="flex items-center"><span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></span> Generando...</span>
-                        ) : (
-                            <><FileText size={20} className="mr-2" />IMPRIMIR ETIQUETAS</>
-                        )}
+                    <div className="text-gray-600 font-medium">Total Etiquetas: <span className="font-black text-gray-900 text-lg ml-2">{printQueue.reduce((acc, i) => acc + i.cantidad, 0)}</span></div>
+                    <button onClick={handlePrintBatch} disabled={printQueue.length === 0 || isGenerating} className="bg-slate-900 text-white px-8 py-3 rounded-xl font-bold flex items-center hover:bg-black shadow-lg disabled:bg-gray-300 disabled:cursor-not-allowed transition-all active:scale-95">
+                        {isGenerating ? <span className="flex items-center"><span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full mr-2"></span> Generando...</span> : <><FileText size={20} className="mr-2" />IMPRIMIR ETIQUETAS</>}
                     </button>
                 </div>
             </div>
