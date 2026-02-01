@@ -17,6 +17,7 @@ from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, 
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
+from reportlab.lib.utils import simpleSplit
 
 bp = Blueprint('sales', __name__)
 
@@ -1263,6 +1264,9 @@ def list_presupuestos():
         return jsonify([]), 500
 
 
+# Asegúrate de tener estos imports al principio si no los tienes
+# from reportlab.lib.colors import HexColor
+
 @bp.route('/presupuestos/<int:id>/pdf', methods=['GET'])
 @jwt_required()
 def download_budget_pdf(id):
@@ -1278,33 +1282,41 @@ def download_budget_pdf(id):
         c.drawString(20*mm, height - 20*mm, "PRESUPUESTO")
         
         c.setFont("Helvetica", 10)
+        c.setFillColorRGB(0.3, 0.3, 0.3)
         c.drawString(20*mm, height - 30*mm, f"Nro: #{presupuesto.id_presupuesto}")
         c.drawString(20*mm, height - 35*mm, f"Fecha: {presupuesto.fecha.strftime('%d/%m/%Y')}")
         c.drawString(20*mm, height - 40*mm, f"Cliente: {presupuesto.cliente_nombre}")
+        c.setFillColorRGB(0, 0, 0)
 
-        # --- TABLA DE ITEMS (ENCABEZADOS) ---
+        # --- CONFIGURACIÓN TABLA ---
         y = height - 60*mm
-        c.setFont("Helvetica-Bold", 9)
-        
-        # Coordenadas X para las columnas
         col_prod = 20*mm
-        col_talle = 105*mm  # Nueva columna centrada
+        col_talle = 105*mm
         col_cant = 125*mm
         col_unit = 145*mm
         col_sub = 175*mm
 
+        # Fondo Gris Encabezados
+        c.setFillColorRGB(0.95, 0.95, 0.95)
+        c.rect(20*mm, y - 2*mm, 170*mm, 8*mm, fill=1, stroke=0)
+        c.setFillColorRGB(0, 0, 0)
+
+        # Textos Encabezado
+        c.setFont("Helvetica-Bold", 9)
         c.drawString(col_prod, y, "Producto / SKU")
-        c.drawString(col_talle, y, "Talle")     # <--- COLUMNA NUEVA
+        c.drawString(col_talle, y, "Talle")
         c.drawString(col_cant, y, "Cant.")
         c.drawString(col_unit, y, "Unitario")
         c.drawString(col_sub, y, "Subtotal")
         
+        c.setLineWidth(1)
         c.line(20*mm, y-2*mm, 190*mm, y-2*mm)
-        y -= 8*mm
+        c.setLineWidth(0.5)
+
+        y -= 10*mm 
         
         # --- FILAS ---
         for det in presupuesto.detalles:
-            # 1. Recuperar datos seguros
             nombre = "Producto eliminado"
             sku = "-"
             talle = "-"
@@ -1314,37 +1326,55 @@ def download_budget_pdf(id):
                 sku = det.variante.codigo_sku
                 if det.variante.producto:
                     nombre = det.variante.producto.nombre
+
+            # --- LÓGICA MULTILINEA INTELIGENTE ---
+            # 1. Dividimos el nombre en renglones si es muy largo
+            ancho_disponible = 80 * mm 
+            # simpleSplit(texto, fuente, tamaño, ancho_max)
+            lineas_nombre = simpleSplit(nombre, "Helvetica", 9, ancho_disponible)
             
-            # 2. Dibujar Nombre del Producto
+            # 2. Calculamos la altura que ocupará este item
+            alto_renglon = 4 * mm
+            # La altura total es: (num_lineas * alto) + espacio para SKU + márgenes
+            altura_item = (len(lineas_nombre) * alto_renglon) + 8 * mm
+            
+            # 3. Verificar si cabe en la página actual
+            if y - altura_item < 20 * mm: 
+                c.showPage()
+                y = height - 20 * mm # Reiniciamos Y arriba
+            
+            # 4. Dibujar el Nombre (Renglón por renglón)
             c.setFont("Helvetica", 9)
-            c.drawString(col_prod, y, nombre[:40]) # Recortar si es muy largo
+            cursor_texto = y
+            for linea in lineas_nombre:
+                c.drawString(col_prod, cursor_texto, linea)
+                cursor_texto -= alto_renglon
             
-            # 3. Dibujar SKU (En pequeño, debajo del nombre)
+            # 5. Dibujar SKU (Justo debajo de la última línea del nombre)
             c.setFont("Helvetica", 7)
-            c.setFillColorRGB(0.4, 0.4, 0.4) # Gris oscuro
-            c.drawString(col_prod, y - 3.5*mm, f"SKU: {sku}")
-            c.setFillColorRGB(0, 0, 0) # Volver a negro
+            c.setFillColorRGB(0.5, 0.5, 0.5)
+            c.drawString(col_prod, cursor_texto - 1*mm, f"SKU: {sku}")
+            c.setFillColorRGB(0, 0, 0)
 
-            # 4. Dibujar TALLE (Columna dedicada)
-            c.setFont("Helvetica-Bold", 9)
-            c.drawString(col_talle, y, str(talle))
-
-            # 5. Cantidad, Precio, Subtotal
+            # 6. Dibujar resto de columnas (Alineadas arriba, con la primera línea)
             c.setFont("Helvetica", 9)
-            c.drawString(col_cant, y, str(det.cantidad))
+            c.drawString(col_talle, y, str(talle))
+            c.drawCentredString(col_cant + 5*mm, y, str(det.cantidad))
             c.drawString(col_unit, y, f"${det.precio_unitario:,.0f}")
             c.drawString(col_sub, y, f"${det.subtotal:,.0f}")
             
-            # Bajar renglón (dejamos más espacio por el SKU)
-            y -= 8*mm
-            
-            # Salto de página si se acaba el espacio
-            if y < 30*mm: 
-                c.showPage()
-                y = height - 20*mm
+            # 7. Línea Divisoria (Se adapta a la altura del item)
+            line_y = y - altura_item + 3*mm 
+            c.setStrokeColorRGB(0.9, 0.9, 0.9)
+            c.line(20*mm, line_y, 190*mm, line_y)
+            c.setStrokeColorRGB(0, 0, 0)
+
+            # 8. Actualizar Y para el siguiente producto
+            y -= altura_item
 
         # --- TOTALES ---
         y -= 5*mm
+        c.setLineWidth(1)
         c.line(110*mm, y+5*mm, 190*mm, y+5*mm)
         
         c.setFont("Helvetica-Bold", 11)
@@ -1356,16 +1386,20 @@ def download_budget_pdf(id):
             c.setFont("Helvetica", 10)
             c.drawString(110*mm, y, f"Desc. ({presupuesto.descuento_porcentaje}%):")
             monto_desc = presupuesto.subtotal - presupuesto.total_final
-            c.setFillColorRGB(0.8, 0, 0) # Rojo para el descuento
+            c.setFillColorRGB(0.8, 0, 0) 
             c.drawRightString(190*mm, y, f"-${monto_desc:,.0f}")
             c.setFillColorRGB(0, 0, 0)
             y -= 7*mm
+
+        # Fondo Gris Total
+        c.setFillColorRGB(0.9, 0.9, 0.9)
+        c.rect(105*mm, y-2*mm, 90*mm, 8*mm, fill=1, stroke=0)
+        c.setFillColorRGB(0, 0, 0)
 
         c.setFont("Helvetica-Bold", 14)
         c.drawString(110*mm, y, "TOTAL:")
         c.drawRightString(190*mm, y, f"${presupuesto.total_final:,.0f}")
 
-        # Guardar y enviar
         c.save()
         buffer.seek(0)
 
