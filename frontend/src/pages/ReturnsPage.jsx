@@ -99,6 +99,7 @@ const ReturnsPage = () => {
     const addManualItem = (product, variant, type) => {
         const item = {
             id: product.id,
+            id_variante: variant.id_variante,
             uid: Date.now() + Math.random(), // ID único para la lista visual
             sku: variant.sku,
             nombre: product.nombre,
