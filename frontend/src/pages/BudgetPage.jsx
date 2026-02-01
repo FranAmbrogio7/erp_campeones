@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAuth, api } from '../context/AuthContext';
-import { useReactToPrint } from 'react-to-print';
+// import { useReactToPrint } from 'react-to-print'; // Ya no es necesario si descargamos PDF del backend
 import BudgetPrint from '../components/BudgetPrint';
 import toast, { Toaster } from 'react-hot-toast';
 import {
@@ -13,7 +13,6 @@ const BudgetPage = () => {
     const { token } = useAuth();
 
     // --- ESTADOS CON PERSISTENCIA (LocalStorage) ---
-    // Inicializamos leyendo del storage si existe
     const [cart, setCart] = useState(() => {
         const saved = localStorage.getItem('budget_draft_cart');
         return saved ? JSON.parse(saved) : [];
@@ -34,10 +33,9 @@ const BudgetPage = () => {
     const [historyList, setHistoryList] = useState([]);
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
 
-    // Impresión
+    // Estado para "impresión" (aunque ahora descargamos PDF, mantenemos la estructura por si acaso)
     const [budgetData, setBudgetData] = useState(null);
     const printRef = useRef();
-    const handlePrint = useReactToPrint({ contentRef: printRef });
 
     // --- EFECTO: GUARDAR EN LOCALSTORAGE AUTOMÁTICAMENTE ---
     useEffect(() => {
@@ -59,7 +57,6 @@ const BudgetPage = () => {
                 return;
             }
             try {
-                // Aumentamos el límite a 5000 para traer "todo" lo que coincida
                 const res = await api.get('/products', { params: { search: manualTerm, limit: 5000 } });
                 setManualResults(res.data.products || []);
             } catch (error) { console.error(error); }
@@ -67,7 +64,6 @@ const BudgetPage = () => {
         return () => clearTimeout(delaySearch);
     }, [manualTerm]);
 
-    // --- MANEJO DE TECLADO (UX) ---
     const handleKeyDown = (e) => {
         if (e.key === 'Escape') {
             setManualResults([]);
@@ -154,6 +150,29 @@ const BudgetPage = () => {
         }
     };
 
+    // --- NUEVA FUNCIÓN: DESCARGAR PDF ---
+    const downloadPdf = async (id) => {
+        const loadToast = toast.loading("Generando PDF...");
+        try {
+            const res = await api.get(`/sales/presupuestos/${id}/pdf`, { responseType: 'blob' });
+
+            // Crear URL temporal para descarga
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Presupuesto_${id}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+
+            toast.dismiss(loadToast);
+            toast.success("PDF Descargado exitosamente");
+        } catch (e) {
+            console.error(e);
+            toast.error("Error al descargar PDF", { id: loadToast });
+        }
+    };
+
     // --- GUARDAR NUEVO PRESUPUESTO ---
     const handleSaveBudget = async () => {
         if (cart.length === 0) return toast.error("El carrito está vacío");
@@ -179,12 +198,13 @@ const BudgetPage = () => {
                 total: res.data.total
             });
 
-            // Limpiamos el borrador (porque ya se guardó)
+            // Limpiamos el borrador y DESCARGAMOS EL PDF
             setTimeout(() => {
-                handlePrint();
-                toast.success("¡Guardado e Imprimiendo!", { id: loadingId });
-                // Opcional: ¿Quieres limpiar al guardar o mantenerlo? 
-                // Normalmente al guardar un presupuesto final, se limpia para hacer otro.
+                downloadPdf(res.data.id); // <--- AQUÍ LA MAGIA
+
+                toast.success("¡Guardado!", { id: loadingId });
+
+                // Limpiar todo para el siguiente
                 setCart([]);
                 setClientName('');
                 setDiscountPercent(0);
@@ -194,7 +214,8 @@ const BudgetPage = () => {
             }, 500);
 
         } catch (error) {
-            toast.error("Error al guardar", { id: loadingId });
+            console.error(error);
+            toast.error("Error al guardar presupuesto", { id: loadingId });
         }
     };
 
@@ -203,11 +224,11 @@ const BudgetPage = () => {
         setIsHistoryOpen(true);
         setIsLoadingHistory(true);
         try {
-            const res = await api.get('/sales/presupuestos'); // Asumiendo que creaste este endpoint GET
+            const res = await api.get('/sales/presupuestos');
             setHistoryList(res.data || []);
         } catch (error) {
             console.error(error);
-            toast.error("Error cargando historial");
+            toast.error("Error cargando historial (Verifica tu backend)");
         } finally {
             setIsLoadingHistory(false);
         }
@@ -218,14 +239,12 @@ const BudgetPage = () => {
             if (!window.confirm("Tienes un presupuesto en curso. ¿Reemplazarlo con este antiguo?")) return;
         }
 
-        // Mapeamos los datos del backend al formato del frontend
-        // Asumimos que budget.items viene con la estructura correcta o la adaptamos
         const restoredItems = budget.items.map(i => ({
-            id_variante: i.id_variante || i.sku, // Fallback
-            sku: i.sku,
-            nombre: i.nombre_producto || i.nombre,
-            talle: i.talle,
-            precio: parseFloat(i.precio_unitario || i.precio),
+            id_variante: i.id_variante || i.sku,
+            sku: i.sku || 'REF',
+            nombre: i.nombre || 'Producto Recuperado',
+            talle: i.talle || '-',
+            precio: parseFloat(i.precio),
             cantidad: i.cantidad,
             subtotal: parseFloat(i.subtotal)
         }));
@@ -235,14 +254,14 @@ const BudgetPage = () => {
         setDiscountPercent(budget.descuento || 0);
 
         setIsHistoryOpen(false);
-        toast.success(`Presupuesto #${budget.id} cargado`);
+        toast.success(`Presupuesto #${budget.id} cargado al editor`);
     };
 
     return (
         <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)] gap-4 p-4 max-w-7xl mx-auto animate-fade-in">
             <Toaster position="top-center" />
 
-            {/* Componente Oculto para Impresión */}
+            {/* Componente Oculto (Legacy, por si acaso) */}
             <div style={{ display: 'none' }}>
                 <BudgetPrint ref={printRef} data={budgetData} />
             </div>
@@ -250,7 +269,7 @@ const BudgetPage = () => {
             {/* --- MODAL HISTORIAL --- */}
             {isHistoryOpen && (
                 <div className="fixed inset-0 bg-black/50 z-[100] flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl h-[80vh] flex flex-col overflow-hidden animate-fade-in-up">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl h-[80vh] flex flex-col overflow-hidden animate-fade-in-up">
                         <div className="p-5 border-b flex justify-between items-center bg-gray-50">
                             <h3 className="font-bold text-xl flex items-center text-gray-800">
                                 <History className="mr-2 text-blue-600" /> Historial de Presupuestos
@@ -271,7 +290,7 @@ const BudgetPage = () => {
                                             <th className="p-3">Fecha</th>
                                             <th className="p-3">Cliente</th>
                                             <th className="p-3 text-right">Total</th>
-                                            <th className="p-3 text-center">Acción</th>
+                                            <th className="p-3 text-center">Acciones</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y">
@@ -281,12 +300,22 @@ const BudgetPage = () => {
                                                 <td className="p-3">{new Date(b.fecha).toLocaleDateString()}</td>
                                                 <td className="p-3 font-bold text-gray-800">{b.cliente}</td>
                                                 <td className="p-3 text-right font-bold text-green-600">$ {b.total.toLocaleString()}</td>
-                                                <td className="p-3 text-center">
+                                                <td className="p-3 text-center flex justify-center gap-2">
+                                                    {/* Botón Restaurar */}
                                                     <button
                                                         onClick={() => restoreBudget(b)}
-                                                        className="bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-blue-200 transition-colors flex items-center justify-center mx-auto"
+                                                        className="bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-blue-200 transition-colors flex items-center"
+                                                        title="Editar este presupuesto"
                                                     >
-                                                        <RotateCcw size={14} className="mr-1" /> CARGAR
+                                                        <RotateCcw size={14} className="mr-1" /> EDITAR
+                                                    </button>
+                                                    {/* Botón Descargar PDF */}
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); downloadPdf(b.id); }}
+                                                        className="bg-red-100 text-red-700 px-3 py-1.5 rounded-lg font-bold text-xs hover:bg-red-200 transition-colors flex items-center"
+                                                        title="Descargar PDF nuevamente"
+                                                    >
+                                                        <Printer size={14} className="mr-1" /> PDF
                                                     </button>
                                                 </td>
                                             </tr>
@@ -306,7 +335,6 @@ const BudgetPage = () => {
                         <h2 className="text-xl font-bold text-gray-800 flex items-center">
                             <FileText className="mr-2 text-blue-600" /> Nuevo Presupuesto
                         </h2>
-                        {/* Botón Historial */}
                         <button
                             onClick={fetchHistory}
                             className="text-gray-500 hover:text-blue-600 flex items-center text-sm font-bold bg-gray-50 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors border border-gray-200"
@@ -482,7 +510,7 @@ const BudgetPage = () => {
                         className="w-full bg-slate-800 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-slate-900 transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed group"
                     >
                         {cart.length > 0 && clientName ? (
-                            <><Printer className="mr-2 group-hover:scale-110 transition-transform" /> Guardar e Imprimir</>
+                            <><Printer className="mr-2 group-hover:scale-110 transition-transform" /> Guardar y Descargar PDF</>
                         ) : (
                             "Completa los datos..."
                         )}
