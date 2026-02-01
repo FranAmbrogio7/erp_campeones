@@ -7,7 +7,7 @@ from app.extensions import db
 # IMPORTAMOS DESDE TUS ARCHIVOS SEPARADOS
 from app.sales.models import Venta, DetalleVenta, MetodoPago, SesionCaja, MovimientoCaja, Reserva, DetalleReserva, Presupuesto, DetallePresupuesto, NotaCredito
 from app.products.models import Producto, ProductoVariante, Inventario, Categoria
-from flask_jwt_extended import jwt_required
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import desc, func, extract
 from datetime import date, datetime, timedelta
 from app.services.tiendanube_service import tn_service
@@ -15,6 +15,8 @@ from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.pdfgen import canvas
+from reportlab.lib.units import mm
 
 bp = Blueprint('sales', __name__)
 
@@ -760,64 +762,115 @@ def cancelar_reserva(id):
 
 @bp.route('/presupuestos', methods=['GET', 'POST'])
 @jwt_required()
-def create_budget():
-    data = request.get_json()
-    items = data.get('items', [])
-    cliente = data.get('cliente', 'Consumidor Final')
-    descuento_pct = int(data.get('descuento', 0))
-    
-    if not items: return jsonify({"msg": "El presupuesto está vacío"}), 400
+def presupuestos():
+    # ==========================================
+    # 1. LISTAR HISTORIAL (GET)
+    # ==========================================
+    if request.method == 'GET':
+        try:
+            historial = Presupuesto.query.order_by(Presupuesto.fecha.desc()).limit(50).all()
+            
+            output = []
+            for p in historial:
+                items_formatted = []
+                for det in p.detalles:
+                    # Obtenemos datos desde la relación (si la variante aún existe)
+                    nombre_prod = "Producto eliminado"
+                    talle_prod = "-"
+                    
+                    if det.variante:
+                        talle_prod = det.variante.talla # Leemos 'talla' de la variante
+                        if det.variante.producto:
+                            nombre_prod = det.variante.producto.nombre
 
-    # Calcular totales desde el backend para seguridad
-    subtotal_gral = 0
-    detalles_para_guardar = []
+                    items_formatted.append({
+                        "id_variante": det.id_variante,
+                        "cantidad": det.cantidad,
+                        "precio": float(det.precio_unitario),
+                        "subtotal": float(det.subtotal),
+                        "nombre": nombre_prod,
+                        "talle": talle_prod 
+                    })
 
-    for item in items:
-        precio = float(item['precio'])
-        cantidad = int(item['cantidad'])
-        subtotal_item = precio * cantidad
-        subtotal_gral += subtotal_item
+                output.append({
+                    "id": p.id_presupuesto,
+                    "fecha": p.fecha.isoformat(),
+                    "cliente": p.cliente_nombre,
+                    "total": float(p.total_final),
+                    "descuento": p.descuento_porcentaje,
+                    "items": items_formatted
+                })
+            
+            return jsonify(output), 200
+        except Exception as e:
+            print(f"Error GET presupuestos: {e}")
+            return jsonify([]), 500
+
+    # ==========================================
+    # 2. CREAR PRESUPUESTO (POST)
+    # ==========================================
+    if request.method == 'POST':
+        data = request.get_json()
         
-        detalles_para_guardar.append({
-            "id_variante": item['id_variante'],
-            "cantidad": cantidad,
-            "precio": precio,
-            "subtotal": subtotal_item
-        })
+        try:
+            items = data.get('items', [])
+            cliente = data.get('cliente', 'Consumidor Final')
+            descuento_pct = int(data.get('descuento', 0))
+            
+            if not items: return jsonify({"msg": "Presupuesto vacío"}), 400
 
-    # Aplicar Descuento
-    monto_descuento = subtotal_gral * (descuento_pct / 100)
-    total_final = subtotal_gral - monto_descuento
+            subtotal_gral = 0
+            detalles_para_guardar = []
 
-    # Crear Cabecera
-    nuevo_presupuesto = Presupuesto(
-        cliente_nombre=cliente,
-        subtotal=subtotal_gral,
-        descuento_porcentaje=descuento_pct,
-        total_final=total_final,
-        observaciones=data.get('observaciones', '')
-    )
-    db.session.add(nuevo_presupuesto)
-    db.session.flush()
+            for item in items:
+                precio = float(item['precio'])
+                cantidad = int(item['cantidad'])
+                subtotal_item = precio * cantidad
+                subtotal_gral += subtotal_item
+                
+                detalles_para_guardar.append({
+                    "id_variante": item['id_variante'],
+                    "cantidad": cantidad,
+                    "precio": precio,
+                    "subtotal": subtotal_item
+                })
 
-    # Guardar Detalles
-    for d in detalles_para_guardar:
-        det = DetallePresupuesto(
-            id_presupuesto=nuevo_presupuesto.id_presupuesto,
-            id_variante=d['id_variante'],
-            cantidad=d['cantidad'],
-            precio_unitario=d['precio'],
-            subtotal=d['subtotal']
-        )
-        db.session.add(det)
+            monto_descuento = subtotal_gral * (descuento_pct / 100)
+            total_final = subtotal_gral - monto_descuento
 
-    db.session.commit()
-    
-    return jsonify({
-        "msg": "Presupuesto creado", 
-        "id": nuevo_presupuesto.id_presupuesto,
-        "total": total_final
-    }), 201
+            nuevo_presupuesto = Presupuesto(
+                cliente_nombre=cliente,
+                subtotal=subtotal_gral,
+                descuento_porcentaje=descuento_pct,
+                total_final=total_final,
+                fecha=datetime.now()
+            )
+            db.session.add(nuevo_presupuesto)
+            db.session.flush()
+
+            for d in detalles_para_guardar:
+                # CORRECCIÓN: No pasamos 'talle' al constructor porque no existe en la tabla
+                det = DetallePresupuesto(
+                    id_presupuesto=nuevo_presupuesto.id_presupuesto,
+                    id_variante=d['id_variante'],
+                    cantidad=d['cantidad'],
+                    precio_unitario=d['precio'],
+                    subtotal=d['subtotal']
+                )
+                db.session.add(det)
+
+            db.session.commit()
+            
+            return jsonify({
+                "msg": "Presupuesto creado", 
+                "id": nuevo_presupuesto.id_presupuesto,
+                "total": total_final
+            }), 201
+
+        except Exception as e:
+            db.session.rollback()
+            print(f"Error POST presupuesto: {e}")
+            return jsonify({"msg": str(e)}), 500
 
 
 @bp.route('/<int:id_venta>/anular', methods=['DELETE'])
@@ -1208,3 +1261,121 @@ def list_presupuestos():
     except Exception as e:
         print(f"Error listando presupuestos: {e}")
         return jsonify([]), 500
+
+
+@bp.route('/presupuestos/<int:id>/pdf', methods=['GET'])
+@jwt_required()
+def download_budget_pdf(id):
+    try:
+        presupuesto = Presupuesto.query.get_or_404(id)
+        
+        buffer = io.BytesIO()
+        c = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+
+        # --- ENCABEZADO ---
+        c.setFont("Helvetica-Bold", 18)
+        c.drawString(20*mm, height - 20*mm, "PRESUPUESTO")
+        
+        c.setFont("Helvetica", 10)
+        c.drawString(20*mm, height - 30*mm, f"Nro: #{presupuesto.id_presupuesto}")
+        c.drawString(20*mm, height - 35*mm, f"Fecha: {presupuesto.fecha.strftime('%d/%m/%Y')}")
+        c.drawString(20*mm, height - 40*mm, f"Cliente: {presupuesto.cliente_nombre}")
+
+        # --- TABLA DE ITEMS (ENCABEZADOS) ---
+        y = height - 60*mm
+        c.setFont("Helvetica-Bold", 9)
+        
+        # Coordenadas X para las columnas
+        col_prod = 20*mm
+        col_talle = 105*mm  # Nueva columna centrada
+        col_cant = 125*mm
+        col_unit = 145*mm
+        col_sub = 175*mm
+
+        c.drawString(col_prod, y, "Producto / SKU")
+        c.drawString(col_talle, y, "Talle")     # <--- COLUMNA NUEVA
+        c.drawString(col_cant, y, "Cant.")
+        c.drawString(col_unit, y, "Unitario")
+        c.drawString(col_sub, y, "Subtotal")
+        
+        c.line(20*mm, y-2*mm, 190*mm, y-2*mm)
+        y -= 8*mm
+        
+        # --- FILAS ---
+        for det in presupuesto.detalles:
+            # 1. Recuperar datos seguros
+            nombre = "Producto eliminado"
+            sku = "-"
+            talle = "-"
+            
+            if det.variante:
+                talle = det.variante.talla
+                sku = det.variante.codigo_sku
+                if det.variante.producto:
+                    nombre = det.variante.producto.nombre
+            
+            # 2. Dibujar Nombre del Producto
+            c.setFont("Helvetica", 9)
+            c.drawString(col_prod, y, nombre[:40]) # Recortar si es muy largo
+            
+            # 3. Dibujar SKU (En pequeño, debajo del nombre)
+            c.setFont("Helvetica", 7)
+            c.setFillColorRGB(0.4, 0.4, 0.4) # Gris oscuro
+            c.drawString(col_prod, y - 3.5*mm, f"SKU: {sku}")
+            c.setFillColorRGB(0, 0, 0) # Volver a negro
+
+            # 4. Dibujar TALLE (Columna dedicada)
+            c.setFont("Helvetica-Bold", 9)
+            c.drawString(col_talle, y, str(talle))
+
+            # 5. Cantidad, Precio, Subtotal
+            c.setFont("Helvetica", 9)
+            c.drawString(col_cant, y, str(det.cantidad))
+            c.drawString(col_unit, y, f"${det.precio_unitario:,.0f}")
+            c.drawString(col_sub, y, f"${det.subtotal:,.0f}")
+            
+            # Bajar renglón (dejamos más espacio por el SKU)
+            y -= 8*mm
+            
+            # Salto de página si se acaba el espacio
+            if y < 30*mm: 
+                c.showPage()
+                y = height - 20*mm
+
+        # --- TOTALES ---
+        y -= 5*mm
+        c.line(110*mm, y+5*mm, 190*mm, y+5*mm)
+        
+        c.setFont("Helvetica-Bold", 11)
+        c.drawString(110*mm, y, "Subtotal:")
+        c.drawRightString(190*mm, y, f"${presupuesto.subtotal:,.0f}")
+        y -= 6*mm
+        
+        if presupuesto.descuento_porcentaje > 0:
+            c.setFont("Helvetica", 10)
+            c.drawString(110*mm, y, f"Desc. ({presupuesto.descuento_porcentaje}%):")
+            monto_desc = presupuesto.subtotal - presupuesto.total_final
+            c.setFillColorRGB(0.8, 0, 0) # Rojo para el descuento
+            c.drawRightString(190*mm, y, f"-${monto_desc:,.0f}")
+            c.setFillColorRGB(0, 0, 0)
+            y -= 7*mm
+
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(110*mm, y, "TOTAL:")
+        c.drawRightString(190*mm, y, f"${presupuesto.total_final:,.0f}")
+
+        # Guardar y enviar
+        c.save()
+        buffer.seek(0)
+
+        return send_file(
+            buffer,
+            as_attachment=True,
+            download_name=f"Presupuesto_{presupuesto.id_presupuesto}.pdf",
+            mimetype='application/pdf'
+        )
+
+    except Exception as e:
+        print(f"Error PDF: {e}")
+        return jsonify({"msg": "Error generando PDF"}), 500
