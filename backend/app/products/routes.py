@@ -23,8 +23,6 @@ from reportlab.lib.pagesizes import A4
 from reportlab.platypus import Paragraph
 from reportlab.lib.styles import ParagraphStyle
 from app.services.tiendanube_service import tn_service # <--- SERVICIO IMPORTADO
-from app.utils.tiendanube_service import tn_service
-
 
 # ==========================================
 # 1. CRUD DE CATEGORÍAS
