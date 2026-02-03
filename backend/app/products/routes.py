@@ -2,6 +2,7 @@ import io
 import os
 import qrcode
 import threading
+import time
 from PIL import Image
 from reportlab.lib.utils import ImageReader
 from werkzeug.utils import secure_filename
@@ -22,6 +23,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.platypus import Paragraph
 from reportlab.lib.styles import ParagraphStyle
 from app.services.tiendanube_service import tn_service # <--- SERVICIO IMPORTADO
+from app.utils.tiendanube_service import tn_service
 
 
 # ==========================================
@@ -864,3 +866,45 @@ def run_sync_background(items_list):
             errores += 1
             
     print(f"🏁 [BACKGROUND] Sync Finalizada. Exitos: {actualizados} | Errores: {errores}")
+
+
+
+@bp.route('/sync/force-prices-update', methods=['GET'])
+@jwt_required()
+def force_prices_update():
+    try:
+        # 1. Traemos todos los productos que estén vinculados a TN
+        productos = Producto.query.filter(Producto.tiendanube_id.isnot(None)).all()
+        
+        total_actualizados = 0
+        errores = 0
+        log = []
+
+        print(f"🚀 Iniciando actualización masiva de precios al 18%...")
+
+        for prod in productos:
+            # Pausa muy breve para no saturar la API de Tienda Nube
+            time.sleep(0.1) 
+            
+            for var in prod.variantes:
+                if var.tiendanube_variant_id:
+                    try:
+                        # Esto usará el NUEVO 1.18 que configuraste en el Paso 1
+                        tn_service.update_variant_price(
+                            tn_product_id=prod.tiendanube_id,
+                            tn_variant_id=var.tiendanube_variant_id,
+                            precio_local=prod.precio
+                        )
+                        total_actualizados += 1
+                    except Exception as e:
+                        errores += 1
+                        print(f"Error en {prod.nombre}: {e}")
+
+        return jsonify({
+            "msg": "Proceso finalizado",
+            "total_variantes_actualizadas": total_actualizados,
+            "errores": errores
+        }), 200
+
+    except Exception as e:
+        return jsonify({"msg": "Error critico", "error": str(e)}), 500
