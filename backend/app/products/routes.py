@@ -868,7 +868,7 @@ def run_sync_background(items_list):
 
 
 @bp.route('/sync/force-prices-update', methods=['GET'])
-#@jwt_required()
+@jwt_required()
 def force_prices_update():
     try:
         # 1. Traemos todos los productos que estén vinculados a TN
