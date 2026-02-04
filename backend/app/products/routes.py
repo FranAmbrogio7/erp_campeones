@@ -931,15 +931,16 @@ def import_image_from_cloud(id):
         img_data = requests.get(image_url).content
         
         # 3. Guardar archivo en el ERP
-        # Usamos timestamp para evitar problemas de caché o nombres repetidos
-        filename = f"tn_imported_{prod.id}_{int(time.time())}.jpg"
+        # CORRECCIÓN: Usamos prod.id_producto en lugar de prod.id
+        filename = f"tn_imported_{prod.id_producto}_{int(time.time())}.jpg"
+        
         upload_folder = current_app.config['UPLOAD_FOLDER']
         filepath = os.path.join(upload_folder, filename)
         
         with open(filepath, 'wb') as f:
             f.write(img_data)
 
-        # 4. Borrar imagen vieja del ERP si existía (para no llenar el disco basura)
+        # 4. Borrar imagen vieja del ERP si existía
         if prod.imagen:
             old_path = os.path.join(upload_folder, prod.imagen)
             if os.path.exists(old_path):
