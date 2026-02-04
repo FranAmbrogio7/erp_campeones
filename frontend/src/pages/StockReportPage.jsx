@@ -1,54 +1,97 @@
 import { useState, useRef, useEffect } from 'react';
-import { api } from '../context/AuthContext';
+import { useAuth, api } from '../context/AuthContext';
 import { useReactToPrint } from 'react-to-print';
 import StockPrintTemplate from '../components/StockPrintTemplate';
 import {
-    Search, Printer, Trash2, Box, Package, FileText,
-    ArrowLeft, Shirt, CheckCircle, Layers
+    Search, Printer, Trash2, Box, FileText, ArrowLeft,
+    Shirt, CheckCircle, Layers, Filter, X, Maximize2,
+    AlertCircle, Plus, ChevronRight
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import toast, { Toaster } from 'react-hot-toast';
 
 const StockReportPage = () => {
-    // --- ESTADOS ---
-    const [searchTerm, setSearchTerm] = useState('');
+    const { token } = useAuth();
+
+    // --- ESTADOS DE DATOS ---
     const [searchResults, setSearchResults] = useState([]);
-    const [selectedItems, setSelectedItems] = useState([]); // Lista para imprimir
+    const [categories, setCategories] = useState([]);
+    const [specificCategories, setSpecificCategories] = useState([]);
+
+    // --- ESTADOS DE FILTROS ---
+    const [searchTerm, setSearchTerm] = useState('');
+    const [selectedCat, setSelectedCat] = useState('');
+    const [selectedSpec, setSelectedSpec] = useState('');
+    const [isSearching, setIsSearching] = useState(false);
+
+    // --- ESTADOS DE REPORTE ---
+    const [selectedItems, setSelectedItems] = useState([]);
     const [reportTitle, setReportTitle] = useState('');
+
+    // --- ESTADOS DE UI ---
+    const [zoomImage, setZoomImage] = useState(null);
 
     // --- REFS ---
     const componentRef = useRef();
     const searchInputRef = useRef(null);
 
-    // --- IMPRESIÓN ---
-    const handlePrint = useReactToPrint({
-        contentRef: componentRef,
-        documentTitle: `Stock_${new Date().toLocaleDateString()}`,
-        onAfterPrint: () => toast.success("PDF Generado correctamente")
-    });
-
-    // --- BUSCADOR ---
+    // --- CARGA INICIAL DE FILTROS ---
     useEffect(() => {
-        const delaySearch = setTimeout(async () => {
-            if (!searchTerm.trim()) {
-                setSearchResults([]);
-                return;
-            }
+        const fetchFilters = async () => {
             try {
-                const res = await api.get('/products', { params: { search: searchTerm, limit: 10 } });
+                const [resCat, resSpec] = await Promise.all([
+                    api.get('/products/categories'),
+                    api.get('/products/specific-categories')
+                ]);
+                setCategories(resCat.data);
+                setSpecificCategories(resSpec.data);
+            } catch (e) { console.error("Error cargando filtros", e); }
+        };
+        if (token) fetchFilters();
+    }, [token]);
+
+    // --- BÚSQUEDA INTELIGENTE (DEBOUNCE) ---
+    useEffect(() => {
+        // Si no hay criterios de búsqueda, limpiamos (opcional: podrías mostrar últimos agregados)
+        if (!searchTerm.trim() && !selectedCat && !selectedSpec) {
+            setSearchResults([]);
+            return;
+        }
+
+        const delaySearch = setTimeout(async () => {
+            setIsSearching(true);
+            try {
+                const params = {
+                    search: searchTerm,
+                    category_id: selectedCat || undefined,
+                    specific_id: selectedSpec || undefined,
+                    limit: 20
+                };
+                const res = await api.get('/products', { params });
                 setSearchResults(res.data.products || []);
             } catch (error) {
                 console.error(error);
+                toast.error("Error al buscar");
+            } finally {
+                setIsSearching(false);
             }
         }, 300);
-        return () => clearTimeout(delaySearch);
-    }, [searchTerm]);
 
-    // --- MANEJADORES ---
+        return () => clearTimeout(delaySearch);
+    }, [searchTerm, selectedCat, selectedSpec]);
+
+    // --- IMPRESIÓN ---
+    const handlePrint = useReactToPrint({
+        contentRef: componentRef,
+        documentTitle: `ReporteStock_${new Date().toLocaleDateString().replace(/\//g, '-')}`,
+        onAfterPrint: () => toast.success("PDF Generado correctamente")
+    });
+
+    // --- ACCIONES LISTA ---
     const handleAddItem = (product, variant) => {
         const exists = selectedItems.find(i => i.id_variante === variant.id_variante);
         if (exists) {
-            toast.error("Ya está en la lista");
+            toast.error("Ya está en la lista", { id: 'dup-toast' }); // ID para evitar spam
             return;
         }
 
@@ -58,17 +101,16 @@ const StockReportPage = () => {
             nombre: product.nombre,
             talle: variant.talle,
             stock_actual: variant.stock,
-            precio: product.precio
+            precio: product.precio,
+            imagen: product.imagen // Guardamos ref a imagen por si la queremos mostrar en el reporte visual
         };
 
         setSelectedItems(prev => [...prev, newItem]);
         toast.success(`Agregado: ${variant.talle}`);
-        searchInputRef.current?.focus();
     };
 
-    // --- NUEVA FUNCIÓN: AGREGAR CURVA COMPLETA ---
     const handleAddCurve = (product) => {
-        // Filtramos solo las variantes que NO estén ya en la lista
+        // Filtramos solo las variantes que NO están ya
         const itemsToAdd = product.variantes
             .filter(v => !selectedItems.some(i => i.id_variante === v.id_variante))
             .map(v => ({
@@ -77,18 +119,17 @@ const StockReportPage = () => {
                 nombre: product.nombre,
                 talle: v.talle,
                 stock_actual: v.stock,
-                precio: product.precio
+                precio: product.precio,
+                imagen: product.imagen
             }));
 
         if (itemsToAdd.length === 0) {
-            toast('¡Ya tienes toda la curva agregada!', { icon: '👍' });
+            toast('Todos los talles ya están agregados', { icon: '👌' });
             return;
         }
 
         setSelectedItems(prev => [...prev, ...itemsToAdd]);
-        toast.success(`Se agregaron ${itemsToAdd.length} variantes`);
-        setSearchTerm(''); // Limpiar para buscar otro
-        searchInputRef.current?.focus();
+        toast.success(`Agregados ${itemsToAdd.length} ítems`);
     };
 
     const handleRemoveItem = (id_variante) => {
@@ -96,14 +137,17 @@ const StockReportPage = () => {
     };
 
     const handleClearList = () => {
-        if (window.confirm("¿Borrar toda la lista actual?")) setSelectedItems([]);
+        if (selectedItems.length > 0 && window.confirm("¿Limpiar toda la lista del reporte?")) {
+            setSelectedItems([]);
+            setReportTitle('');
+        }
     };
 
     return (
-        <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)] bg-gray-50 overflow-hidden">
+        <div className="flex flex-col md:flex-row h-[calc(100vh-4rem)] bg-gray-50 overflow-hidden animate-fade-in">
             <Toaster position="top-center" />
 
-            {/* COMPONENTE OCULTO PARA IMPRESIÓN */}
+            {/* COMPONENTE OCULTO PARA IMPRESIÓN (PLANTILLA PDF) */}
             <div style={{ display: "none" }}>
                 <StockPrintTemplate
                     ref={componentRef}
@@ -112,66 +156,134 @@ const StockReportPage = () => {
                 />
             </div>
 
-            {/* --- COLUMNA IZQUIERDA: BUSCADOR --- */}
-            <div className="w-full md:w-1/3 p-4 flex flex-col gap-4 border-r border-gray-200 bg-white z-10 shadow-sm">
+            {/* --- IZQUIERDA: BUSCADOR Y RESULTADOS --- */}
+            <div className="w-full md:w-5/12 lg:w-1/3 flex flex-col border-r border-gray-200 bg-white shadow-xl z-20 relative">
 
-                <div className="flex items-center gap-2 mb-2">
-                    <Link to="/" className="p-2 hover:bg-gray-100 rounded-full text-gray-500">
-                        <ArrowLeft size={20} />
-                    </Link>
-                    <h1 className="text-xl font-bold text-gray-800 flex items-center">
-                        <Box className="mr-2 text-blue-600" /> Nuevo Reporte
-                    </h1>
-                </div>
+                {/* Header Buscador */}
+                <div className="p-5 border-b border-gray-100 bg-white z-10">
+                    <div className="flex items-center gap-2 mb-4">
+                        <Link to="/" className="p-2 -ml-2 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors">
+                            <ArrowLeft size={20} />
+                        </Link>
+                        <h1 className="text-xl font-black text-gray-800 flex items-center">
+                            <Box className="mr-2 text-blue-600" /> Generador de Reportes
+                        </h1>
+                    </div>
 
-                <div className="bg-blue-50 p-4 rounded-xl border border-blue-100">
-                    <label className="text-xs font-bold text-blue-800 uppercase mb-2 block">Buscar Producto</label>
-                    <div className="relative">
-                        <Search className="absolute left-3 top-3 text-blue-400" size={20} />
-                        <input
-                            ref={searchInputRef}
-                            type="text"
-                            className="w-full pl-10 p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none transition-all"
-                            placeholder="Nombre, SKU..."
-                            value={searchTerm}
-                            onChange={e => setSearchTerm(e.target.value)}
-                            autoFocus
-                        />
+                    <div className="flex flex-col gap-3">
+                        {/* Fila de Filtros */}
+                        <div className="flex gap-2">
+                            <div className="relative flex-1">
+                                <select
+                                    value={selectedCat} onChange={e => setSelectedCat(e.target.value)}
+                                    className="w-full appearance-none bg-gray-50 border border-gray-200 text-gray-600 py-2 pl-3 pr-8 rounded-lg text-xs font-bold outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-50 cursor-pointer"
+                                >
+                                    <option value="">Categoría...</option>
+                                    {categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                                </select>
+                                <Filter size={12} className="absolute right-2 top-2.5 text-gray-400 pointer-events-none" />
+                            </div>
+                            <div className="relative flex-1">
+                                <select
+                                    value={selectedSpec} onChange={e => setSelectedSpec(e.target.value)}
+                                    className="w-full appearance-none bg-gray-50 border border-gray-200 text-gray-600 py-2 pl-3 pr-8 rounded-lg text-xs font-bold outline-none focus:border-blue-300 focus:ring-2 focus:ring-blue-50 cursor-pointer"
+                                >
+                                    <option value="">Liga/Tipo...</option>
+                                    {specificCategories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                                </select>
+                                <Filter size={12} className="absolute right-2 top-2.5 text-gray-400 pointer-events-none" />
+                            </div>
+                        </div>
+
+                        {/* Input Principal */}
+                        <div className="relative group">
+                            <Search className="absolute left-3 top-3 text-gray-400 group-focus-within:text-blue-500 transition-colors" size={18} />
+                            <input
+                                ref={searchInputRef}
+                                type="text"
+                                className="w-full pl-10 pr-10 p-2.5 border-2 border-gray-100 rounded-xl focus:border-blue-500 focus:ring-4 focus:ring-blue-50 outline-none transition-all font-medium text-gray-700 placeholder-gray-400"
+                                placeholder="Buscar productos..."
+                                value={searchTerm}
+                                onChange={e => setSearchTerm(e.target.value)}
+                                autoFocus
+                            />
+                            {(searchTerm || selectedCat || selectedSpec) && (
+                                <button
+                                    onClick={() => { setSearchTerm(''); setSelectedCat(''); setSelectedSpec(''); }}
+                                    className="absolute right-3 top-3 text-gray-400 hover:text-red-500 transition-colors"
+                                >
+                                    <X size={16} />
+                                </button>
+                            )}
+                        </div>
                     </div>
                 </div>
 
-                {/* RESULTADOS DE BÚSQUEDA */}
-                <div className="flex-1 overflow-y-auto pr-1">
-                    {searchResults.length === 0 && searchTerm && (
-                        <div className="text-center p-4 text-gray-400 animate-fade-in">No se encontraron productos</div>
+                {/* Lista de Resultados */}
+                <div className="flex-1 overflow-y-auto bg-gray-50/30 p-2 custom-scrollbar">
+                    {/* Empty State */}
+                    {searchResults.length === 0 && !isSearching && (
+                        <div className="flex flex-col items-center justify-center h-48 text-gray-400 mt-10">
+                            {searchTerm || selectedCat || selectedSpec ? (
+                                <>
+                                    <AlertCircle size={40} className="mb-2 opacity-50" />
+                                    <p className="text-sm font-medium">No se encontraron productos</p>
+                                </>
+                            ) : (
+                                <>
+                                    <Search size={40} className="mb-2 opacity-20" />
+                                    <p className="text-xs text-center px-10">Usa el buscador o los filtros para encontrar mercadería.</p>
+                                </>
+                            )}
+                        </div>
                     )}
 
                     {searchResults.map(p => (
-                        <div key={p.id} className="mb-3 bg-white border border-gray-200 rounded-xl p-3 shadow-sm hover:shadow-md transition-all">
+                        <div key={p.id} className="group bg-white border border-gray-200 rounded-xl p-3 mb-2 shadow-sm hover:shadow-md hover:border-blue-300 transition-all">
                             <div className="flex gap-3">
-                                {/* Imagen */}
-                                <div className="w-14 h-14 bg-gray-100 rounded-lg flex items-center justify-center shrink-0 overflow-hidden">
-                                    {p.imagen ? <img src={p.imagen} className="w-full h-full object-cover" /> : <Shirt size={24} className="text-gray-400" />}
+                                {/* Imagen con Zoom */}
+                                <div
+                                    className="w-16 h-16 bg-gray-100 rounded-lg shrink-0 flex items-center justify-center overflow-hidden relative cursor-zoom-in border border-gray-100"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (p.imagen) setZoomImage(`${api.defaults.baseURL}/static/uploads/${p.imagen}`);
+                                    }}
+                                >
+                                    {p.imagen ? (
+                                        <>
+                                            <img
+                                                src={`${api.defaults.baseURL}/static/uploads/${p.imagen}`}
+                                                className="w-full h-full object-cover"
+                                                onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'flex'; }} // Fallback simple
+                                            />
+                                            <div className="hidden w-full h-full items-center justify-center bg-gray-50 text-gray-300"><Shirt size={20} /></div>
+                                        </>
+                                    ) : (
+                                        <Shirt size={24} className="text-gray-300" />
+                                    )}
+                                    <div className="absolute inset-0 bg-black/10 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                                        <Maximize2 size={16} className="text-white drop-shadow-md" />
+                                    </div>
                                 </div>
 
-                                {/* Info Producto */}
+                                {/* Info y Variantes */}
                                 <div className="flex-1 min-w-0">
-                                    <div className="flex justify-between items-start">
-                                        <h3 className="font-bold text-sm text-gray-800 truncate pr-2">{p.nombre}</h3>
-                                        {/* BOTÓN CURVA COMPLETA */}
+                                    <div className="flex justify-between items-start mb-1">
+                                        <div>
+                                            <h3 className="font-bold text-sm text-gray-800 truncate pr-1 leading-tight">{p.nombre}</h3>
+                                            <p className="text-[10px] text-gray-500 font-mono mt-0.5">ID: {p.id}</p>
+                                        </div>
                                         <button
                                             onClick={() => handleAddCurve(p)}
-                                            className="text-[10px] bg-indigo-50 text-indigo-600 border border-indigo-200 px-2 py-1 rounded-md font-bold flex items-center hover:bg-indigo-100 hover:text-indigo-800 transition-colors whitespace-nowrap"
-                                            title="Agregar todos los talles"
+                                            className="text-[10px] flex items-center bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded hover:bg-blue-600 hover:text-white transition-colors font-bold whitespace-nowrap"
+                                            title="Agregar todos los talles de este producto"
                                         >
-                                            <Layers size={12} className="mr-1" /> Curva Completa
+                                            <Layers size={10} className="mr-1" /> Todo
                                         </button>
                                     </div>
 
-                                    <p className="text-[10px] text-gray-400 mb-2 mt-1">Variantes disponibles:</p>
-
-                                    {/* Variantes Individuales */}
-                                    <div className="flex flex-wrap gap-2">
+                                    {/* Grid de Botones Variantes */}
+                                    <div className="flex flex-wrap gap-1.5 mt-2">
                                         {p.variantes.map(v => {
                                             const isAdded = selectedItems.some(i => i.id_variante === v.id_variante);
                                             return (
@@ -179,20 +291,23 @@ const StockReportPage = () => {
                                                     key={v.id_variante}
                                                     onClick={() => handleAddItem(p, v)}
                                                     disabled={isAdded}
-                                                    className={`text-xs px-2 py-1 rounded border flex items-center gap-1 transition-all
+                                                    className={`
+                                                        text-[10px] px-2 py-1 rounded border flex items-center gap-1 transition-all
                                                         ${isAdded
-                                                            ? 'bg-green-100 text-green-700 border-green-200 cursor-default'
-                                                            : 'bg-white hover:bg-blue-50 hover:border-blue-300 text-gray-700'
-                                                        }`}
+                                                            ? 'bg-emerald-100 text-emerald-800 border-emerald-200 cursor-default shadow-inner'
+                                                            : 'bg-white text-gray-600 border-gray-200 hover:border-blue-400 hover:text-blue-600'
+                                                        }
+                                                    `}
                                                 >
                                                     <span className="font-bold">{v.talle}</span>
-                                                    <span className={`text-[9px] ml-1 px-1 rounded ${v.stock > 0 ? 'bg-gray-100' : 'bg-red-50 text-red-500'}`}>
+                                                    <span className={`text-[9px] px-1 rounded-sm ${v.stock > 0 ? 'bg-gray-100 text-gray-500' : 'bg-red-50 text-red-500'}`}>
                                                         {v.stock}
                                                     </span>
-                                                    {isAdded && <CheckCircle size={10} />}
+                                                    {isAdded ? <CheckCircle size={10} /> : <Plus size={10} className="opacity-0 group-hover:opacity-50" />}
                                                 </button>
                                             );
                                         })}
+                                        {p.variantes.length === 0 && <span className="text-[10px] text-red-400 italic">Sin stock cargado</span>}
                                     </div>
                                 </div>
                             </div>
@@ -201,95 +316,119 @@ const StockReportPage = () => {
                 </div>
             </div>
 
-            {/* --- COLUMNA DERECHA: PREVISUALIZACIÓN LISTA --- */}
-            <div className="w-full md:w-2/3 p-6 flex flex-col bg-gray-50">
+            {/* --- DERECHA: VISTA PREVIA Y ACCIONES --- */}
+            <div className="flex-1 flex flex-col bg-gray-50 h-full overflow-hidden relative">
 
-                {/* CONFIGURACIÓN DEL REPORTE */}
-                <div className="bg-white p-4 rounded-xl shadow-sm border border-gray-200 mb-4 flex justify-between items-end gap-4">
-                    <div className="flex-1">
-                        <label className="text-xs font-bold text-gray-500 uppercase mb-1 block">Título del Reporte (Opcional)</label>
-                        <div className="flex items-center gap-2">
-                            <FileText size={20} className="text-gray-400" />
+                {/* Header Reporte */}
+                <div className="p-6 bg-white border-b border-gray-200 shadow-sm z-10 flex flex-col md:flex-row justify-between items-end gap-4">
+                    <div className="flex-1 w-full">
+                        <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1 block">Título del Reporte</label>
+                        <div className="flex items-center gap-3">
+                            <FileText size={24} className="text-blue-600" />
                             <input
                                 type="text"
-                                className="flex-1 p-2 border-b-2 border-gray-200 focus:border-blue-500 outline-none bg-transparent font-bold text-lg transition-colors"
-                                placeholder="Ej: Control Camisetas Selección"
+                                className="flex-1 text-2xl font-black text-gray-800 placeholder-gray-300 border-b-2 border-transparent focus:border-blue-500 outline-none bg-transparent transition-all py-1"
+                                placeholder="Ej: Control Remeras..."
                                 value={reportTitle}
                                 onChange={e => setReportTitle(e.target.value)}
                             />
                         </div>
                     </div>
-                    <div>
+                    <div className="flex gap-3">
+                        {selectedItems.length > 0 && (
+                            <button
+                                onClick={handleClearList}
+                                className="px-4 py-3 rounded-xl border border-red-200 text-red-500 font-bold hover:bg-red-50 transition-colors text-sm flex items-center"
+                            >
+                                <Trash2 size={18} className="mr-2" /> Borrar
+                            </button>
+                        )}
                         <button
                             onClick={handlePrint}
                             disabled={selectedItems.length === 0}
-                            className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 shadow-lg hover:bg-black transition-transform active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                            className="bg-slate-900 text-white px-6 py-3 rounded-xl font-bold flex items-center shadow-lg hover:bg-black hover:shadow-xl transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
                         >
-                            <Printer size={20} /> Imprimir PDF
+                            <Printer size={20} className="mr-2" /> GENERAR PDF
                         </button>
                     </div>
                 </div>
 
-                {/* TABLA VISUAL */}
-                <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 flex flex-col overflow-hidden relative">
-                    <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
-                        <h3 className="font-bold text-gray-700 flex items-center">
-                            <Package className="mr-2 text-blue-600" size={18} />
-                            Ítems Seleccionados ({selectedItems.length})
-                        </h3>
-                        {selectedItems.length > 0 && (
-                            <button onClick={handleClearList} className="text-red-400 hover:text-red-600 text-xs font-bold bg-red-50 px-3 py-1 rounded hover:bg-red-100 transition-colors">
-                                Limpiar Todo
-                            </button>
-                        )}
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto">
-                        {selectedItems.length === 0 ? (
-                            <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                                <FileText size={48} className="mb-4 opacity-20" />
-                                <p>Busca productos a la izquierda para armar tu reporte</p>
+                {/* Tabla de Items */}
+                <div className="flex-1 overflow-auto p-6">
+                    {selectedItems.length === 0 ? (
+                        <div className="h-full flex flex-col items-center justify-center text-gray-400 border-2 border-dashed border-gray-200 rounded-2xl bg-white/50">
+                            <div className="bg-white p-6 rounded-full shadow-sm mb-4">
+                                <FileText size={48} className="text-gray-300" />
                             </div>
-                        ) : (
-                            <table className="w-full text-sm text-left">
-                                <thead className="bg-gray-50 text-gray-500 sticky top-0 shadow-sm z-10">
+                            <h3 className="text-lg font-bold text-gray-600">Reporte Vacío</h3>
+                            <p className="text-sm">Selecciona productos del panel izquierdo para comenzar.</p>
+                        </div>
+                    ) : (
+                        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+                            <div className="p-3 bg-gray-50 border-b border-gray-200 flex justify-between items-center px-6">
+                                <span className="text-xs font-bold text-gray-500 uppercase">Detalle de Ítems</span>
+                                <span className="bg-blue-100 text-blue-700 px-2 py-0.5 rounded text-xs font-bold">{selectedItems.length} ítems</span>
+                            </div>
+                            <table className="w-full text-left">
+                                <thead className="bg-white text-gray-500 text-xs uppercase font-bold sticky top-0 border-b border-gray-100">
                                     <tr>
-                                        <th className="p-3 font-bold">SKU</th>
-                                        <th className="p-3 font-bold">Producto</th>
-                                        <th className="p-3 font-bold text-center">Talle</th>
-                                        <th className="p-3 font-bold text-center">Stock Actual</th>
-                                        <th className="p-3 text-right">Acción</th>
+                                        <th className="p-4 w-20 text-center">Talle</th>
+                                        <th className="p-4">Producto / SKU</th>
+                                        <th className="p-4 text-center">Stock Sistema</th>
+                                        <th className="p-4 text-right">Acción</th>
                                     </tr>
                                 </thead>
-                                <tbody className="divide-y divide-gray-100">
+                                <tbody className="divide-y divide-gray-50 text-sm">
                                     {selectedItems.map((item, idx) => (
-                                        <tr key={`${item.id_variante}-${idx}`} className="hover:bg-blue-50/30 group transition-colors">
-                                            <td className="p-3 font-mono text-xs text-gray-500">{item.sku}</td>
-                                            <td className="p-3 font-medium text-gray-800">{item.nombre}</td>
-                                            <td className="p-3 text-center">
-                                                <span className="bg-gray-100 px-2 py-1 rounded text-xs font-bold border">{item.talle}</span>
+                                        <tr key={`${item.id_variante}-${idx}`} className="hover:bg-blue-50/30 transition-colors group">
+                                            <td className="p-4 text-center">
+                                                <span className="inline-block min-w-[2rem] py-1 px-2 bg-gray-100 border border-gray-200 rounded font-bold text-gray-700 text-xs">
+                                                    {item.talle}
+                                                </span>
                                             </td>
-                                            <td className="p-3 text-center">
-                                                <span className={`font-bold text-lg ${item.stock_actual === 0 ? 'text-red-500' : 'text-blue-600'}`}>
+                                            <td className="p-4">
+                                                <div className="font-bold text-gray-800">{item.nombre}</div>
+                                                <div className="text-xs text-gray-400 font-mono mt-0.5">{item.sku}</div>
+                                            </td>
+                                            <td className="p-4 text-center">
+                                                <span className={`font-mono font-bold ${item.stock_actual === 0 ? 'text-red-500' : 'text-gray-600'}`}>
                                                     {item.stock_actual}
                                                 </span>
                                             </td>
-                                            <td className="p-3 text-right">
+                                            <td className="p-4 text-right">
                                                 <button
                                                     onClick={() => handleRemoveItem(item.id_variante)}
-                                                    className="text-gray-300 hover:text-red-500 p-1 rounded-full hover:bg-red-50 transition-colors"
+                                                    className="text-gray-300 hover:text-red-500 p-2 rounded-full hover:bg-red-50 transition-colors"
+                                                    title="Quitar de la lista"
                                                 >
-                                                    <Trash2 size={16} />
+                                                    <X size={18} />
                                                 </button>
                                             </td>
                                         </tr>
                                     ))}
                                 </tbody>
                             </table>
-                        )}
-                    </div>
+                        </div>
+                    )}
                 </div>
             </div>
+
+            {/* MODAL ZOOM */}
+            {zoomImage && (
+                <div
+                    className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in cursor-zoom-out"
+                    onClick={() => setZoomImage(null)}
+                >
+                    <img
+                        src={zoomImage}
+                        className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain animate-zoom-in"
+                        onClick={e => e.stopPropagation()}
+                    />
+                    <button className="absolute top-5 right-5 text-white/50 hover:text-white p-2 rounded-full bg-white/10 hover:bg-white/20 transition-all">
+                        <X size={32} />
+                    </button>
+                </div>
+            )}
         </div>
     );
 };
