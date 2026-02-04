@@ -350,6 +350,8 @@ def update_product(id):
         if 'categoria_especifica_id' in request.form:
             prod.id_categoria_especifica = request.form['categoria_especifica_id'] or None
 
+        nueva_imagen_cargada = False
+
         # Imagen
         if 'imagen' in request.files:
             file = request.files['imagen']
@@ -362,6 +364,7 @@ def update_product(id):
                 filename = secure_filename(file.filename)
                 file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], filename))
                 prod.imagen = filename
+                nueva_imagen_cargada = True # <--- MARCAMOS QUE CAMBIÓ
 
         # Guardamos cambios locales primero
         db.session.commit()
@@ -376,7 +379,15 @@ def update_product(id):
                 nombre=prod.nombre,
                 descripcion=prod.descripcion
             )
-            
+
+            # 1.2 Si se cargó una nueva imagen, subimos a Tienda Nube
+            if nueva_imagen_cargada:
+                # Subimos la nueva foto a Tienda Nube
+                # Nota: Esto agrega la foto al final de la galería de TN.
+                # Si quisieras reemplazarla, habría que borrar las anteriores, 
+                # pero agregarla es lo más seguro por ahora.
+                tn_service.upload_product_image(prod.tiendanube_id, prod.imagen)
+
             # 2. Actualizar variantes YA VINCULADAS (Precio y Stock)
             # Nota: Asegúrate de que tu modelo use 'tiendanube_id' o 'tiendanube_variant_id' consistentemente.
             # En el servicio usamos 'tiendanube_id' para la variante.

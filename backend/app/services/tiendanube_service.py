@@ -15,6 +15,7 @@ class TiendaNubeService:
         
         # 2. CONFIGURACIÓN DE PRECIOS
         self.PORCENTAJE_WEB = 1.18  # 15% de aumento para la web
+        self.IMG_BASE_URL = "https://campeonesapp.com.ar/api/static/uploads"
 
     def _get_headers(self):
         """Helper para headers comunes"""
@@ -271,6 +272,79 @@ class TiendaNubeService:
                     print(f"   ❌ Falló la creación de la variante {var.codigo_sku}")
         
         return hubo_cambios
+
+
+
+    def create_product_in_cloud(self, local_prod):
+        """Sube un producto nuevo completo a Tienda Nube (AHORA CON FOTO)"""
+        try:
+            if not self.access_token or not self.api_url: 
+                return {"success": False, "error": "No hay credenciales configuradas"}
+
+            # ... lógica de variantes (sin cambios) ...
+            variants_data = []
+            for var in local_prod.variantes:
+                # ... (tu código de variantes) ...
+                # (Resumido para no repetir todo el bloque, mantén tu lógica de variantes igual)
+                stock_val = var.inventario.stock_actual if var.inventario else 0
+                precio_web = self.calcular_precio_web(local_prod.precio)
+                nombre_talle = getattr(var, 'talla', None) or getattr(var, 'talle', "Único")
+                
+                variants_data.append({
+                    "price": precio_web,
+                    "stock": int(stock_val),
+                    "sku": var.codigo_sku,
+                    "values": [{"es": nombre_talle}] 
+                })
+
+            # --- NUEVO: PREPARAR IMAGEN ---
+            images_payload = []
+            if local_prod.imagen:
+                # Le decimos a Tienda Nube: "Baja la foto de aquí"
+                full_img_url = f"{self.IMG_BASE_URL}/{local_prod.imagen}"
+                images_payload.append({"src": full_img_url})
+
+            # Payload del Producto
+            payload = {
+                "name": {"es": local_prod.nombre},
+                "description": {"es": local_prod.descripcion or ""},
+                "attributes": [{"es": "Talle"}], 
+                "variants": variants_data,
+                "images": images_payload # <--- AQUÍ ENVIAMOS LA FOTO
+            }
+
+            # Request
+            url = f"{self.api_url}/products"
+            response = requests.post(url, json=payload, headers=self._get_headers())
+            
+            if response.status_code == 201:
+                return {"success": True, "tn_data": response.json()}
+            else:
+                return {"success": False, "error": f"API Error {response.status_code}: {response.text}"}
+
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            return {"success": False, "error": str(e)}
+
+    # --- NUEVO MÉTODO PARA SUBIR IMAGEN INDIVIDUAL ---
+    def upload_product_image(self, tn_product_id, filename):
+        """Sube una imagen a un producto existente en Tienda Nube"""
+        if not self.access_token or not self.api_url or not filename: return
+
+        url = f"{self.api_url}/products/{tn_product_id}/images"
+        full_img_url = f"{self.IMG_BASE_URL}/{filename}"
+        
+        payload = {"src": full_img_url}
+
+        try:
+            r = requests.post(url, json=payload, headers=self._get_headers())
+            if r.status_code == 201:
+                print(f"✅ TN Sync: Imagen subida correctamente (ID Producto: {tn_product_id})")
+            else:
+                print(f"⚠️ Error subiendo imagen a TN: {r.text}")
+        except Exception as e:
+            print(f"🔥 Error conexión imagen TN: {e}")
 
 # Instancia global para importar en otros lados
 tn_service = TiendaNubeService()
