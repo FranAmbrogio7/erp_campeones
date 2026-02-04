@@ -528,6 +528,30 @@ const ProductsPage = () => {
                                         {/* ACCIONES */}
                                         <td className="px-4 py-3 text-right">
                                             <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+
+                                                {/* --- PEGAR ESTE BLOQUE NUEVO AQUÍ --- */}
+                                                {p.tiendanube_id && (
+                                                    <button
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation();
+                                                            if (!window.confirm("¿Descargar foto desde Tienda Nube?")) return;
+                                                            const t = toast.loading("Trayendo foto...");
+                                                            try {
+                                                                await api.post(`/products/${p.id}/import-image-from-cloud`);
+                                                                toast.success("Foto actualizada", { id: t });
+                                                                fetchProducts(page); // Recargar para ver la foto
+                                                            } catch (err) {
+                                                                toast.error("Error al descargar", { id: t });
+                                                            }
+                                                        }}
+                                                        className="p-1.5 text-indigo-500 hover:bg-indigo-50 hover:text-indigo-700 rounded-lg transition-colors"
+                                                        title="Traer foto de Tienda Nube"
+                                                    >
+                                                        <ImageIcon size={18} />
+                                                    </button>
+                                                )}
+                                                {/* ------------------------------------ */}
+
                                                 <button onClick={() => handleEdit(p)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors" title="Editar">
                                                     <Edit3 size={18} />
                                                 </button>

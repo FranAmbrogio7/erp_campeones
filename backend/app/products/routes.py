@@ -3,6 +3,7 @@ import os
 import qrcode
 import threading
 import time
+import requests
 from PIL import Image
 from reportlab.lib.utils import ImageReader
 from werkzeug.utils import secure_filename
@@ -350,8 +351,6 @@ def update_product(id):
         if 'categoria_especifica_id' in request.form:
             prod.id_categoria_especifica = request.form['categoria_especifica_id'] or None
 
-        nueva_imagen_cargada = False
-
         # Imagen
         if 'imagen' in request.files:
             file = request.files['imagen']
@@ -364,7 +363,6 @@ def update_product(id):
                 filename = secure_filename(file.filename)
                 file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], filename))
                 prod.imagen = filename
-                nueva_imagen_cargada = True # <--- MARCAMOS QUE CAMBIÓ
 
         # Guardamos cambios locales primero
         db.session.commit()
@@ -379,15 +377,7 @@ def update_product(id):
                 nombre=prod.nombre,
                 descripcion=prod.descripcion
             )
-
-            # 1.2 Si se cargó una nueva imagen, subimos a Tienda Nube
-            if nueva_imagen_cargada:
-                # Subimos la nueva foto a Tienda Nube
-                # Nota: Esto agrega la foto al final de la galería de TN.
-                # Si quisieras reemplazarla, habría que borrar las anteriores, 
-                # pero agregarla es lo más seguro por ahora.
-                tn_service.upload_product_image(prod.tiendanube_id, prod.imagen)
-
+            
             # 2. Actualizar variantes YA VINCULADAS (Precio y Stock)
             # Nota: Asegúrate de que tu modelo use 'tiendanube_id' o 'tiendanube_variant_id' consistentemente.
             # En el servicio usamos 'tiendanube_id' para la variante.
@@ -917,3 +907,56 @@ def force_prices_update():
 
     except Exception as e:
         return jsonify({"msg": "Error critico", "error": str(e)}), 500
+
+
+
+        
+@bp.route('/<int:id>/import-image-from-cloud', methods=['POST'])
+@jwt_required()
+def import_image_from_cloud(id):
+    prod = Producto.query.get_or_404(id)
+    
+    if not prod.tiendanube_id:
+        return jsonify({"msg": "Error: El producto no está vinculado a Tienda Nube"}), 400
+
+    try:
+        # 1. Obtener URL de la nube
+        image_url = tn_service.get_first_product_image_url(prod.tiendanube_id)
+        
+        if not image_url:
+            return jsonify({"msg": "El producto no tiene fotos en Tienda Nube"}), 404
+
+        # 2. Descargar la imagen
+        print(f"⬇️ Descargando imagen desde: {image_url}")
+        img_data = requests.get(image_url).content
+        
+        # 3. Guardar archivo en el ERP
+        # Usamos timestamp para evitar problemas de caché o nombres repetidos
+        filename = f"tn_imported_{prod.id}_{int(time.time())}.jpg"
+        upload_folder = current_app.config['UPLOAD_FOLDER']
+        filepath = os.path.join(upload_folder, filename)
+        
+        with open(filepath, 'wb') as f:
+            f.write(img_data)
+
+        # 4. Borrar imagen vieja del ERP si existía (para no llenar el disco basura)
+        if prod.imagen:
+            old_path = os.path.join(upload_folder, prod.imagen)
+            if os.path.exists(old_path):
+                try:
+                    os.remove(old_path)
+                except:
+                    pass
+
+        # 5. Actualizar Base de Datos
+        prod.imagen = filename
+        db.session.commit()
+
+        return jsonify({
+            "msg": "Imagen importada y actualizada correctamente", 
+            "imagen": filename
+        }), 200
+
+    except Exception as e:
+        print(f"Error importando imagen: {e}")
+        return jsonify({"msg": f"Error interno: {str(e)}"}), 500
