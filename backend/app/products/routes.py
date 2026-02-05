@@ -15,7 +15,7 @@ from app.extensions import db
 from flask_jwt_extended import jwt_required
 import barcode
 from barcode.writer import ImageWriter
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from reportlab.graphics.barcode import code128
 from reportlab.graphics import renderPDF
 from reportlab.pdfgen import canvas
@@ -110,50 +110,38 @@ def delete_specific_category(id):
         return jsonify({"msg": "No se puede eliminar: Hay productos asociados"}), 400
 
 # ==========================================
-# 3. Obtener lista de productos
+# 3. Obtener lista de productos (ACTUALIZADA)
 # ==========================================
 @bp.route('', methods=['GET'])
 @jwt_required()
 def get_products():
-    # 1. Parámetros
+    # 1. Parámetros Básicos
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('limit', 20, type=int)
     search = request.args.get('search', '', type=str)
     
-    # Filtros
+    # Filtros Existentes
     cat_id = request.args.get('category_id')
     spec_id = request.args.get('specific_id')
     min_price = request.args.get('min_price', type=float)
     max_price = request.args.get('max_price', type=float)
 
+    # --- NUEVOS FILTROS (Activo y Stock) ---
+    active_param = request.args.get('active', 'true') # Recibe 'true' o 'false'
+    min_stock = request.args.get('min_stock', type=int)
+
     # 2. Query Base (Unimos tablas relacionadas siempre)
     query = Producto.query.outerjoin(Categoria).outerjoin(CategoriaEspecifica)
 
     # 3. Aplicar Filtros
-    if search:
-        # Hacemos el join con variantes UNA sola vez para poder buscar por SKU
-        query = query.join(ProductoVariante)
-        
-        # --- CAMBIO IMPORTANTE AQUÍ ---
-        # Separamos la búsqueda en palabras (ej: "boca retro" -> ["boca", "retro"])
-        terms = search.strip().split()
-        
-        for term in terms:
-            term_filter = f"%{term}%"
-            # Para cada palabra, exigimos que aparezca en Nombre O Categoria O SKU
-            # Al encadenar .filter() sucesivamente, SQLAlchemy aplica un AND entre ellos.
-            query = query.filter(
-                or_(
-                    Producto.nombre.ilike(term_filter),
-                    Categoria.nombre.ilike(term_filter),
-                    ProductoVariante.codigo_sku.ilike(term_filter)
-                )
-            )
-        # -------------------------------
 
-        # Agrupamos para que no salgan productos repetidos por cada variante encontrada
-        query = query.group_by(Producto.id_producto)
+    # --- A. FILTRO DE ESTADO (Activo / Discontinuo) ---
+    if active_param == 'true':
+        query = query.filter(Producto.activo == True)
+    elif active_param == 'false':
+        query = query.filter(Producto.activo == False)
     
+    # --- B. FILTROS DE CATEGORÍA Y PRECIO ---
     if cat_id:
         query = query.filter(Producto.id_categoria == cat_id)
     
@@ -166,7 +154,38 @@ def get_products():
     if max_price is not None and max_price > 0:
         query = query.filter(Producto.precio <= max_price)
 
-    # 4. Paginación
+    # --- C. BÚSQUEDA AVANZADA (Tu lógica de términos) ---
+    if search:
+        # Hacemos el join con variantes para buscar por SKU
+        query = query.join(ProductoVariante)
+        
+        terms = search.strip().split()
+        
+        for term in terms:
+            term_filter = f"%{term}%"
+            query = query.filter(
+                or_(
+                    Producto.nombre.ilike(term_filter),
+                    Categoria.nombre.ilike(term_filter),
+                    ProductoVariante.codigo_sku.ilike(term_filter)
+                )
+            )
+        
+        # Agrupamos para evitar duplicados por variantes
+        query = query.group_by(Producto.id_producto)
+
+    # --- D. FILTRO "OCULTAR SIN STOCK" ---
+    if min_stock is not None and min_stock > 0:
+        # Subconsulta: Busca IDs de productos cuya suma de stock en inventario sea >= min_stock
+        products_with_stock = db.session.query(ProductoVariante.id_producto) \
+            .join(Inventario, Inventario.id_variante == ProductoVariante.id_variante) \
+            .group_by(ProductoVariante.id_producto) \
+            .having(func.sum(Inventario.stock_actual) >= min_stock) \
+            .subquery()
+        
+        query = query.filter(Producto.id_producto.in_(products_with_stock))
+
+    # 4. Paginación y Resultados
     paginated_data = query.order_by(Producto.id_producto.desc()).paginate(page=page, per_page=per_page, error_out=False)
 
     resultado = []
@@ -174,6 +193,7 @@ def get_products():
         stock_total = 0
         lista_variantes = []
         
+        # Recorremos variantes para calcular stock total y armar lista
         for var in prod.variantes:
             cantidad = var.inventario.stock_actual if var.inventario else 0
             stock_total += cantidad
@@ -196,7 +216,8 @@ def get_products():
             "liga": prod.categoria_especifica.nombre if prod.categoria_especifica else "-", 
             "variantes": lista_variantes,
             "tiendanube_id": prod.tiendanube_id,
-            "sincronizado_web": prod.sincronizado_web
+            "sincronizado_web": prod.sincronizado_web,
+            "activo": prod.activo # <--- Agregamos este dato por si el front lo necesita
         })
 
     return jsonify({
@@ -961,3 +982,24 @@ def import_image_from_cloud(id):
     except Exception as e:
         print(f"Error importando imagen: {e}")
         return jsonify({"msg": f"Error interno: {str(e)}"}), 500
+
+
+
+@bp.route('/<int:id>/toggle-status', methods=['PUT'])
+@jwt_required()
+def toggle_product_status(id):
+    prod = Producto.query.get_or_404(id)
+    
+    # Obtenemos el estado deseado desde el frontend ('active': true/false)
+    data = request.get_json()
+    new_status = data.get('active', True)
+    
+    prod.activo = new_status
+    
+    try:
+        db.session.commit()
+        estado_str = "activado" if new_status else "archivado"
+        return jsonify({"msg": f"Producto {estado_str} correctamente"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"msg": "Error al actualizar estado"}), 500
