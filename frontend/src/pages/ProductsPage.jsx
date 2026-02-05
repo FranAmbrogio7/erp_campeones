@@ -3,7 +3,7 @@ import BulkPriceModal from '../components/BulkPriceModal';
 import {
     Plus, Trash2, Shirt, Save, ChevronLeft, ChevronRight, Search,
     Image as ImageIcon, X, TrendingUp, Filter, Edit3, Printer,
-    CheckSquare, Square, ArrowUpRight, RotateCcw
+    CheckSquare, Square, ArrowUpRight, RotateCcw, Cloud
 } from 'lucide-react';
 import { useAuth, api } from '../context/AuthContext';
 import toast, { Toaster } from 'react-hot-toast';
@@ -136,17 +136,14 @@ const ProductsPage = () => {
         setFormData({
             nombre: product.nombre,
             precio: product.precio,
-            stock: 0, // No editamos stock total directo aquí, solo info base
+            stock: 0,
             sku: '',
             categoria_id: product.categoria_id || '',
             categoria_especifica_id: product.categoria_especifica_id || ''
         });
-        // No seteamos la curva de talles porque es un producto existente
         setShowForm(true);
-        // Scroll suave hacia el formulario
         setTimeout(() => {
             formRef.current?.scrollIntoView({ behavior: 'smooth' });
-            // Foco en el nombre
             document.getElementById('inputName')?.focus();
         }, 100);
     };
@@ -177,11 +174,9 @@ const ProductsPage = () => {
             if (selectedFile) data.append('imagen', selectedFile);
 
             if (isEditing) {
-                // EDITAR (PUT)
                 await api.put(`/products/${editId}`, data, { headers: { 'Content-Type': 'multipart/form-data' } });
                 toast.success("Producto actualizado", { id: toastId });
             } else {
-                // CREAR (POST)
                 data.append('talle', SIZE_GRIDS[selectedGridType].join(','));
                 data.append('stock', formData.stock);
                 await api.post('/products', data, { headers: { 'Content-Type': 'multipart/form-data' } });
@@ -203,21 +198,14 @@ const ProductsPage = () => {
 
         const loadToast = toast.loading("Generando etiquetas...");
         try {
-            // Preparamos los items seleccionados. 
-            // Nota: Para hacerlo simple, imprimiremos 1 etiqueta por variante del producto seleccionado
-            // O, si prefieres, 1 etiqueta genérica por producto. 
-            // Aquí haremos: Buscar el producto completo para obtener sus variantes y mandar a imprimir.
-
-            // Recopilamos la info de la tabla actual
             const itemsToPrint = products
                 .filter(p => selectedItems.has(p.id))
                 .flatMap(p =>
-                    // Mapeamos las variantes de cada producto seleccionado
                     p.variantes.map(v => ({
                         nombre: p.nombre,
                         sku: v.sku,
                         talle: v.talle,
-                        cantidad: 1 // 1 etiqueta por cada variante existente
+                        cantidad: 1
                     }))
                 );
 
@@ -234,7 +222,7 @@ const ProductsPage = () => {
             link.remove();
 
             toast.success("PDF generado", { id: loadToast });
-            setSelectedItems(new Set()); // Limpiar selección
+            setSelectedItems(new Set());
 
         } catch (e) {
             console.error(e);
@@ -501,7 +489,14 @@ const ProductsPage = () => {
                                                     {p.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${p.imagen}`} className="h-full w-full object-cover" /> : <Shirt size={18} className="text-gray-300" />}
                                                 </div>
                                                 <div>
-                                                    <p className="font-bold text-gray-800">{p.nombre}</p>
+                                                    <p className="font-bold text-gray-800 flex items-center gap-2">
+                                                        {p.nombre}
+                                                        {p.tiendanube_id && (
+                                                            <span title="Sincronizado con Tienda Nube">
+                                                                <Cloud size={16} className="text-blue-500 fill-blue-50" />
+                                                            </span>
+                                                        )}
+                                                    </p>
                                                     <p className="text-xs text-gray-400">ID: {p.id}</p>
                                                 </div>
                                             </div>
@@ -529,7 +524,7 @@ const ProductsPage = () => {
                                         <td className="px-4 py-3 text-right">
                                             <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
 
-                                                {/* --- PEGAR ESTE BLOQUE NUEVO AQUÍ --- */}
+                                                {/* --- IMPORTAR IMAGEN --- */}
                                                 {p.tiendanube_id && (
                                                     <button
                                                         onClick={async (e) => {
