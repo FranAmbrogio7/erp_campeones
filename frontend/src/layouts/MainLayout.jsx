@@ -1,22 +1,53 @@
-import { Outlet } from 'react-router-dom';
+import { useEffect } from 'react';
+import { Outlet, useNavigate } from 'react-router-dom'; // Importar useNavigate
 import Topbar from '../components/Topbar';
+import { Toaster } from 'react-hot-toast'; // Aseguramos Toaster global
 
 const MainLayout = () => {
+  const navigate = useNavigate();
+
+  // --- ATAJOS DE TECLADO GLOBALES ---
+  useEffect(() => {
+    const handleShortcuts = (e) => {
+      // F1 -> IR A PUNTO DE VENTA (CAJA)
+      if (e.key === 'F1') {
+        e.preventDefault(); // Evita que abra la ayuda del navegador
+        navigate('/caja');
+      }
+
+      // F2 -> IR A INVENTARIO
+      if (e.key === 'F2') {
+        e.preventDefault();
+        navigate('/inventario');
+      }
+
+      // F3 -> IR A CAMBIOS
+      if (e.key === 'F3') {
+        e.preventDefault(); // A veces es buscar
+        navigate('/cambios');
+      }
+
+      // F4 -> IR A NUEVO PRODUCTO (Directo al form de productos)
+      if (e.key === 'F4') {
+        e.preventDefault();
+        navigate('/productos');
+      }
+    };
+
+    window.addEventListener('keydown', handleShortcuts);
+    return () => window.removeEventListener('keydown', handleShortcuts);
+  }, [navigate]);
+
   return (
-    <div className="min-h-screen bg-gray-100 font-sans">
-      {/* 1. La Barra Superior Fija */}
+    <div className="flex flex-col h-screen bg-gray-100 font-sans overflow-hidden">
+      {/* Sidebar / Topbar Fijo */}
       <Topbar />
+      <Toaster position="top-center" />
 
-      {/* 2. El Contenedor del Contenido */}
-      {/* 'pt-16' empuja el contenido hacia abajo para que la barra no lo tape */}
-      {/* 'h-screen' asegura que ocupe toda la altura disponible */}
-      <main className="pt-16 h-screen flex flex-col">
-
-        {/* Este div interno maneja el scroll de cada página individualmente */}
-        <div className="flex-1 overflow-hidden relative">
-          <Outlet />
-        </div>
-
+      {/* Área de Contenido Dinámico */}
+      {/* Agregamos pt-16 para compensar la Topbar fija */}
+      <main className="flex-1 overflow-hidden pt-16 relative">
+        <Outlet />
       </main>
     </div>
   );

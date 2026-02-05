@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { useAuth, api } from '../context/AuthContext';
 import {
@@ -11,6 +11,7 @@ import {
 import ModalBarcode from '../components/ModalBarcode';
 import EditProductModal from '../components/EditProductModal';
 import BulkPriceModal from '../components/BulkPriceModal';
+import { useScanDetection } from '../hooks/useScanDetection'; // <--- IMPORTANTE
 import { toast, Toaster } from 'react-hot-toast';
 
 // --- DEFINICIÓN DE CURVAS DE TALLES ---
@@ -37,7 +38,7 @@ const InventoryPage = () => {
     const [specificCategories, setSpecificCategories] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    // --- ESTADOS DE VISTA (NUEVO) ---
+    // --- ESTADOS DE VISTA ---
     const [viewMode, setViewMode] = useState('active'); // 'active' | 'archived'
     const [hideOutOfStock, setHideOutOfStock] = useState(false);
     const [selectedItems, setSelectedItems] = useState(new Set());
@@ -66,9 +67,13 @@ const InventoryPage = () => {
     const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
     const [selectedVariantForBarcode, setSelectedVariantForBarcode] = useState(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-    const [isBulkModalOpen, setIsBulkModalOpen] = useState(false); // Nuevo Modal Precios
+    const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
     const [editingProduct, setEditingProduct] = useState(null);
     const [imageModalSrc, setImageModalSrc] = useState(null);
+
+    // --- REF PARA AUTO-SCAN ---
+    const searchInputRef = useRef(null);
+    useScanDetection(searchInputRef); // <--- ACTIVAR HOOK
 
     // Helper Audio
     const playSound = (type) => {
@@ -96,7 +101,7 @@ const InventoryPage = () => {
         if (token) fetchDropdowns();
     }, [token]);
 
-    // 2. CARGA DE PRODUCTOS (Con Filtros Nuevos)
+    // 2. CARGA DE PRODUCTOS
     const fetchProducts = async (currentPage = 1) => {
         setLoading(true);
         try {
@@ -106,7 +111,6 @@ const InventoryPage = () => {
                 search: searchTerm,
                 category_id: selectedCat || undefined,
                 specific_id: selectedSpec || undefined,
-                // Filtros nuevos:
                 active: viewMode === 'active' ? 'true' : 'false',
                 min_stock: hideOutOfStock ? 1 : undefined
             };
@@ -115,8 +119,6 @@ const InventoryPage = () => {
             setProducts(res.data.products);
             setTotalPages(res.data.meta.total_pages);
             setPage(res.data.meta.current_page);
-
-            // Limpiamos selección al cambiar página/filtros
             setSelectedItems(new Set());
         } catch (error) {
             toast.error("Error cargando inventario");
@@ -145,7 +147,7 @@ const InventoryPage = () => {
         else setSelectedItems(new Set(products.map(p => p.id)));
     };
 
-    // --- ACCIONES DE ESTADO (ARCHIVAR / RESTAURAR) ---
+    // --- ACCIONES DE ESTADO ---
     const handleToggleStatus = async (product) => {
         const action = viewMode === 'active' ? 'discontinuar' : 'restaurar';
         if (!window.confirm(`¿${action === 'discontinuar' ? 'Archivar' : 'Reactivar'} "${product.nombre}"?`)) return;
@@ -159,12 +161,9 @@ const InventoryPage = () => {
     const handleBulkToggleStatus = async () => {
         const action = viewMode === 'active' ? 'discontinuar' : 'restaurar';
         if (!window.confirm(`¿${action === 'discontinuar' ? 'Archivar' : 'Restaurar'} ${selectedItems.size} productos?`)) return;
-
         const t = toast.loading("Procesando...");
         try {
-            const promises = Array.from(selectedItems).map(id =>
-                api.put(`/products/${id}/toggle-status`, { active: viewMode !== 'active' })
-            );
+            const promises = Array.from(selectedItems).map(id => api.put(`/products/${id}/toggle-status`, { active: viewMode !== 'active' }));
             await Promise.all(promises);
             toast.success("Proceso completado", { id: t });
             setSelectedItems(new Set());
@@ -183,19 +182,14 @@ const InventoryPage = () => {
 
     // --- ACCIONES DE STOCK Y WEB ---
     const handleForceSync = async () => {
-        if (!window.confirm("⚠️ ¿Sincronizar Stock Masivamente?\n\nEsto enviará el stock actual de CADA producto del ERP hacia Tienda Nube.")) return;
+        if (!window.confirm("⚠️ ¿Sincronizar Stock Masivamente?")) return;
         setIsSyncing(true);
-        const toastId = toast.loading("Iniciando sincronización masiva...");
+        const toastId = toast.loading("Iniciando sync...");
         try {
             const res = await api.post('/products/sync/force-tiendanube');
-            toast.success(res.data.detalles, { id: toastId, duration: 6000 });
+            toast.success(res.data.detalles, { id: toastId });
             playSound('success');
-        } catch (error) {
-            toast.error("Error al iniciar sync", { id: toastId });
-            playSound('error');
-        } finally {
-            setIsSyncing(false);
-        }
+        } catch (error) { toast.error("Error sync", { id: toastId }); playSound('error'); } finally { setIsSyncing(false); }
     };
 
     const handlePublish = async (product) => {
@@ -205,12 +199,9 @@ const InventoryPage = () => {
         try {
             await axios.post(`/api/products/${product.id}/publish`, {}, { headers: { Authorization: `Bearer ${token}` } });
             playSound('success');
-            toast.success("¡Publicado exitosamente!", { id: toastId });
+            toast.success("¡Publicado!", { id: toastId });
             await fetchProducts(page);
-        } catch (error) {
-            playSound('error');
-            toast.error(error.response?.data?.msg || "Error al publicar", { id: toastId });
-        } finally { setProcessingId(null); }
+        } catch (error) { playSound('error'); toast.error("Error al publicar", { id: toastId }); } finally { setProcessingId(null); }
     };
 
     // --- CREACIÓN RÁPIDA ---
@@ -235,13 +226,10 @@ const InventoryPage = () => {
             setNewProduct({ nombre: '', precio: '', stock: '10', sku: '', categoria_id: '', categoria_especifica_id: '' });
             setSelectedFile(null);
             fetchProducts(1);
-        } catch (e) {
-            toast.error("Error creando producto", { id: toastId });
-            playSound('error');
-        }
+        } catch (e) { toast.error("Error creando", { id: toastId }); playSound('error'); }
     };
 
-    // --- ETIQUETAS E IMPRESIÓN ---
+    // --- ETIQUETAS ---
     const generatePdf = async (items) => {
         const res = await api.post('/products/labels/batch-pdf', { items }, { responseType: 'blob' });
         const url = window.URL.createObjectURL(new Blob([res.data]));
@@ -251,11 +239,11 @@ const InventoryPage = () => {
 
     const handlePrintSingleLabel = async (e, product, variant) => {
         e.stopPropagation();
-        const toastId = toast.loading("Generando etiqueta...");
+        const toastId = toast.loading("Generando...");
         try {
             await generatePdf([{ sku: variant.sku || `GEN-${variant.id_variante}`, nombre: product.nombre, talle: variant.talle, cantidad: 1 }]);
             toast.dismiss(toastId);
-        } catch (error) { toast.error("Error al imprimir", { id: toastId }); }
+        } catch (error) { toast.error("Error", { id: toastId }); }
     };
 
     const handlePrintLabelsSelected = async () => {
@@ -284,7 +272,6 @@ const InventoryPage = () => {
         } catch (e) { toast.error("Error", { id: t }); }
     };
 
-    // Helper de Colores
     const getStockColorClass = (stock) => {
         if (stock === 0) return "bg-red-100 text-red-700 border-red-200 ring-1 ring-red-50";
         if (stock < 3) return "bg-amber-100 text-amber-800 border-amber-200 ring-1 ring-amber-50";
@@ -295,7 +282,6 @@ const InventoryPage = () => {
         <div className="h-[calc(100vh-4rem)] flex flex-col p-4 max-w-[1600px] mx-auto gap-4">
             <Toaster position="top-center" />
 
-            {/* HEADER & ACCIONES SUPERIORES */}
             <div className="flex flex-col gap-4 shrink-0 bg-white p-4 rounded-2xl shadow-sm border border-gray-200">
                 <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                     <div className="flex items-center gap-4">
@@ -305,8 +291,6 @@ const InventoryPage = () => {
                             {viewMode === 'active' && <div className="flex items-center gap-2 text-xs font-medium text-gray-500"><span className="flex items-center"><div className="w-2 h-2 rounded-full bg-emerald-500 mr-1"></div>Normal</span><span className="flex items-center"><div className="w-2 h-2 rounded-full bg-amber-500 mr-1"></div>Bajo</span><span className="flex items-center"><div className="w-2 h-2 rounded-full bg-red-500 mr-1"></div>Agotado</span></div>}
                         </div>
                     </div>
-
-                    {/* TABS DE MODO */}
                     <div className="flex bg-gray-100 p-1 rounded-xl shadow-inner">
                         <button onClick={() => setViewMode('active')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === 'active' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>Activos</button>
                         <button onClick={() => setViewMode('archived')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center ${viewMode === 'archived' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500'}`}><Archive size={16} className="mr-2" /> Discontinuos</button>
@@ -315,10 +299,7 @@ const InventoryPage = () => {
 
                 {viewMode === 'active' && (
                     <div className="flex flex-wrap items-center gap-2 w-full justify-end border-t border-gray-100 pt-3">
-
                         <button onClick={() => setHideOutOfStock(!hideOutOfStock)} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all mr-auto ${hideOutOfStock ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-gray-200 text-gray-500'}`}>{hideOutOfStock ? <EyeOff size={16} className="mr-2" /> : <Eye size={16} className="mr-2" />} {hideOutOfStock ? 'Sin Stock: Oculto' : 'Sin Stock: Visible'}</button>
-
-                        {/* ACCIONES SELECCIÓN */}
                         {selectedItems.size > 0 && (
                             <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg animate-fade-in mr-2">
                                 <span className="text-xs font-bold text-slate-600 px-2">{selectedItems.size} sel.</span>
@@ -326,10 +307,7 @@ const InventoryPage = () => {
                                 <button onClick={handleBulkToggleStatus} className="bg-red-100 text-red-700 px-3 py-1.5 rounded-md text-xs font-bold flex items-center hover:bg-red-200 transition-colors"><Archive size={14} className="mr-2" /> Archivar</button>
                             </div>
                         )}
-
                         <div className="h-8 w-px bg-gray-200 mx-1 hidden md:block"></div>
-
-                        {/* BOTONES GLOBALES */}
                         <button onClick={handlePrintLabelsByFilter} className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-2 rounded-lg flex items-center hover:bg-indigo-100 font-bold text-xs"><Tags size={16} className="mr-2" /> Etiquetas (Filtro)</button>
                         <button onClick={() => setIsBulkModalOpen(true)} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-lg flex items-center hover:bg-emerald-100 font-bold text-xs"><TrendingUp size={16} className="mr-2" /> Precios</button>
                         <button onClick={handleForceSync} disabled={isSyncing} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all ${isSyncing ? 'bg-gray-100 text-gray-400' : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50'}`}><RefreshCw size={14} className={`mr-2 ${isSyncing ? "animate-spin" : ""}`} /> {isSyncing ? "Sync..." : "Sync Nube"}</button>
@@ -347,12 +325,16 @@ const InventoryPage = () => {
                 )}
             </div>
 
-            {/* FILTROS SECUNDARIOS Y FORMULARIO */}
             {!showForm && (
                 <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-2 animate-fade-in z-10">
                     <div className="relative flex-1">
                         <Search className="absolute left-3 top-3 text-gray-400" size={18} />
-                        <input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder={viewMode === 'active' ? "Buscar producto activo..." : "Buscar en archivo..."} className={`w-full pl-10 pr-4 py-2.5 border-transparent focus:border-blue-200 focus:ring-4 focus:ring-blue-50 rounded-lg outline-none transition-all font-medium text-sm ${viewMode === 'active' ? 'bg-gray-50' : 'bg-red-50'}`} />
+                        <input
+                            ref={searchInputRef} // <--- VINCULACIÓN AL HOOK
+                            value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                            placeholder={viewMode === 'active' ? "Buscar producto activo..." : "Buscar en archivo..."}
+                            className={`w-full pl-10 pr-4 py-2.5 border-transparent focus:border-blue-200 focus:ring-4 focus:ring-blue-50 rounded-lg outline-none transition-all font-medium text-sm ${viewMode === 'active' ? 'bg-gray-50' : 'bg-red-50'}`}
+                        />
                         {searchTerm && <button onClick={() => setSearchTerm('')} className="absolute right-3 top-3 text-gray-400 hover:text-red-500"><X size={16} /></button>}
                     </div>
                     <select value={selectedCat} onChange={e => setSelectedCat(e.target.value)} className="md:w-48 bg-gray-50 border-transparent focus:bg-white focus:border-blue-200 focus:ring-4 focus:ring-blue-50 rounded-lg outline-none px-3 py-2 text-sm font-bold text-gray-600"><option value="">Categoría: Todas</option>{categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
@@ -360,7 +342,6 @@ const InventoryPage = () => {
                 </div>
             )}
 
-            {/* FORMULARIO DE CREACIÓN */}
             {showForm && (
                 <div className="bg-white p-6 rounded-2xl shadow-lg border border-blue-100 animate-fade-in-down shrink-0 relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-500"></div>
@@ -377,7 +358,6 @@ const InventoryPage = () => {
                 </div>
             )}
 
-            {/* TABLA DE INVENTARIO */}
             <div className={`bg-white rounded-2xl shadow-sm border flex-1 flex flex-col overflow-hidden relative ${viewMode === 'active' ? 'border-gray-200' : 'border-red-200'}`}>
                 {viewMode === 'archived' && <div className="bg-red-50 text-red-800 text-xs font-bold p-2 text-center border-b border-red-100">VISTA DE ARCHIVO</div>}
 
@@ -395,71 +375,27 @@ const InventoryPage = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            {loading ? <tr><td colSpan="7" className="p-10 text-center text-gray-400 italic">Cargando...</td></tr> :
-                                products.length === 0 ? <tr><td colSpan="7" className="p-10 text-center text-gray-400 italic">Sin resultados.</td></tr> :
-                                    products.map(p => (
-                                        <tr key={p.id} className={`hover:bg-blue-50/30 transition-colors group ${processingId === p.id ? 'opacity-50 pointer-events-none' : ''}`}>
-                                            <td className="px-4 py-3 text-center"><button onClick={() => toggleSelect(p.id)} className={`transition-colors ${selectedItems.has(p.id) ? 'text-blue-600' : 'text-gray-300 hover:text-gray-500'}`}>{selectedItems.has(p.id) ? <CheckSquare size={18} /> : <Square size={18} />}</button></td>
-
-                                            <td className="px-4 py-3 text-center">
-                                                <div onClick={() => p.imagen && setImageModalSrc(`/api/static/uploads/${p.imagen}`)} className="h-10 w-10 rounded-lg bg-white border border-gray-200 flex items-center justify-center overflow-hidden cursor-zoom-in relative group/img mx-auto">
-                                                    {p.imagen ? <img src={`/api/static/uploads/${p.imagen}`} className="h-full w-full object-cover" /> : <Shirt size={16} className="text-gray-300" />}
-                                                </div>
-                                            </td>
-
-                                            <td className="px-4 py-3">
-                                                <div className="font-bold text-gray-800">{p.nombre}</div>
-                                                <div className="flex gap-2 mt-1"><span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded font-bold uppercase">{p.categoria}</span>{p.liga !== '-' && <span className="text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded font-bold uppercase">{p.liga}</span>}</div>
-                                            </td>
-
-                                            <td className="px-4 py-3 font-mono font-bold text-gray-700">$ {p.precio.toLocaleString()}</td>
-
-                                            <td className="px-4 py-3">
-                                                <div className="flex flex-wrap gap-2">
-                                                    {p.variantes.map(v => (
-                                                        <div key={v.id_variante} onClick={() => { setSelectedVariantForBarcode({ nombre: p.nombre, talle: v.talle, sku: v.sku, precio: p.precio }); setIsBarcodeModalOpen(true); }} className={`flex items-center pl-2 pr-1 py-1 rounded-md text-xs cursor-pointer transition-all active:scale-95 shadow-sm border ${getStockColorClass(v.stock)}`} title={`SKU: ${v.sku}`}>
-                                                            <span className="font-bold mr-1.5">{v.talle}</span><span className="font-mono text-[10px] opacity-80 border-l border-current pl-1.5 mr-1">{v.stock}</span>
-                                                            <button onClick={(e) => handlePrintSingleLabel(e, p, v)} className="p-0.5 rounded hover:bg-black/10 transition-colors ml-0.5" title="Imprimir"><Printer size={10} /></button>
-                                                        </div>
-                                                    ))}
-                                                    {p.variantes.length === 0 && <span className="text-xs text-red-400 italic">Sin variantes</span>}
-                                                </div>
-                                            </td>
-
-                                            <td className="px-4 py-3 text-center">
-                                                {processingId === p.id ? <Loader2 size={18} className="animate-spin text-blue-600 mx-auto" /> : p.tiendanube_id ? <span className="inline-flex items-center justify-center p-1.5 bg-green-100 text-green-600 rounded-full" title="Sincronizado"><Cloud size={16} /></span> : <button onClick={() => handlePublish(p)} className="inline-flex items-center justify-center p-1.5 bg-gray-100 text-gray-400 rounded-full hover:bg-indigo-100 hover:text-indigo-600 transition-colors" title="Publicar"><UploadCloud size={16} /></button>}
-                                            </td>
-
-                                            <td className="px-4 py-3 text-right">
-                                                <div className="flex justify-end gap-1">
-                                                    {viewMode === 'active' ? (
-                                                        <>
-                                                            <button onClick={() => handleToggleStatus(p)} className="text-gray-400 hover:text-red-500 p-2 hover:bg-red-50 rounded-lg" title="Archivar"><Archive size={18} /></button>
-                                                            <button onClick={() => { setEditingProduct(p); setIsEditModalOpen(true); }} className="text-gray-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-lg" title="Editar"><Edit size={18} /></button>
-                                                        </>
-                                                    ) : (
-                                                        <>
-                                                            <button onClick={() => handleToggleStatus(p)} className="text-green-500 hover:text-green-700 p-2 hover:bg-green-50 rounded-lg" title="Restaurar"><ArchiveRestore size={18} /></button>
-                                                            <button onClick={() => handleDelete(p.id)} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg" title="Eliminar"><Trash2 size={18} /></button>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
-                            }
+                            {loading ? <tr><td colSpan="7" className="p-10 text-center text-gray-400 italic">Cargando...</td></tr> : products.length === 0 ? <tr><td colSpan="7" className="p-10 text-center text-gray-400 italic">Sin resultados.</td></tr> : products.map(p => (
+                                <tr key={p.id} className={`hover:bg-blue-50/30 transition-colors group ${processingId === p.id ? 'opacity-50 pointer-events-none' : ''}`}>
+                                    <td className="px-4 py-3 text-center"><button onClick={() => toggleSelect(p.id)} className={`transition-colors ${selectedItems.has(p.id) ? 'text-blue-600' : 'text-gray-300 hover:text-gray-500'}`}>{selectedItems.has(p.id) ? <CheckSquare size={18} /> : <Square size={18} />}</button></td>
+                                    <td className="px-4 py-3 text-center"><div onClick={() => p.imagen && setImageModalSrc(`/api/static/uploads/${p.imagen}`)} className="h-10 w-10 rounded-lg bg-white border border-gray-200 flex items-center justify-center overflow-hidden cursor-zoom-in relative group/img mx-auto">{p.imagen ? <img src={`/api/static/uploads/${p.imagen}`} className="h-full w-full object-cover" /> : <Shirt size={16} className="text-gray-300" />}</div></td>
+                                    <td className="px-4 py-3"><div className="font-bold text-gray-800">{p.nombre}</div><div className="flex gap-2 mt-1"><span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded font-bold uppercase">{p.categoria}</span>{p.liga !== '-' && <span className="text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded font-bold uppercase">{p.liga}</span>}</div></td>
+                                    <td className="px-4 py-3 font-mono font-bold text-gray-700">$ {p.precio.toLocaleString()}</td>
+                                    <td className="px-4 py-3"><div className="flex flex-wrap gap-2">{p.variantes.map(v => (<div key={v.id_variante} onClick={() => { setSelectedVariantForBarcode({ nombre: p.nombre, talle: v.talle, sku: v.sku, precio: p.precio }); setIsBarcodeModalOpen(true); }} className={`flex items-center pl-2 pr-1 py-1 rounded-md text-xs cursor-pointer transition-all active:scale-95 shadow-sm border ${getStockColorClass(v.stock)}`} title={`SKU: ${v.sku}`}><span className="font-bold mr-1.5">{v.talle}</span><span className="font-mono text-[10px] opacity-80 border-l border-current pl-1.5 mr-1">{v.stock}</span><button onClick={(e) => handlePrintSingleLabel(e, p, v)} className="p-0.5 rounded hover:bg-black/10 transition-colors ml-0.5" title="Imprimir"><Printer size={10} /></button></div>))}</div></td>
+                                    <td className="px-4 py-3 text-center">{processingId === p.id ? <Loader2 size={18} className="animate-spin text-blue-600 mx-auto" /> : p.tiendanube_id ? <span className="inline-flex items-center justify-center p-1.5 bg-green-100 text-green-600 rounded-full" title="Sincronizado"><Cloud size={16} /></span> : <button onClick={() => handlePublish(p)} className="inline-flex items-center justify-center p-1.5 bg-gray-100 text-gray-400 rounded-full hover:bg-indigo-100 hover:text-indigo-600 transition-colors" title="Publicar"><UploadCloud size={16} /></button>}</td>
+                                    <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1">{viewMode === 'active' ? (<><button onClick={() => handleToggleStatus(p)} className="text-gray-400 hover:text-red-500 p-2 hover:bg-red-50 rounded-lg" title="Archivar"><Archive size={18} /></button><button onClick={() => { setEditingProduct(p); setIsEditModalOpen(true); }} className="text-gray-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-lg" title="Editar"><Edit size={18} /></button></>) : (<><button onClick={() => handleToggleStatus(p)} className="text-green-500 hover:text-green-700 p-2 hover:bg-green-50 rounded-lg" title="Restaurar"><ArchiveRestore size={18} /></button><button onClick={() => handleDelete(p.id)} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg" title="Eliminar"><Trash2 size={18} /></button></>)}</div></td>
+                                </tr>
+                            ))}
                         </tbody>
                     </table>
                 </div>
 
-                {/* PAGINACIÓN */}
                 <div className="bg-white p-3 border-t border-gray-200 flex items-center justify-between shrink-0">
                     <span className="text-xs text-gray-400 font-medium">Pág <span className="text-gray-800 font-bold">{page}</span> de {totalPages}</span>
                     <div className="flex gap-2"><button onClick={() => page > 1 && fetchProducts(page - 1)} disabled={page === 1} className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50"><ChevronLeft size={16} /></button><button onClick={() => page < totalPages && fetchProducts(page + 1)} disabled={page === totalPages} className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50"><ChevronRight size={16} /></button></div>
                 </div>
             </div>
 
-            {/* MODALES FLOTANTES */}
             <ModalBarcode isOpen={isBarcodeModalOpen} onClose={() => setIsBarcodeModalOpen(false)} productData={selectedVariantForBarcode} />
             <EditProductModal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} product={editingProduct} categories={categories} specificCategories={specificCategories} onUpdate={() => { fetchProducts(page); playSound('success'); }} />
             <BulkPriceModal isOpen={isBulkModalOpen} onClose={() => setIsBulkModalOpen(false)} onUpdate={() => fetchProducts(page)} categories={categories} specificCategories={specificCategories} />
