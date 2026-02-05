@@ -328,13 +328,19 @@ const StockReportPage = () => {
                                 {/* Info y Variantes */}
                                 <div className="flex-1 min-w-0">
                                     <div className="flex justify-between items-start mb-1">
-                                        <div>
-                                            <h3 className="font-bold text-sm text-gray-800 truncate pr-1 leading-tight">{p.nombre}</h3>
+
+                                        {/* CORRECCIÓN 1: Agregamos 'flex-1 min-w-0 mr-2' para que el texto se corte antes de chocar */}
+                                        <div className="flex-1 min-w-0 mr-2">
+                                            <h3 className="font-bold text-sm text-gray-800 truncate leading-tight" title={p.nombre}>
+                                                {p.nombre}
+                                            </h3>
                                             <p className="text-[10px] text-gray-500 font-mono mt-0.5">ID: {p.id}</p>
                                         </div>
+
+                                        {/* CORRECCIÓN 2: Agregamos 'shrink-0' al botón para que NUNCA se aplaste */}
                                         <button
                                             onClick={() => handleAddCurve(p)}
-                                            className="text-[10px] flex items-center bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded hover:bg-blue-600 hover:text-white transition-colors font-bold whitespace-nowrap"
+                                            className="shrink-0 text-[10px] flex items-center bg-blue-50 text-blue-700 border border-blue-200 px-2 py-1 rounded hover:bg-blue-600 hover:text-white transition-colors font-bold whitespace-nowrap"
                                             title="Agregar todos los talles de este producto"
                                         >
                                             <Layers size={10} className="mr-1" /> Todo
