@@ -36,6 +36,10 @@ class Producto(db.Model):
     tiendanube_id = db.Column(db.String(50), nullable=True)
     sincronizado_web = db.Column(db.Boolean, default=False)
 
+    # --- NUEVA COLUMNA ---
+    activo = db.Column(db.Boolean, default=True, server_default='1') 
+    # ---------------------
+
 class ProductoVariante(db.Model):
     __tablename__ = 'producto_variantes'
     id_variante = db.Column(db.Integer, primary_key=True)
