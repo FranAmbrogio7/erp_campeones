@@ -54,8 +54,7 @@ const DashboardPage = () => {
     return (
         // Padding lateral reducido en móvil (px-4) y aumentado en PC (md:px-0)
         // Padding inferior extra (pb-24) para scroll en móviles
-        <div className="max-w-6xl mx-auto space-y-6 md:space-y-8 animate-fade-in pb-24 md:pb-10 px-4 md:px-0">
-
+        <div className="h-full overflow-y-auto bg-gray-100 p-4 md:p-8 custom-scrollbar">
             {/* 1. HEADER: ADAPTABLE */}
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-gray-100 pb-4 md:pb-6">
                 <div className="w-full md:w-auto">

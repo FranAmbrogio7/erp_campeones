@@ -5,7 +5,7 @@ import StockPrintTemplate from '../components/StockPrintTemplate';
 import {
     Search, Printer, Trash2, Box, FileText, ArrowLeft,
     Shirt, CheckCircle, Layers, Filter, X, Maximize2,
-    AlertCircle, Plus, ChevronRight
+    AlertCircle, Plus, ChevronRight, ListPlus // <--- NUEVO ICONO
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import toast, { Toaster } from 'react-hot-toast';
@@ -52,7 +52,7 @@ const StockReportPage = () => {
 
     // --- BÚSQUEDA INTELIGENTE (DEBOUNCE) ---
     useEffect(() => {
-        // Si no hay criterios de búsqueda, limpiamos (opcional: podrías mostrar últimos agregados)
+        // Si no hay criterios de búsqueda, limpiamos
         if (!searchTerm.trim() && !selectedCat && !selectedSpec) {
             setSearchResults([]);
             return;
@@ -65,7 +65,7 @@ const StockReportPage = () => {
                     search: searchTerm,
                     category_id: selectedCat || undefined,
                     specific_id: selectedSpec || undefined,
-                    limit: 20
+                    limit: 200 // Límite amplio para permitir reportes grandes
                 };
                 const res = await api.get('/products', { params });
                 setSearchResults(res.data.products || []);
@@ -87,11 +87,11 @@ const StockReportPage = () => {
         onAfterPrint: () => toast.success("PDF Generado correctamente")
     });
 
-    // --- ACCIONES LISTA ---
+    // --- ACCIONES LISTA INDIVIDUAL ---
     const handleAddItem = (product, variant) => {
         const exists = selectedItems.find(i => i.id_variante === variant.id_variante);
         if (exists) {
-            toast.error("Ya está en la lista", { id: 'dup-toast' }); // ID para evitar spam
+            toast.error("Ya está en la lista", { id: 'dup-toast' });
             return;
         }
 
@@ -102,7 +102,7 @@ const StockReportPage = () => {
             talle: variant.talle,
             stock_actual: variant.stock,
             precio: product.precio,
-            imagen: product.imagen // Guardamos ref a imagen por si la queremos mostrar en el reporte visual
+            imagen: product.imagen
         };
 
         setSelectedItems(prev => [...prev, newItem]);
@@ -110,7 +110,6 @@ const StockReportPage = () => {
     };
 
     const handleAddCurve = (product) => {
-        // Filtramos solo las variantes que NO están ya
         const itemsToAdd = product.variantes
             .filter(v => !selectedItems.some(i => i.id_variante === v.id_variante))
             .map(v => ({
@@ -130,6 +129,55 @@ const StockReportPage = () => {
 
         setSelectedItems(prev => [...prev, ...itemsToAdd]);
         toast.success(`Agregados ${itemsToAdd.length} ítems`);
+    };
+
+    // --- NUEVO: FUNCIÓN DE AGREGADO MASIVO ---
+    const handleAddAllResults = () => {
+        if (searchResults.length === 0) return;
+
+        // Calculamos el total real de variantes que vamos a intentar agregar
+        const totalVariantesPosibles = searchResults.reduce((acc, p) => acc + p.variantes.length, 0);
+
+        // Protección de rendimiento
+        if (totalVariantesPosibles > 150) {
+            if (!window.confirm(`⚠️ La búsqueda contiene ${totalVariantesPosibles} ítems en total. ¿Deseas agregarlos todos al reporte?`)) return;
+        }
+
+        let addedCount = 0;
+
+        setSelectedItems(prev => {
+            const newItems = [...prev];
+            // Creamos un Set con los IDs existentes para búsqueda rápida O(1)
+            const existingIds = new Set(newItems.map(i => i.id_variante));
+
+            searchResults.forEach(prod => {
+                prod.variantes.forEach(v => {
+                    // Solo agregamos si NO está ya en la lista
+                    if (!existingIds.has(v.id_variante)) {
+                        newItems.push({
+                            id_variante: v.id_variante,
+                            sku: v.sku,
+                            nombre: prod.nombre,
+                            talle: v.talle,
+                            stock_actual: v.stock,
+                            precio: prod.precio,
+                            imagen: prod.imagen
+                        });
+                        existingIds.add(v.id_variante);
+                        addedCount++;
+                    }
+                });
+            });
+            return newItems;
+        });
+
+        if (addedCount > 0) {
+            toast.success(`${addedCount} nuevos ítems agregados al reporte`, { duration: 3000 });
+            // Opcional: Limpiar búsqueda para ver el reporte limpio
+            // setSearchTerm(''); setSelectedCat(''); setSelectedSpec(''); setSearchResults([]);
+        } else {
+            toast('Todos los ítems filtrados ya estaban incluidos', { icon: '📝' });
+        }
     };
 
     const handleRemoveItem = (id_variante) => {
@@ -160,7 +208,7 @@ const StockReportPage = () => {
             <div className="w-full md:w-5/12 lg:w-1/3 flex flex-col border-r border-gray-200 bg-white shadow-xl z-20 relative">
 
                 {/* Header Buscador */}
-                <div className="p-5 border-b border-gray-100 bg-white z-10">
+                <div className="p-5 border-b border-gray-100 bg-white z-10 shrink-0">
                     <div className="flex items-center gap-2 mb-4">
                         <Link to="/" className="p-2 -ml-2 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors">
                             <ArrowLeft size={20} />
@@ -216,6 +264,17 @@ const StockReportPage = () => {
                                 </button>
                             )}
                         </div>
+
+                        {/* --- BOTÓN DE AGREGADO MASIVO (SOLO VISIBLE CON RESULTADOS) --- */}
+                        {searchResults.length > 0 && (
+                            <button
+                                onClick={handleAddAllResults}
+                                className="w-full mt-1 bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-600 hover:text-white hover:border-blue-600 py-2.5 rounded-xl text-xs font-bold flex items-center justify-center transition-all shadow-sm active:scale-95 group"
+                            >
+                                <ListPlus size={16} className="mr-2 group-hover:scale-110 transition-transform" />
+                                Agregar TODOS los resultados ({searchResults.reduce((acc, p) => acc + p.variantes.length, 0)} ítems)
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -320,7 +379,7 @@ const StockReportPage = () => {
             <div className="flex-1 flex flex-col bg-gray-50 h-full overflow-hidden relative">
 
                 {/* Header Reporte */}
-                <div className="p-6 bg-white border-b border-gray-200 shadow-sm z-10 flex flex-col md:flex-row justify-between items-end gap-4">
+                <div className="p-6 bg-white border-b border-gray-200 shadow-sm z-10 flex flex-col md:flex-row justify-between items-end gap-4 shrink-0">
                     <div className="flex-1 w-full">
                         <label className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1 block">Título del Reporte</label>
                         <div className="flex items-center gap-3">
