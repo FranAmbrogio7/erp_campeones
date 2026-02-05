@@ -6,11 +6,12 @@ import Ticket from '../components/Ticket';
 import toast, { Toaster } from 'react-hot-toast';
 import ConfirmModal from '../components/ConfirmModal';
 import ReservationModal from '../components/ReservationModal';
+import { useScanDetection } from '../hooks/useScanDetection'; // Hook de auto-foco
 import {
   ShoppingCart, Trash2, Plus, Minus, ScanBarcode, Banknote,
   CreditCard, Smartphone, Lock, ArrowRight, Printer, Clock,
   Search, Shirt, CalendarClock, X, AlertTriangle, Receipt, Edit3,
-  Maximize2, Filter, ChevronDown // <--- ICONOS NUEVOS
+  Maximize2, Filter, ChevronDown
 } from 'lucide-react';
 
 // Sonidos para feedback inmediato (UX)
@@ -33,7 +34,7 @@ const POSPage = () => {
   const [manualTerm, setManualTerm] = useState('');
   const [manualResults, setManualResults] = useState([]);
 
-  // --- NUEVOS ESTADOS PARA FILTROS ---
+  // --- ESTADOS PARA FILTROS ---
   const [categories, setCategories] = useState([]);
   const [specificCats, setSpecificCats] = useState([]); // Ligas
   const [selectedCat, setSelectedCat] = useState('');
@@ -62,9 +63,14 @@ const POSPage = () => {
   const reactToPrintFn = useReactToPrint({ contentRef: ticketRef });
 
   // Refs
-  const inputRef = useRef(null);
-  const searchInputRef = useRef(null);
+  const inputRef = useRef(null); // Ref del Input Principal (Escáner)
+  const searchInputRef = useRef(null); // Ref del Buscador Manual
   const creditNoteInputRef = useRef(null);
+
+  // --- AUTO-ESCANEO ---
+  // Vinculamos el hook al inputRef principal para que capture el lector
+  // aunque el foco esté perdido (mientras no se esté escribiendo en otro input)
+  useScanDetection(inputRef);
 
   // Cálculos
   const subtotalCalculado = cart.reduce((sum, item) => sum + item.subtotal, 0);
@@ -112,17 +118,21 @@ const POSPage = () => {
     } catch (error) { console.error("Error historial", error); }
   };
 
-  // Foco Automático
+  // Foco Automático al cargar o cambiar modos
   useEffect(() => {
     if (!isRegisterOpen || isEditingPrice || isConfirmModalOpen || isReservationModalOpen || zoomImage || isCustomModalOpen) return;
-    if (isSearchMode) searchInputRef.current?.focus();
-    else if (document.activeElement !== creditNoteInputRef.current) inputRef.current?.focus();
+
+    if (isSearchMode) {
+      searchInputRef.current?.focus();
+    } else if (document.activeElement !== creditNoteInputRef.current) {
+      // Solo enfocamos si no estamos escribiendo la nota de crédito
+      inputRef.current?.focus();
+    }
   }, [cart, isRegisterOpen, isEditingPrice, isConfirmModalOpen, isReservationModalOpen, isSearchMode, zoomImage, isCustomModalOpen]);
 
 
   // --- BÚSQUEDA MANUAL INTELIGENTE (CON FILTROS) ---
   useEffect(() => {
-    // Si no hay término Y no hay filtros, limpiamos resultados
     if (!manualTerm.trim() && !selectedCat && !selectedSpec) {
       setManualResults([]);
       return;
@@ -130,7 +140,6 @@ const POSPage = () => {
 
     const delaySearch = setTimeout(async () => {
       try {
-        // Construimos los parámetros dinámicamente
         const params = { limit: 100 };
         if (manualTerm.trim()) params.search = manualTerm;
         if (selectedCat) params.category_id = selectedCat;
@@ -142,7 +151,7 @@ const POSPage = () => {
     }, 300);
 
     return () => clearTimeout(delaySearch);
-  }, [manualTerm, isSearchMode, selectedCat, selectedSpec]); // Se ejecuta cuando cambia cualquiera de estos
+  }, [manualTerm, isSearchMode, selectedCat, selectedSpec]);
 
 
   const handleManualAdd = (product, variant) => {
@@ -157,7 +166,6 @@ const POSPage = () => {
     addToCart(itemFormatted);
     toast.success(`${product.nombre} (${variant.talle}) agregado`);
     playSound('beep');
-    // No limpiamos los filtros para permitir agregar varios productos de la misma categoría rápido
     setTimeout(() => searchInputRef.current?.focus(), 100);
   };
 
@@ -201,7 +209,7 @@ const POSPage = () => {
     setCustomTotal(null);
     setCart(prev => prev.map(item => {
       if (item.id_variante === id) {
-        const newQty = item.cantidad + delta;
+        const newQty = Math.max(1, item.cantidad + delta);
         if (newQty < 1 || newQty > item.stock_actual) return item;
         return { ...item, cantidad: newQty, subtotal: newQty * item.precio };
       }
@@ -212,7 +220,7 @@ const POSPage = () => {
   const removeFromCart = (id) => { setCustomTotal(null); setCart(prev => prev.filter(i => i.id_variante !== id)); };
   const clearCart = () => { if (window.confirm("¿Vaciar carrito?")) setCart([]); };
 
-  // --- PROCESO VENTA/ANULAR/REIMPRIMIR/RESERVA (Sin Cambios Lógicos) ---
+  // --- PROCESO VENTA/ANULAR/REIMPRIMIR/RESERVA ---
   const handleCheckoutClick = () => {
     if (cart.length === 0) return;
     if (!selectedMethod) { toast.error("Selecciona medio de pago"); playSound('error'); return; }
@@ -307,10 +315,10 @@ const POSPage = () => {
       <ConfirmModal isOpen={isConfirmModalOpen} onClose={() => setIsConfirmModalOpen(false)} onConfirm={processSale} title="Cobrar" message={`Total: $${totalFinal.toLocaleString()}`} confirmText="Confirmar" />
       <ReservationModal isOpen={isReservationModalOpen} onClose={() => setIsReservationModalOpen(false)} onConfirm={processReservation} total={totalFinal} paymentMethods={paymentMethods} />
 
-      {/* --- COLUMNA IZQUIERDA --- */}
-      <div className="w-full md:w-2/3 flex flex-col gap-4">
+      {/* --- COLUMNA IZQUIERDA: ESCÁNER Y VENTAS RECIENTES --- */}
+      <div className="w-full md:w-2/3 flex flex-col gap-4 h-full">
 
-        {/* PANEL DE ACCIÓN (BUSCADOR / ESCÁNER) */}
+        {/* Panel Escáner */}
         <div className="bg-white p-5 rounded-2xl shadow-sm border border-gray-200 relative z-50 transition-all duration-300">
           <div className="flex justify-between items-center mb-3">
             <h2 className="text-lg font-bold text-gray-700 flex items-center gap-2">
@@ -432,7 +440,7 @@ const POSPage = () => {
           )}
         </div>
 
-        {/* LISTA HISTORIAL (Sin cambios, solo renderizado) */}
+        {/* LISTA HISTORIAL */}
         <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-200 flex flex-col relative z-0 overflow-hidden">
           <div className="p-4 bg-gray-50 border-b flex justify-between items-center">
             <h3 className="text-sm font-bold text-gray-700 flex items-center"><Clock size={16} className="mr-2 text-blue-500" /> Últimas Ventas</h3>
@@ -447,8 +455,8 @@ const POSPage = () => {
         </div>
       </div>
 
-      {/* --- COLUMNA DERECHA (Carrito y Cobro - Sin cambios visuales grandes) --- */}
-      <div className="w-full md:w-1/3 bg-white flex flex-col rounded-2xl shadow-lg border border-gray-200 overflow-hidden relative">
+      {/* --- COLUMNA DERECHA (Carrito y Cobro) --- */}
+      <div className="w-full md:w-1/3 bg-white flex flex-col rounded-2xl shadow-lg border border-gray-200 overflow-hidden h-full relative z-10">
         <div className="p-4 bg-slate-800 text-white flex justify-between items-center shadow-md z-10">
           <h3 className="font-bold text-lg flex items-center"><ShoppingCart className="mr-2" /> Ticket Actual</h3>
           <div className="flex items-center gap-2">
@@ -480,9 +488,8 @@ const POSPage = () => {
         </div>
       </div>
 
-      {/* MODAL ZOOM (Sin Cambios) */}
+      {/* MODALES */}
       {zoomImage && (<div className="fixed inset-0 z-[100] bg-black/90 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in cursor-zoom-out" onClick={() => setZoomImage(null)}><img src={zoomImage} className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain" onClick={(e) => e.stopPropagation()} /><button className="absolute top-4 right-4 text-white/50 hover:text-white bg-black/20 p-2 rounded-full"><X size={40} /></button></div>)}
-      {/* MODAL CUSTOM ITEM (Sin Cambios) */}
       {isCustomModalOpen && (<div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4"><div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 animate-fade-in-up"><div className="flex justify-between items-center mb-4"><h3 className="text-xl font-black text-gray-800 flex items-center"><Edit3 className="mr-2 text-yellow-500" /> Ítem Libre</h3><button onClick={() => setIsCustomModalOpen(false)} className="text-gray-400 hover:text-gray-600"><X size={24} /></button></div><form onSubmit={addCustomItem} className="space-y-4"><div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Descripción</label><input autoFocus required value={customItemData.description} onChange={e => setCustomItemData({ ...customItemData, description: e.target.value })} className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-yellow-400 font-bold text-gray-700" /></div><div><label className="block text-xs font-bold text-gray-500 uppercase mb-1">Precio</label><input type="number" required min="0" step="0.01" value={customItemData.price} onChange={e => setCustomItemData({ ...customItemData, price: e.target.value })} className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-yellow-400 font-bold text-xl text-gray-700" /></div><div className="flex gap-3 mt-6"><button type="button" onClick={() => setIsCustomModalOpen(false)} className="flex-1 py-3 text-gray-600 font-bold hover:bg-gray-100 rounded-xl">Cancelar</button><button type="submit" className="flex-1 py-3 bg-yellow-500 text-white font-bold rounded-xl hover:bg-yellow-600 shadow-lg shadow-yellow-200">Agregar</button></div></form></div></div>)}
     </div>
   );
