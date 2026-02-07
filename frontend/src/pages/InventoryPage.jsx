@@ -6,12 +6,13 @@ import {
     Shirt, Filter, X, Cloud, UploadCloud, Loader2,
     Plus, Save, Image as ImageIcon, Printer, RefreshCw,
     AlertTriangle, CheckCircle2, ArrowUpRight,
-    Archive, ArchiveRestore, Eye, EyeOff, Tags, TrendingUp, CheckSquare, Square, Trash2
+    Archive, ArchiveRestore, Eye, EyeOff, Tags, TrendingUp, CheckSquare, Square, Trash2,
+    Copy, ListFilter, ImageOff // <--- ICONOS NUEVOS AGREGADOS
 } from 'lucide-react';
 import ModalBarcode from '../components/ModalBarcode';
 import EditProductModal from '../components/EditProductModal';
 import BulkPriceModal from '../components/BulkPriceModal';
-import { useScanDetection } from '../hooks/useScanDetection'; // <--- IMPORTANTE
+import { useScanDetection } from '../hooks/useScanDetection';
 import { toast, Toaster } from 'react-hot-toast';
 
 // --- DEFINICIÓN DE CURVAS DE TALLES ---
@@ -42,6 +43,7 @@ const InventoryPage = () => {
     const [viewMode, setViewMode] = useState('active'); // 'active' | 'archived'
     const [hideOutOfStock, setHideOutOfStock] = useState(false);
     const [selectedItems, setSelectedItems] = useState(new Set());
+    const [showAdvancedFilters, setShowAdvancedFilters] = useState(false); // <--- NUEVO ESTADO
 
     // --- ESTADOS DE FILTROS ---
     const [page, setPage] = useState(1);
@@ -49,6 +51,11 @@ const InventoryPage = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCat, setSelectedCat] = useState('');
     const [selectedSpec, setSelectedSpec] = useState('');
+
+    // --- NUEVOS FILTROS ESPECÍFICOS ---
+    const [filterExactStock, setFilterExactStock] = useState('');
+    const [filterSize, setFilterSize] = useState('');
+    const [filterNoImage, setFilterNoImage] = useState(false);
 
     // --- ESTADOS DE ACCIÓN ---
     const [isSyncing, setIsSyncing] = useState(false);
@@ -73,7 +80,7 @@ const InventoryPage = () => {
 
     // --- REF PARA AUTO-SCAN ---
     const searchInputRef = useRef(null);
-    useScanDetection(searchInputRef); // <--- ACTIVAR HOOK
+    useScanDetection(searchInputRef);
 
     // Helper Audio
     const playSound = (type) => {
@@ -112,7 +119,11 @@ const InventoryPage = () => {
                 category_id: selectedCat || undefined,
                 specific_id: selectedSpec || undefined,
                 active: viewMode === 'active' ? 'true' : 'false',
-                min_stock: hideOutOfStock ? 1 : undefined
+                min_stock: hideOutOfStock ? 1 : undefined,
+                // --- NUEVOS PARÁMETROS ENVIADOS AL BACKEND ---
+                exact_stock: filterExactStock !== '' ? filterExactStock : undefined,
+                size_filter: filterSize || undefined,
+                no_image: filterNoImage ? 'true' : undefined
             };
 
             const res = await api.get('/products', { params });
@@ -132,7 +143,7 @@ const InventoryPage = () => {
             fetchProducts(1);
         }, 400);
         return () => clearTimeout(delayFn);
-    }, [searchTerm, selectedCat, selectedSpec, viewMode, hideOutOfStock]);
+    }, [searchTerm, selectedCat, selectedSpec, viewMode, hideOutOfStock, filterExactStock, filterSize, filterNoImage]); // <--- Agregados al array de dependencias
 
     // --- MANEJO DE SELECCIÓN ---
     const toggleSelect = (id) => {
@@ -202,6 +213,43 @@ const InventoryPage = () => {
             toast.success("¡Publicado!", { id: toastId });
             await fetchProducts(page);
         } catch (error) { playSound('error'); toast.error("Error al publicar", { id: toastId }); } finally { setProcessingId(null); }
+    };
+
+    // --- NUEVO: FUNCIÓN DUPLICAR ---
+    const handleDuplicate = (product) => {
+        // 1. Preparamos el formulario con los datos copiados
+        setNewProduct({
+            nombre: product.nombre + ' (Copia)',
+            precio: product.precio,
+            stock: 0, // Reiniciamos stock por seguridad
+            sku: '',
+            categoria_id: product.categoria_id,
+            categoria_especifica_id: product.categoria_especifica_id
+        });
+
+        // 2. Intentamos adivinar la curva de talles del producto original
+        const currentSizes = product.variantes.map(v => v.talle).sort().join(',');
+        const foundGrid = Object.keys(SIZE_GRIDS).find(key =>
+            SIZE_GRIDS[key].slice().sort().join(',') === currentSizes
+        );
+
+        if (foundGrid) {
+            setSelectedGridType(foundGrid);
+        } else {
+            setSelectedGridType('ADULTO');
+        }
+
+        // 3. Abrimos formulario
+        setShowForm(true);
+        // Scroll y foco (opcional, mejora UX)
+        setTimeout(() => {
+            const formElement = document.getElementById('formCreate');
+            if (formElement) formElement.scrollIntoView({ behavior: 'smooth' });
+            const inputName = document.getElementById('inputName');
+            if (inputName) { inputName.focus(); inputName.select(); }
+        }, 100);
+
+        toast("Producto duplicado. Revisa los datos.", { icon: '📝' });
     };
 
     // --- CREACIÓN RÁPIDA ---
@@ -299,7 +347,12 @@ const InventoryPage = () => {
 
                 {viewMode === 'active' && (
                     <div className="flex flex-wrap items-center gap-2 w-full justify-end border-t border-gray-100 pt-3">
-                        <button onClick={() => setHideOutOfStock(!hideOutOfStock)} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all mr-auto ${hideOutOfStock ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-gray-200 text-gray-500'}`}>{hideOutOfStock ? <EyeOff size={16} className="mr-2" /> : <Eye size={16} className="mr-2" />} {hideOutOfStock ? 'Sin Stock: Oculto' : 'Sin Stock: Visible'}</button>
+                        {/* --- NUEVO BOTÓN TOGGLE FILTROS AVANZADOS --- */}
+                        <button onClick={() => setShowAdvancedFilters(!showAdvancedFilters)} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all mr-auto ${showAdvancedFilters ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-gray-200 text-gray-500'}`}>
+                            <ListFilter size={16} className="mr-2" /> {showAdvancedFilters ? 'Ocultar Filtros' : 'Filtros Avanzados'}
+                        </button>
+
+                        <button onClick={() => setHideOutOfStock(!hideOutOfStock)} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all ${hideOutOfStock ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-gray-200 text-gray-500'}`}>{hideOutOfStock ? <EyeOff size={16} className="mr-2" /> : <Eye size={16} className="mr-2" />} {hideOutOfStock ? 'Sin Stock: Oculto' : 'Sin Stock: Visible'}</button>
                         {selectedItems.size > 0 && (
                             <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg animate-fade-in mr-2">
                                 <span className="text-xs font-bold text-slate-600 px-2">{selectedItems.size} sel.</span>
@@ -326,28 +379,54 @@ const InventoryPage = () => {
             </div>
 
             {!showForm && (
-                <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-2 animate-fade-in z-10">
-                    <div className="relative flex-1">
-                        <Search className="absolute left-3 top-3 text-gray-400" size={18} />
-                        <input
-                            ref={searchInputRef} // <--- VINCULACIÓN AL HOOK
-                            value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
-                            placeholder={viewMode === 'active' ? "Buscar producto activo..." : "Buscar en archivo..."}
-                            className={`w-full pl-10 pr-4 py-2.5 border-transparent focus:border-blue-200 focus:ring-4 focus:ring-blue-50 rounded-lg outline-none transition-all font-medium text-sm ${viewMode === 'active' ? 'bg-gray-50' : 'bg-red-50'}`}
-                        />
-                        {searchTerm && <button onClick={() => setSearchTerm('')} className="absolute right-3 top-3 text-gray-400 hover:text-red-500"><X size={16} /></button>}
+                <div className="flex flex-col gap-2 z-10">
+                    {/* FILTROS BÁSICOS ORIGINALES */}
+                    <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-2 animate-fade-in">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3 top-3 text-gray-400" size={18} />
+                            <input
+                                ref={searchInputRef}
+                                value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
+                                placeholder={viewMode === 'active' ? "Buscar producto activo..." : "Buscar en archivo..."}
+                                className={`w-full pl-10 pr-4 py-2.5 border-transparent focus:border-blue-200 focus:ring-4 focus:ring-blue-50 rounded-lg outline-none transition-all font-medium text-sm ${viewMode === 'active' ? 'bg-gray-50' : 'bg-red-50'}`}
+                            />
+                            {searchTerm && <button onClick={() => setSearchTerm('')} className="absolute right-3 top-3 text-gray-400 hover:text-red-500"><X size={16} /></button>}
+                        </div>
+                        <select value={selectedCat} onChange={e => setSelectedCat(e.target.value)} className="md:w-48 bg-gray-50 border-transparent focus:bg-white focus:border-blue-200 focus:ring-4 focus:ring-blue-50 rounded-lg outline-none px-3 py-2 text-sm font-bold text-gray-600"><option value="">Categoría: Todas</option>{categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
+                        <select value={selectedSpec} onChange={e => setSelectedSpec(e.target.value)} className="md:w-48 bg-gray-50 border-transparent focus:bg-white focus:border-blue-200 focus:ring-4 focus:ring-blue-50 rounded-lg outline-none px-3 py-2 text-sm font-bold text-gray-600"><option value="">Liga: Todas</option>{specificCategories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
                     </div>
-                    <select value={selectedCat} onChange={e => setSelectedCat(e.target.value)} className="md:w-48 bg-gray-50 border-transparent focus:bg-white focus:border-blue-200 focus:ring-4 focus:ring-blue-50 rounded-lg outline-none px-3 py-2 text-sm font-bold text-gray-600"><option value="">Categoría: Todas</option>{categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
-                    <select value={selectedSpec} onChange={e => setSelectedSpec(e.target.value)} className="md:w-48 bg-gray-50 border-transparent focus:bg-white focus:border-blue-200 focus:ring-4 focus:ring-blue-50 rounded-lg outline-none px-3 py-2 text-sm font-bold text-gray-600"><option value="">Liga: Todas</option>{specificCategories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
+
+                    {/* --- NUEVO: PANEL DE FILTROS AVANZADOS (DESPLEGABLE) --- */}
+                    {showAdvancedFilters && (
+                        <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 flex flex-wrap gap-4 items-center animate-fade-in-down">
+                            <div className="flex items-center gap-2">
+                                <label className="text-xs font-bold text-indigo-800 uppercase">Stock Exacto:</label>
+                                <input type="number" min="0" placeholder="Ej: 0" className="w-20 p-1.5 rounded-lg border border-indigo-200 text-sm font-bold text-center outline-none focus:ring-2 focus:ring-indigo-300" value={filterExactStock} onChange={e => setFilterExactStock(e.target.value)} />
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <label className="text-xs font-bold text-indigo-800 uppercase">Talle:</label>
+                                <input type="text" placeholder="Ej: S, 40..." className="w-24 p-1.5 rounded-lg border border-indigo-200 text-sm font-bold text-center outline-none focus:ring-2 focus:ring-indigo-300 uppercase" value={filterSize} onChange={e => setFilterSize(e.target.value)} />
+                            </div>
+                            <button
+                                onClick={() => setFilterNoImage(!filterNoImage)}
+                                className={`flex items-center px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${filterNoImage ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}
+                            >
+                                <ImageOff size={14} className="mr-2" /> {filterNoImage ? 'Viendo Sin Imagen' : 'Filtrar Sin Imagen'}
+                            </button>
+                            {(filterExactStock || filterSize || filterNoImage) && (
+                                <button onClick={() => { setFilterExactStock(''); setFilterSize(''); setFilterNoImage(false); }} className="ml-auto text-xs text-indigo-500 hover:text-indigo-700 underline font-bold">Limpiar Avanzados</button>
+                            )}
+                        </div>
+                    )}
                 </div>
             )}
 
             {showForm && (
-                <div className="bg-white p-6 rounded-2xl shadow-lg border border-blue-100 animate-fade-in-down shrink-0 relative overflow-hidden">
+                <div id="formCreate" className="bg-white p-6 rounded-2xl shadow-lg border border-blue-100 animate-fade-in-down shrink-0 relative overflow-hidden">
                     <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-500"></div>
                     <h3 className="font-bold text-lg mb-4 text-gray-800 flex items-center"><Plus className="mr-2 text-blue-500" /> Alta Rápida de Producto</h3>
                     <form onSubmit={handleSubmitCreate} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                        <div className="md:col-span-4"><label className="text-xs font-bold text-gray-500 uppercase">Nombre</label><input autoFocus required className="w-full border-2 border-gray-100 bg-gray-50 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400" placeholder="Ej: Camiseta..." value={newProduct.nombre} onChange={e => setNewProduct({ ...newProduct, nombre: e.target.value })} /></div>
+                        <div className="md:col-span-4"><label className="text-xs font-bold text-gray-500 uppercase">Nombre</label><input id="inputName" autoFocus required className="w-full border-2 border-gray-100 bg-gray-50 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400" placeholder="Ej: Camiseta..." value={newProduct.nombre} onChange={e => setNewProduct({ ...newProduct, nombre: e.target.value })} /></div>
                         <div className="md:col-span-2"><label className="text-xs font-bold text-gray-500 uppercase">Categoría</label><select required className="w-full border-2 border-gray-100 bg-gray-50 p-2.5 rounded-lg outline-none focus:border-blue-400" value={newProduct.categoria_id} onChange={e => setNewProduct({ ...newProduct, categoria_id: e.target.value })}><option value="">Seleccionar...</option>{categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
                         <div className="md:col-span-2"><label className="text-xs font-bold text-gray-500 uppercase">Liga</label><select className="w-full border-2 border-gray-100 bg-gray-50 p-2.5 rounded-lg outline-none focus:border-blue-400" value={newProduct.categoria_especifica_id} onChange={e => setNewProduct({ ...newProduct, categoria_especifica_id: e.target.value })}><option value="">(Opcional)</option>{specificCategories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
                         <div className="md:col-span-2"><label className="text-xs font-bold text-gray-500 uppercase">Precio</label><input type="number" required className="w-full border-2 border-gray-100 bg-gray-50 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400" placeholder="$" value={newProduct.precio} onChange={e => setNewProduct({ ...newProduct, precio: e.target.value })} /></div>
@@ -383,7 +462,24 @@ const InventoryPage = () => {
                                     <td className="px-4 py-3 font-mono font-bold text-gray-700">$ {p.precio.toLocaleString()}</td>
                                     <td className="px-4 py-3"><div className="flex flex-wrap gap-2">{p.variantes.map(v => (<div key={v.id_variante} onClick={() => { setSelectedVariantForBarcode({ nombre: p.nombre, talle: v.talle, sku: v.sku, precio: p.precio }); setIsBarcodeModalOpen(true); }} className={`flex items-center pl-2 pr-1 py-1 rounded-md text-xs cursor-pointer transition-all active:scale-95 shadow-sm border ${getStockColorClass(v.stock)}`} title={`SKU: ${v.sku}`}><span className="font-bold mr-1.5">{v.talle}</span><span className="font-mono text-[10px] opacity-80 border-l border-current pl-1.5 mr-1">{v.stock}</span><button onClick={(e) => handlePrintSingleLabel(e, p, v)} className="p-0.5 rounded hover:bg-black/10 transition-colors ml-0.5" title="Imprimir"><Printer size={10} /></button></div>))}</div></td>
                                     <td className="px-4 py-3 text-center">{processingId === p.id ? <Loader2 size={18} className="animate-spin text-blue-600 mx-auto" /> : p.tiendanube_id ? <span className="inline-flex items-center justify-center p-1.5 bg-green-100 text-green-600 rounded-full" title="Sincronizado"><Cloud size={16} /></span> : <button onClick={() => handlePublish(p)} className="inline-flex items-center justify-center p-1.5 bg-gray-100 text-gray-400 rounded-full hover:bg-indigo-100 hover:text-indigo-600 transition-colors" title="Publicar"><UploadCloud size={16} /></button>}</td>
-                                    <td className="px-4 py-3 text-right"><div className="flex justify-end gap-1">{viewMode === 'active' ? (<><button onClick={() => handleToggleStatus(p)} className="text-gray-400 hover:text-red-500 p-2 hover:bg-red-50 rounded-lg" title="Archivar"><Archive size={18} /></button><button onClick={() => { setEditingProduct(p); setIsEditModalOpen(true); }} className="text-gray-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-lg" title="Editar"><Edit size={18} /></button></>) : (<><button onClick={() => handleToggleStatus(p)} className="text-green-500 hover:text-green-700 p-2 hover:bg-green-50 rounded-lg" title="Restaurar"><ArchiveRestore size={18} /></button><button onClick={() => handleDelete(p.id)} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg" title="Eliminar"><Trash2 size={18} /></button></>)}</div></td>
+                                    <td className="px-4 py-3 text-right">
+                                        <div className="flex justify-end gap-1">
+                                            {viewMode === 'active' ? (
+                                                <>
+                                                    {/* --- NUEVO BOTÓN DUPLICAR --- */}
+                                                    <button onClick={() => handleDuplicate(p)} className="text-gray-400 hover:text-indigo-600 p-2 hover:bg-indigo-50 rounded-lg" title="Duplicar"><Copy size={18} /></button>
+
+                                                    <button onClick={() => handleToggleStatus(p)} className="text-gray-400 hover:text-red-500 p-2 hover:bg-red-50 rounded-lg" title="Archivar"><Archive size={18} /></button>
+                                                    <button onClick={() => { setEditingProduct(p); setIsEditModalOpen(true); }} className="text-gray-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-lg" title="Editar"><Edit size={18} /></button>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <button onClick={() => handleToggleStatus(p)} className="text-green-500 hover:text-green-700 p-2 hover:bg-green-50 rounded-lg" title="Restaurar"><ArchiveRestore size={18} /></button>
+                                                    <button onClick={() => handleDelete(p.id)} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg" title="Eliminar"><Trash2 size={18} /></button>
+                                                </>
+                                            )}
+                                        </div>
+                                    </td>
                                 </tr>
                             ))}
                         </tbody>

@@ -15,7 +15,7 @@ from app.extensions import db
 from flask_jwt_extended import jwt_required
 import barcode
 from barcode.writer import ImageWriter
-from sqlalchemy import or_, func
+from sqlalchemy import or_, func, and_
 from reportlab.graphics.barcode import code128
 from reportlab.graphics import renderPDF
 from reportlab.pdfgen import canvas
@@ -115,85 +115,90 @@ def delete_specific_category(id):
 @bp.route('', methods=['GET'])
 @jwt_required()
 def get_products():
-    # 1. Parámetros Básicos
+    # 1. Parámetros
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('limit', 20, type=int)
     search = request.args.get('search', '', type=str)
     
-    # Filtros Existentes
+    # Filtros existentes
     cat_id = request.args.get('category_id')
     spec_id = request.args.get('specific_id')
     min_price = request.args.get('min_price', type=float)
     max_price = request.args.get('max_price', type=float)
+    active_param = request.args.get('active', 'true')
+    min_stock = request.args.get('min_stock', type=int) # Filtro ">="
 
-    # --- NUEVOS FILTROS (Activo y Stock) ---
-    active_param = request.args.get('active', 'true') # Recibe 'true' o 'false'
-    min_stock = request.args.get('min_stock', type=int)
+    # --- NUEVOS FILTROS ---
+    exact_stock = request.args.get('exact_stock', type=int) # Filtro "=="
+    size_filter = request.args.get('size_filter') # Ej: "S", "40"
+    no_image = request.args.get('no_image') == 'true'
 
-    # 2. Query Base (Unimos tablas relacionadas siempre)
+    # 2. Query Base
     query = Producto.query.outerjoin(Categoria).outerjoin(CategoriaEspecifica)
 
     # 3. Aplicar Filtros
-
-    # --- A. FILTRO DE ESTADO (Activo / Discontinuo) ---
     if active_param == 'true':
         query = query.filter(Producto.activo == True)
     elif active_param == 'false':
         query = query.filter(Producto.activo == False)
     
-    # --- B. FILTROS DE CATEGORÍA Y PRECIO ---
     if cat_id:
         query = query.filter(Producto.id_categoria == cat_id)
-    
     if spec_id:
         query = query.filter(Producto.id_categoria_especifica == spec_id)
-        
     if min_price is not None:
         query = query.filter(Producto.precio >= min_price)
-        
     if max_price is not None and max_price > 0:
         query = query.filter(Producto.precio <= max_price)
 
-    # --- C. BÚSQUEDA AVANZADA (Tu lógica de términos) ---
+    # --- FILTRO IMAGEN FALTANTE ---
+    if no_image:
+        query = query.filter(or_(Producto.imagen.is_(None), Producto.imagen == ''))
+
+    # --- BÚSQUEDA TEXTO ---
     if search:
-        # Hacemos el join con variantes para buscar por SKU
         query = query.join(ProductoVariante)
-        
         terms = search.strip().split()
-        
         for term in terms:
             term_filter = f"%{term}%"
-            query = query.filter(
-                or_(
-                    Producto.nombre.ilike(term_filter),
-                    Categoria.nombre.ilike(term_filter),
-                    ProductoVariante.codigo_sku.ilike(term_filter)
-                )
-            )
-        
-        # Agrupamos para evitar duplicados por variantes
+            query = query.filter(or_(
+                Producto.nombre.ilike(term_filter),
+                Categoria.nombre.ilike(term_filter),
+                ProductoVariante.codigo_sku.ilike(term_filter)
+            ))
         query = query.group_by(Producto.id_producto)
 
-    # --- D. FILTRO "OCULTAR SIN STOCK" ---
+    # --- FILTROS DE STOCK Y TALLE (LOGICA COMPLEJA) ---
+    
+    # Caso 1: Filtro "Stock Mínimo General" (Ocultar stock 0)
     if min_stock is not None and min_stock > 0:
-        # Subconsulta: Busca IDs de productos cuya suma de stock en inventario sea >= min_stock
         products_with_stock = db.session.query(ProductoVariante.id_producto) \
-            .join(Inventario, Inventario.id_variante == ProductoVariante.id_variante) \
-            .group_by(ProductoVariante.id_producto) \
-            .having(func.sum(Inventario.stock_actual) >= min_stock) \
-            .subquery()
-        
+            .join(Inventario).group_by(ProductoVariante.id_producto) \
+            .having(func.sum(Inventario.stock_actual) >= min_stock).subquery()
         query = query.filter(Producto.id_producto.in_(products_with_stock))
 
-    # 4. Paginación y Resultados
+    # Caso 2: Filtro "Stock Exacto" y/o "Talle Específico"
+    # (Ej: Buscar "Talle S" con "Stock 0")
+    if exact_stock is not None or size_filter:
+        # Subquery para encontrar variantes que cumplan LA condición exacta
+        sub_q = db.session.query(ProductoVariante.id_producto).join(Inventario)
+        
+        conditions = []
+        if exact_stock is not None:
+            conditions.append(Inventario.stock_actual == exact_stock)
+        if size_filter:
+            conditions.append(ProductoVariante.talla == size_filter)
+            
+        sub_q = sub_q.filter(and_(*conditions)).subquery()
+        query = query.filter(Producto.id_producto.in_(sub_q))
+
+    # 4. Paginación y Respuesta
     paginated_data = query.order_by(Producto.id_producto.desc()).paginate(page=page, per_page=per_page, error_out=False)
 
     resultado = []
     for prod in paginated_data.items:
         stock_total = 0
         lista_variantes = []
-        
-        # Recorremos variantes para calcular stock total y armar lista
         for var in prod.variantes:
             cantidad = var.inventario.stock_actual if var.inventario else 0
             stock_total += cantidad
@@ -217,16 +222,12 @@ def get_products():
             "variantes": lista_variantes,
             "tiendanube_id": prod.tiendanube_id,
             "sincronizado_web": prod.sincronizado_web,
-            "activo": prod.activo # <--- Agregamos este dato por si el front lo necesita
+            "activo": prod.activo
         })
 
     return jsonify({
         "products": resultado,
-        "meta": {
-            "total_items": paginated_data.total,
-            "total_pages": paginated_data.pages,
-            "current_page": paginated_data.page,
-        }
+        "meta": { "total_items": paginated_data.total, "total_pages": paginated_data.pages, "current_page": paginated_data.page }
     }), 200
 
 # ==========================================

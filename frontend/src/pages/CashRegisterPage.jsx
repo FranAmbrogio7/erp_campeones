@@ -58,9 +58,28 @@ const CashRegisterPage = () => {
         return salesList.filter(v => v.metodo.includes(filterMethod));
     }, [salesList, filterMethod]);
 
-    const filteredTotal = useMemo(() => filteredSales.reduce((acc, curr) => acc + curr.total, 0), [filteredSales]);
+    // 3. SUMA INTELIGENTE (CORREGIDA PARA PAGO MIXTO)
+    const filteredTotal = useMemo(() => {
+        return filteredSales.reduce((acc, sale) => {
+            // Caso 1: Si no hay filtro, sumamos el total de la venta
+            if (filterMethod === 'Todos') return acc + sale.total;
 
-    // 3. Contadores para los botones de filtro
+            // Caso 2: Si hay filtro y la venta tiene desglose de pagos (Backend nuevo)
+            if (sale.pagos_detalle && sale.pagos_detalle.length > 0) {
+                // Buscamos solo los pagos que coinciden con el filtro actual
+                const parteRelevante = sale.pagos_detalle
+                    .filter(p => p.metodo.includes(filterMethod))
+                    .reduce((sum, p) => sum + p.monto, 0);
+
+                return acc + parteRelevante;
+            }
+
+            // Caso 3: Fallback (Ventas viejas o sin desglose), sumamos total si pasó el filtro
+            return acc + sale.total;
+        }, 0);
+    }, [filteredSales, filterMethod]);
+
+    // 4. Contadores para los botones de filtro
     const getCountByMethod = (method) => {
         if (method === 'Todos') return salesList.length;
         return salesList.filter(v => v.metodo.includes(method)).length;
@@ -143,7 +162,7 @@ const CashRegisterPage = () => {
                 /* --- VISTA APERTURA --- */
                 <div className="max-w-lg mx-auto mt-10">
                     <form onSubmit={handleOpen} className="bg-white p-8 rounded-2xl shadow-xl border border-blue-100 relative overflow-hidden">
-                        <div className="absolute top-0 left-0 w-full h-2 bg-blue-500"></div>
+                        <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-500"></div>
                         <h2 className="text-xl font-bold text-gray-800 mb-6 text-center">Apertura de Turno</h2>
                         <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Fondo de Caja (Cambio Inicial)</label>
                         <div className="relative mb-8">
@@ -168,7 +187,7 @@ const CashRegisterPage = () => {
                                 <p className="text-2xl font-black text-gray-800">$ {sessionData?.monto_inicial?.toLocaleString()}</p>
                             </div>
 
-                            {/* Total Local (KPI NUEVO SOLICITADO) */}
+                            {/* Total Local */}
                             <div className="bg-gradient-to-br from-slate-800 to-slate-900 text-white p-4 rounded-2xl shadow-md border border-slate-700 flex flex-col justify-between relative overflow-hidden">
                                 <div className="relative z-10">
                                     <p className="text-[10px] font-bold text-gray-400 uppercase mb-1 flex items-center"><Store size={14} className="mr-1 text-green-400" /> Venta Local (Sin Web)</p>
@@ -250,9 +269,9 @@ const CashRegisterPage = () => {
                                                     </td>
                                                     <td className="p-4">
                                                         <span className={`px-2 py-1 rounded text-[10px] font-bold border inline-flex items-center ${v.metodo.includes('Efectivo') ? 'bg-green-50 text-green-700 border-green-100' :
-                                                                v.metodo.includes('Tarjeta') ? 'bg-blue-50 text-blue-700 border-blue-100' :
-                                                                    v.metodo.includes('Nube') || v.metodo.includes('Tienda') ? 'bg-sky-50 text-sky-700 border-sky-100' :
-                                                                        'bg-purple-50 text-purple-700 border-purple-100'
+                                                            v.metodo.includes('Tarjeta') ? 'bg-blue-50 text-blue-700 border-blue-100' :
+                                                                v.metodo.includes('Nube') || v.metodo.includes('Tienda') ? 'bg-sky-50 text-sky-700 border-sky-100' :
+                                                                    'bg-purple-50 text-purple-700 border-purple-100'
                                                             }`}>
                                                             {v.metodo}
                                                         </span>

@@ -3,7 +3,7 @@ import { useAuth, api } from '../context/AuthContext';
 import {
     ScanBarcode, Save, Trash2, RotateCcw, PackageCheck,
     PlusCircle, AlertTriangle, Search, X, Image as ImageIcon,
-    Shirt, ChevronRight, CheckCircle2
+    Shirt, ChevronRight, CheckCircle2, Printer // <--- Icono agregado
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
@@ -69,10 +69,9 @@ const StockTakePage = () => {
         setScannedItems(prev => {
             const existingIdx = prev.findIndex(i => i.sku === itemData.sku);
             if (existingIdx >= 0) {
-                // Si existe, sumamos 1 y lo movemos al principio para visibilidad
+                // Si existe, sumamos 1
                 const newList = [...prev];
                 newList[existingIdx].cantidad += 1;
-                // Opcional: Mover al tope -> const item = newList.splice(existingIdx, 1)[0]; newList.unshift(item);
                 return newList;
             }
             // Si es nuevo
@@ -105,7 +104,7 @@ const StockTakePage = () => {
                     sku: p.sku,
                     nombre: p.nombre,
                     talle: p.talle,
-                    imagen: p.imagen, // Si el endpoint de scan devuelve imagen
+                    imagen: p.imagen,
                     stock_sistema: p.stock_actual
                 });
                 setSkuInput('');
@@ -140,6 +139,42 @@ const StockTakePage = () => {
             localStorage.removeItem('stockTakeSession');
             toast("Lista reiniciada");
         }
+    };
+
+    // --- NUEVO: IMPRESIÓN DE ETIQUETAS DE LA LISTA ---
+    const generatePdf = async (items) => {
+        const loadToast = toast.loading("Generando PDF...");
+        try {
+            const res = await api.post('/products/labels/batch-pdf', { items }, { responseType: 'blob' });
+            const url = window.URL.createObjectURL(new Blob([res.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            link.setAttribute('download', `Etiquetas_Ingreso_${Date.now()}.pdf`);
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            toast.success("Descargando etiquetas...", { id: loadToast });
+        } catch (e) {
+            console.error(e);
+            toast.error("Error al generar PDF", { id: loadToast });
+        }
+    };
+
+    const handlePrintList = async () => {
+        if (scannedItems.length === 0) return toast.error("No hay items para imprimir");
+
+        const totalEtiquetas = scannedItems.reduce((acc, i) => acc + i.cantidad, 0);
+        if (!window.confirm(`¿Imprimir ${totalEtiquetas} etiquetas correspondientes a esta lista?`)) return;
+
+        // Mapeamos al formato que espera el backend de etiquetas
+        const itemsToPrint = scannedItems.map(i => ({
+            sku: i.sku,
+            nombre: i.nombre,
+            talle: i.talle,
+            cantidad: i.cantidad // Imprime exactamente lo que se contó/ingresó
+        }));
+
+        await generatePdf(itemsToPrint);
     };
 
     // --- GUARDADO FINAL ---
@@ -364,7 +399,7 @@ const StockTakePage = () => {
                         </div>
                     </div>
 
-                    {/* Botón Final */}
+                    {/* Botones Finales */}
                     <div className="mt-auto">
                         {updateMode === 'replace' && (
                             <div className="mb-4 flex items-start gap-2 bg-orange-100 p-3 rounded-lg text-orange-800 text-xs">
@@ -372,6 +407,15 @@ const StockTakePage = () => {
                                 <p><b>¡Cuidado!</b> Si el sistema dice 10 y escaneas 2, el nuevo stock será 2.</p>
                             </div>
                         )}
+
+                        {/* --- BOTÓN DE IMPRIMIR ETIQUETAS (NUEVO) --- */}
+                        <button
+                            onClick={handlePrintList}
+                            disabled={scannedItems.length === 0}
+                            className="w-full py-3 mb-3 bg-white border-2 border-indigo-100 text-indigo-600 font-bold rounded-xl hover:bg-indigo-50 transition-all flex items-center justify-center shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                            <Printer className="mr-2" size={20} /> IMPRIMIR ETIQUETAS
+                        </button>
 
                         <button
                             onClick={handleSave}

@@ -71,6 +71,8 @@ class Venta(db.Model):
     
     detalles = db.relationship(DetalleVenta, backref='venta', lazy=True, cascade="all, delete-orphan")
 
+    pagos = db.relationship('VentaPago', backref='venta', lazy=True, cascade="all, delete-orphan")
+
     observaciones = db.Column(db.Text)
 
     # --- NUEVO: Relación con Sesión de Caja ---
@@ -164,3 +166,15 @@ class NotaCredito(db.Model):
         return f"NC-{code}"
 
     
+
+# --- NUEVA TABLA PARA PAGOS MÚLTIPLES ---
+class VentaPago(db.Model):
+    __tablename__ = 'ventas_pagos'
+    __table_args__ = {'extend_existing': True}
+
+    id_venta_pago = db.Column(db.Integer, primary_key=True)
+    id_venta = db.Column(db.Integer, db.ForeignKey('ventas.id_venta'), nullable=False)
+    id_metodo_pago = db.Column(db.Integer, db.ForeignKey('metodos_pago.id_metodo_pago'), nullable=False)
+    monto = db.Column(db.Numeric(10, 2), nullable=False)
+
+    metodo = db.relationship('MetodoPago')
