@@ -3,17 +3,24 @@ import axios from 'axios';
 import { useAuth, api } from '../context/AuthContext';
 import {
     CalendarClock, Search, CheckCircle, XCircle, DollarSign,
-    Phone, Eye, Printer, AlertTriangle
+    Phone, Eye, Printer, AlertTriangle, X, CreditCard, Banknote
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
-import { useReactToPrint } from 'react-to-print'; // <--- 1. Importar librería
+import { useReactToPrint } from 'react-to-print';
 import ReservationDetailsModal from '../components/ReservationDetailsModal';
-import Ticket from '../components/Ticket'; // <--- 2. Importar Ticket
+import Ticket from '../components/Ticket';
 
 const ReservationsPage = () => {
     const { token } = useAuth();
     const [reservas, setReservas] = useState([]);
     const [filter, setFilter] = useState('');
+
+    // --- NUEVO: ESTADOS PARA EL COBRO ---
+    const [paymentMethods, setPaymentMethods] = useState([]);
+    const [isPayModalOpen, setIsPayModalOpen] = useState(false);
+    const [reservaToPay, setReservaToPay] = useState(null); // La reserva que se está cobrando
+    const [selectedMethodId, setSelectedMethodId] = useState('');
+    // ------------------------------------
 
     // Estados para el Modal de Detalle
     const [selectedReserva, setSelectedReserva] = useState(null);
@@ -23,59 +30,76 @@ const ReservationsPage = () => {
     const [ticketData, setTicketData] = useState(null);
     const ticketRef = useRef(null);
 
-    const reactToPrintFn = useReactToPrint({
-        contentRef: ticketRef, // Versión corregida para React moderno
-    });
+    const reactToPrintFn = useReactToPrint({ contentRef: ticketRef });
 
     const handleReprint = (reserva) => {
-        // Adaptamos los datos de la reserva al formato que espera el componente Ticket
         const dataForTicket = {
-            id_venta: `RES-${reserva.id}`, // Prefijo para distinguir
+            id_venta: `RES-${reserva.id}`,
             fecha: reserva.fecha || new Date().toLocaleDateString(),
-            items: reserva.items || [], // Asumimos que el backend trae los items, si no, saldrá vacío
+            items: reserva.items || [],
             total: reserva.total,
             cliente: reserva.cliente,
-            metodo: `Seña: $${reserva.sena} (Saldo: $${reserva.saldo})`, // Mostramos el estado del pago
-            tipo: 'RESERVA' // Flag opcional si tu Ticket lo soporta
+            metodo: `Seña: $${reserva.sena} (Saldo: $${reserva.saldo})`,
+            tipo: 'RESERVA'
         };
-
         setTicketData(dataForTicket);
-
-        // Esperamos a que se renderice el ticket oculto
-        setTimeout(() => {
-            if (reactToPrintFn) reactToPrintFn();
-        }, 150);
+        setTimeout(() => { if (reactToPrintFn) reactToPrintFn(); }, 150);
     };
-    // ---------------------------
 
+    // 1. CARGAR DATOS (Reservas y Medios de Pago)
     const fetchReservas = async () => {
         try {
-            const res = await axios.get('/api/sales/reservas', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            const res = await axios.get('/api/sales/reservas', { headers: { Authorization: `Bearer ${token}` } });
             setReservas(res.data);
         } catch (e) { console.error(e); }
     };
 
-    useEffect(() => { if (token) fetchReservas(); }, [token]);
-
-    const handleRetirar = async (id, saldo) => {
-        if (!window.confirm(`¿Confirmar retiro? Se ingresarán $${saldo.toLocaleString()} a la caja.`)) return;
-        try {
-            await axios.post(`/api/sales/reservas/${id}/retirar`, {}, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            toast.success("Reserva retirada correctamente");
+    useEffect(() => {
+        if (token) {
             fetchReservas();
-        } catch (e) { toast.error(e.response?.data?.msg || "Error"); }
+            // Cargar métodos de pago para el modal
+            api.get('/sales/payment-methods').then(res => setPaymentMethods(res.data)).catch(console.error);
+        }
+    }, [token]);
+
+
+    // 2. ABRIR MODAL DE COBRO
+    const openPayModal = (reserva) => {
+        setReservaToPay(reserva);
+        setSelectedMethodId(''); // Reiniciar selección
+        setIsPayModalOpen(true);
+    };
+
+    // 3. CONFIRMAR RETIRO (Enviando el pago)
+    const handleConfirmRetiro = async (e) => {
+        e.preventDefault();
+        if (!reservaToPay) return;
+
+        // Si hay saldo, el pago es obligatorio
+        if (reservaToPay.saldo > 0 && !selectedMethodId) {
+            return toast.error("Selecciona un método de pago");
+        }
+
+        const toastId = toast.loading("Procesando retiro...");
+        try {
+            await axios.post(`/api/sales/reservas/${reservaToPay.id}/retirar`,
+                { id_metodo_pago: selectedMethodId }, // <--- AQUÍ ENVIAMOS EL DATO QUE FALTABA
+                { headers: { Authorization: `Bearer ${token}` } }
+            );
+
+            toast.success("Reserva retirada y venta registrada", { id: toastId });
+            setIsPayModalOpen(false);
+            setReservaToPay(null);
+            fetchReservas(); // Recargar lista
+        } catch (e) {
+            toast.error(e.response?.data?.msg || "Error al retirar", { id: toastId });
+        }
     };
 
     const handleCancelar = async (id) => {
         if (!window.confirm("¿Cancelar reserva? El stock volverá al inventario.")) return;
         try {
-            await axios.post(`/api/sales/reservas/${id}/cancelar`, {}, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            await axios.post(`/api/sales/reservas/${id}/cancelar`, {}, { headers: { Authorization: `Bearer ${token}` } });
             toast.success("Reserva cancelada");
             fetchReservas();
         } catch (e) { toast.error("Error cancelando"); }
@@ -93,23 +117,71 @@ const ReservationsPage = () => {
     );
 
     return (
-        <div className="p-6 max-w-7xl mx-auto space-y-6">
+        <div className="p-6 max-w-7xl mx-auto space-y-6 relative">
             <Toaster position="top-center" />
 
-            {/* --- TICKET OCULTO --- */}
+            {/* TICKET OCULTO */}
             <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
-                <div ref={ticketRef}>
-                    <Ticket saleData={ticketData} />
-                </div>
+                <div ref={ticketRef}><Ticket saleData={ticketData} /></div>
             </div>
 
-            {/* MODAL DE DETALLE */}
+            {/* MODAL DE DETALLE (Existente) */}
             <ReservationDetailsModal
                 isOpen={isDetailOpen}
                 onClose={() => setIsDetailOpen(false)}
                 reserva={selectedReserva}
             />
 
+            {/* --- NUEVO: MODAL DE COBRO DE SALDO --- */}
+            {isPayModalOpen && reservaToPay && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fade-in">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden">
+                        <div className="bg-green-600 p-4 text-white flex justify-between items-center">
+                            <h3 className="font-bold text-lg flex items-center">
+                                <DollarSign className="mr-2" /> Cobrar Saldo
+                            </h3>
+                            <button onClick={() => setIsPayModalOpen(false)} className="hover:bg-green-700 p-1 rounded-full"><X size={20} /></button>
+                        </div>
+
+                        <form onSubmit={handleConfirmRetiro} className="p-6">
+                            <div className="mb-6 text-center">
+                                <p className="text-gray-500 text-sm uppercase font-bold mb-1">Total a Pagar</p>
+                                <p className="text-4xl font-black text-gray-800">$ {reservaToPay.saldo.toLocaleString()}</p>
+                                <p className="text-xs text-gray-400 mt-2">Cliente: {reservaToPay.cliente}</p>
+                            </div>
+
+                            {reservaToPay.saldo > 0 ? (
+                                <div className="mb-6">
+                                    <label className="block text-xs font-bold text-gray-500 uppercase mb-2">Selecciona Medio de Pago</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {paymentMethods.map(m => (
+                                            <button
+                                                key={m.id}
+                                                type="button"
+                                                onClick={() => setSelectedMethodId(m.id)}
+                                                className={`p-3 rounded-xl border-2 flex flex-col items-center transition-all ${selectedMethodId === m.id ? 'border-green-500 bg-green-50 text-green-700' : 'border-gray-100 hover:border-gray-300 text-gray-500'}`}
+                                            >
+                                                {m.nombre.toLowerCase().includes('tarjeta') ? <CreditCard size={20} /> : <Banknote size={20} />}
+                                                <span className="text-xs font-bold mt-1">{m.nombre}</span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="bg-green-50 p-3 rounded-lg text-center text-green-700 font-bold mb-6">
+                                    ¡Saldo cubierto! Solo confirmar retiro.
+                                </div>
+                            )}
+
+                            <button type="submit" className="w-full py-3 bg-slate-900 text-white font-bold rounded-xl hover:bg-black transition-transform active:scale-95 shadow-lg">
+                                CONFIRMAR RETIRO
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* CABECERA */}
             <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-800 flex items-center">
@@ -117,8 +189,6 @@ const ReservationsPage = () => {
                     </h1>
                     <p className="text-gray-500 text-sm">Gestiona señas, pedidos apartados y saldos pendientes.</p>
                 </div>
-
-                {/* Buscador */}
                 <div className="relative w-full md:w-auto">
                     <input
                         placeholder="Buscar cliente o teléfono..."
@@ -129,7 +199,7 @@ const ReservationsPage = () => {
                 </div>
             </div>
 
-            {/* Tabla */}
+            {/* TABLA */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
@@ -188,38 +258,20 @@ const ReservationsPage = () => {
 
                                     {/* BOTÓN VER DETALLE */}
                                     <td className="p-4 text-center">
-                                        <button
-                                            onClick={() => handleViewDetail(r)}
-                                            className="text-blue-500 hover:text-blue-700 p-2 hover:bg-blue-50 rounded-full transition-all"
-                                            title="Ver artículos reservados"
-                                        >
-                                            <Eye size={20} />
-                                        </button>
+                                        <button onClick={() => handleViewDetail(r)} className="text-blue-500 hover:text-blue-700 p-2 hover:bg-blue-50 rounded-full transition-all" title="Ver artículos reservados"><Eye size={20} /></button>
                                     </td>
 
                                     <td className="p-4 text-right">
                                         <div className="flex justify-end gap-2">
-                                            {/* --- BOTÓN IMPRIMIR --- */}
-                                            <button
-                                                onClick={() => handleReprint(r)}
-                                                className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-100"
-                                                title="Reimprimir Comprobante"
-                                            >
-                                                <Printer size={18} />
-                                            </button>
-                                            {/* ---------------------- */}
+                                            <button onClick={() => handleReprint(r)} className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors border border-transparent hover:border-blue-100" title="Reimprimir Comprobante"><Printer size={18} /></button>
 
                                             {r.estado === 'pendiente' ? (
                                                 <>
+                                                    <button onClick={() => handleCancelar(r.id)} className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100" title="Cancelar y devolver stock"><XCircle size={18} /></button>
+
+                                                    {/* BOTÓN RETIRAR AHORA ABRE MODAL */}
                                                     <button
-                                                        onClick={() => handleCancelar(r.id)}
-                                                        className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border border-transparent hover:border-red-100"
-                                                        title="Cancelar y devolver stock"
-                                                    >
-                                                        <XCircle size={18} />
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleRetirar(r.id, r.saldo)}
+                                                        onClick={() => openPayModal(r)}
                                                         className="px-3 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 shadow-sm flex items-center gap-1.5 text-xs font-bold transition-transform active:scale-95"
                                                         title="Cobrar saldo y entregar"
                                                     >
@@ -227,9 +279,7 @@ const ReservationsPage = () => {
                                                     </button>
                                                 </>
                                             ) : (
-                                                <span className="text-gray-300 italic text-xs flex items-center justify-end">
-                                                    <CheckCircle size={14} className="mr-1" /> Completada
-                                                </span>
+                                                <span className="text-gray-300 italic text-xs flex items-center justify-end"><CheckCircle size={14} className="mr-1" /> Completada</span>
                                             )}
                                         </div>
                                     </td>

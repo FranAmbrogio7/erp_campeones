@@ -27,7 +27,17 @@ const POSPage = () => {
   // --- ESTADOS ---
   const [isRegisterOpen, setIsRegisterOpen] = useState(null);
   const [skuInput, setSkuInput] = useState('');
-  const [cart, setCart] = useState([]);
+
+  // --- CARRITO CON PERSISTENCIA (LOCAL STORAGE) ---
+  const [cart, setCart] = useState(() => {
+    try {
+      const savedCart = localStorage.getItem('pos_cart_backup');
+      return savedCart ? JSON.parse(savedCart) : [];
+    } catch (e) {
+      console.error("Error recuperando carrito", e);
+      return [];
+    }
+  });
 
   // Búsqueda Manual & Filtros
   const [isSearchMode, setIsSearchMode] = useState(false);
@@ -50,6 +60,11 @@ const POSPage = () => {
   const [isEditingPrice, setIsEditingPrice] = useState(false);
   const [creditNoteCode, setCreditNoteCode] = useState('');
 
+  // --- NUEVO: ESTADO PARA PAGO MIXTO ---
+  const [isSplitPayment, setIsSplitPayment] = useState(false);
+  const [splitPayments, setSplitPayments] = useState([{ id_metodo: '', monto: '' }]);
+  // -------------------------------------
+
   // Historial y Modales
   const [recentSales, setRecentSales] = useState([]);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
@@ -68,14 +83,38 @@ const POSPage = () => {
   const creditNoteInputRef = useRef(null);
 
   // --- AUTO-ESCANEO ---
-  // Vinculamos el hook al inputRef principal para que capture el lector
-  // aunque el foco esté perdido (mientras no se esté escribiendo en otro input)
   useScanDetection(inputRef);
+
+  // --- EFECTO PARA GUARDAR CARRITO AUTOMÁTICAMENTE ---
+  useEffect(() => {
+    localStorage.setItem('pos_cart_backup', JSON.stringify(cart));
+  }, [cart]);
 
   // Cálculos
   const subtotalCalculado = cart.reduce((sum, item) => sum + item.subtotal, 0);
   const totalFinal = customTotal !== null && customTotal !== '' ? parseFloat(customTotal) : subtotalCalculado;
   const descuentoVisual = subtotalCalculado - totalFinal;
+
+  // --- NUEVO: LÓGICA PAGO MIXTO ---
+  const addSplitLine = () => {
+    setSplitPayments([...splitPayments, { id_metodo: '', monto: '' }]);
+  };
+
+  const removeSplitLine = (index) => {
+    const newSplits = [...splitPayments];
+    newSplits.splice(index, 1);
+    setSplitPayments(newSplits);
+  };
+
+  const updateSplit = (index, field, value) => {
+    const newSplits = [...splitPayments];
+    newSplits[index][field] = value;
+    setSplitPayments(newSplits);
+  };
+
+  const totalPagadoMixto = splitPayments.reduce((acc, curr) => acc + (parseFloat(curr.monto) || 0), 0);
+  const restanteMixto = totalFinal - totalPagadoMixto;
+  // -------------------------------
 
   // --- AUDIO ---
   const playSound = (type) => {
@@ -218,17 +257,32 @@ const POSPage = () => {
   };
 
   const removeFromCart = (id) => { setCustomTotal(null); setCart(prev => prev.filter(i => i.id_variante !== id)); };
+
   const clearCart = () => { if (window.confirm("¿Vaciar carrito?")) setCart([]); };
 
   // --- PROCESO VENTA/ANULAR/REIMPRIMIR/RESERVA ---
   const handleCheckoutClick = () => {
     if (cart.length === 0) return;
-    if (!selectedMethod) { toast.error("Selecciona medio de pago"); playSound('error'); return; }
-    const mName = selectedMethod.nombre.toLowerCase();
-    if ((mName.includes('credito') || mName.includes('crédito')) && !creditNoteCode.trim()) {
-      toast.error("Ingresa código de Nota"); playSound('error');
-      setTimeout(() => creditNoteInputRef.current?.focus(), 200); return;
+
+    // NUEVA VALIDACIÓN PARA PAGO MIXTO
+    if (isSplitPayment) {
+      if (Math.abs(restanteMixto) > 0.5) { // Tolerancia de centavos
+        toast.error(`Faltan $${restanteMixto.toLocaleString()} por asignar`);
+        return;
+      }
+      if (splitPayments.some(p => !p.id_metodo || !p.monto)) {
+        toast.error("Completa todos los campos de pago");
+        return;
+      }
+    } else {
+      if (!selectedMethod) { toast.error("Selecciona medio de pago"); playSound('error'); return; }
+      const mName = selectedMethod.nombre.toLowerCase();
+      if ((mName.includes('credito') || mName.includes('crédito')) && !creditNoteCode.trim()) {
+        toast.error("Ingresa código de Nota"); playSound('error');
+        setTimeout(() => creditNoteInputRef.current?.focus(), 200); return;
+      }
     }
+
     setIsConfirmModalOpen(true);
   };
 
@@ -236,8 +290,8 @@ const POSPage = () => {
     const toastId = toast.loading("Procesando...");
     setIsConfirmModalOpen(false);
     try {
-      const mName = selectedMethod.nombre.toLowerCase();
-      const esNota = mName.includes('credito') || mName.includes('crédito');
+      const mName = selectedMethod ? selectedMethod.nombre.toLowerCase() : "";
+      const esNota = !isSplitPayment && (mName.includes('credito') || mName.includes('crédito'));
       let notaEnv = esNota ? creditNoteCode : (appliedNote?.codigo || null);
 
       if (esNota) {
@@ -254,14 +308,52 @@ const POSPage = () => {
         } catch (e) { toast.error("Nota inválida"); return; }
       }
 
-      const res = await api.post('/sales/checkout', {
-        items: cart, subtotal_calculado: subtotalCalculado, total_final: totalFinal,
-        metodo_pago_id: selectedMethod.id, codigo_nota_credito: notaEnv
+      // --- CONSTRUCCIÓN DEL PAYLOAD (Soporte Mixto) ---
+      let payload = {
+        items: cart,
+        subtotal_calculado: subtotalCalculado,
+        total_final: totalFinal,
+        codigo_nota_credito: notaEnv
+      };
+
+      if (isSplitPayment) {
+        payload.pagos = splitPayments.map(p => ({
+          id_metodo: p.id_metodo,
+          monto: parseFloat(p.monto)
+        }));
+        payload.metodo_pago_id = splitPayments[0].id_metodo; // Referencia
+      } else {
+        payload.metodo_pago_id = selectedMethod.id;
+      }
+
+      const res = await api.post('/sales/checkout', payload);
+
+      // Datos para Ticket
+      let metodoNombre = "Mixto";
+      if (!isSplitPayment && selectedMethod) metodoNombre = selectedMethod.nombre;
+      if (isSplitPayment) {
+        metodoNombre = splitPayments.map(p => {
+          const mName = paymentMethods.find(m => m.id == p.id_metodo)?.nombre || "?";
+          return `${mName} ($${p.monto})`;
+        }).join(" + ");
+      }
+
+      setTicketData({
+        id_venta: res.data.id,
+        fecha: new Date().toLocaleString(),
+        items: cart,
+        total: totalFinal,
+        cliente: "Consumidor Final",
+        metodo: metodoNombre
       });
 
-      setTicketData({ id_venta: res.data.id, fecha: new Date().toLocaleString(), items: cart, total: totalFinal, cliente: "Consumidor Final", metodo: selectedMethod.nombre });
       playSound('beep'); toast.success(`Venta #${res.data.id} OK`, { id: toastId });
-      setCart([]); setSkuInput(''); setSelectedMethod(null); setCustomTotal(null); setCreditNoteCode(''); setAppliedNote(null);
+
+      // Reset completo
+      setCart([]); setSkuInput(''); setSelectedMethod(null); setCustomTotal(null);
+      setCreditNoteCode(''); setAppliedNote(null);
+      setIsSplitPayment(false); setSplitPayments([{ id_metodo: '', monto: '' }]);
+
       fetchRecentSales();
     } catch (e) { playSound('error'); toast.error(e.response?.data?.msg || "Error", { id: toastId }); }
   };
@@ -281,6 +373,7 @@ const POSPage = () => {
     try {
       await api.post('/sales/reservas/crear', { items: cart, total: totalFinal, sena: rd.sena, cliente: rd.cliente, telefono: rd.telefono, id_metodo_pago: rd.metodo_pago_id });
       toast.success("Reservado"); setCart([]); setIsReservationModalOpen(false);
+      fetchRecentSales();
     } catch (e) { toast.error("Error"); }
   };
 
@@ -477,14 +570,84 @@ const POSPage = () => {
           ))}
         </div>
 
-        {/* FOOTER COBRO */}
+        {/* FOOTER COBRO (ACTUALIZADO) */}
         <div className="p-4 bg-white border-t-2 border-gray-100 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-20">
           {appliedNote && <div className="mb-3 bg-green-50 border border-green-200 p-3 rounded-lg flex justify-between items-center animate-pulse"><div><span className="text-xs font-bold text-green-700 block">NOTA APLICADA</span><span className="text-sm font-mono text-gray-700">{appliedNote.codigo} (-${appliedNote.monto.toLocaleString()})</span></div><button onClick={() => { setAppliedNote(null); setCustomTotal(null); toast("Nota quitada"); }} className="text-red-400 hover:text-red-600 p-1"><X size={16} /></button></div>}
-          <div className="mb-4"><p className="text-[10px] font-bold text-gray-400 mb-2 uppercase tracking-wide">Seleccionar Medio de Pago</p><div className="grid grid-cols-3 gap-2">{paymentMethods.map(m => (<button key={m.id} onClick={() => { setSelectedMethod(m); setCreditNoteCode(''); }} className={`flex flex-col items-center justify-center p-2 rounded-xl border-2 transition-all active:scale-95 ${selectedMethod?.id === m.id ? 'bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-200' : 'bg-white text-gray-500 border-gray-200 hover:border-blue-300 hover:bg-blue-50'}`}>{getPaymentIcon(m.nombre)}<span className="text-[9px] font-black mt-1 uppercase">{m.nombre}</span></button>))}</div>
-            {selectedMethod && (selectedMethod.nombre.toLowerCase().includes('credito') || selectedMethod.nombre.toLowerCase().includes('crédito')) && (<div className="mt-3 bg-yellow-50 p-3 rounded-lg border border-yellow-200 animate-fade-in shadow-sm"><label className="text-xs font-bold text-yellow-800 uppercase block mb-1 flex items-center"><AlertTriangle size={12} className="mr-1" /> Código de la Nota</label><input ref={creditNoteInputRef} value={creditNoteCode} onChange={e => setCreditNoteCode(e.target.value.toUpperCase())} placeholder="NC-XXXXXX" className="w-full p-2 border border-yellow-300 rounded font-mono text-center uppercase focus:ring-2 focus:ring-yellow-400 outline-none bg-white text-lg font-bold text-gray-800 placeholder-gray-300" /></div>)}
+
+          {/* HEADER SECCIÓN PAGO */}
+          <div className="flex justify-between items-center mb-2">
+            <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wide">Medio de Pago</p>
+            <button
+              onClick={() => setIsSplitPayment(!isSplitPayment)}
+              className={`text-[10px] font-bold px-2 py-1 rounded border transition-all ${isSplitPayment ? 'bg-purple-100 text-purple-700 border-purple-200' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+            >
+              {isSplitPayment ? 'Volver a Simple' : 'Pago Combinado'}
+            </button>
           </div>
+
+          {!isSplitPayment ? (
+            // --- MODO SIMPLE (ORIGINAL) ---
+            <div className="mb-4">
+              <div className="grid grid-cols-3 gap-2">
+                {paymentMethods.map(m => (
+                  <button key={m.id} onClick={() => { setSelectedMethod(m); setCreditNoteCode(''); }} className={`flex flex-col items-center justify-center p-2 rounded-xl border-2 transition-all active:scale-95 ${selectedMethod?.id === m.id ? 'bg-blue-600 text-white border-blue-600 shadow-md ring-2 ring-blue-200' : 'bg-white text-gray-500 border-gray-200 hover:border-blue-300 hover:bg-blue-50'}`}>{getPaymentIcon(m.nombre)}<span className="text-[9px] font-black mt-1 uppercase">{m.nombre}</span></button>
+                ))}
+              </div>
+              {selectedMethod && (selectedMethod.nombre.toLowerCase().includes('credito') || selectedMethod.nombre.toLowerCase().includes('crédito')) && (<div className="mt-3 bg-yellow-50 p-3 rounded-lg border border-yellow-200 animate-fade-in shadow-sm"><label className="text-xs font-bold text-yellow-800 uppercase block mb-1 flex items-center"><AlertTriangle size={12} className="mr-1" /> Código de la Nota</label><input ref={creditNoteInputRef} value={creditNoteCode} onChange={e => setCreditNoteCode(e.target.value.toUpperCase())} placeholder="NC-XXXXXX" className="w-full p-2 border border-yellow-300 rounded font-mono text-center uppercase focus:ring-2 focus:ring-yellow-400 outline-none bg-white text-lg font-bold text-gray-800 placeholder-gray-300" /></div>)}
+            </div>
+          ) : (
+            // --- MODO COMBINADO / MIXTO (NUEVO) ---
+            <div className="mb-4 bg-purple-50 p-3 rounded-xl border border-purple-100 animate-fade-in">
+              <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
+                {splitPayments.map((p, idx) => (
+                  <div key={idx} className="flex gap-2 items-center">
+                    <select
+                      value={p.id_metodo}
+                      onChange={(e) => updateSplit(idx, 'id_metodo', e.target.value)}
+                      className="flex-1 text-xs p-2 rounded border border-purple-200 outline-none bg-white"
+                    >
+                      <option value="">Método...</option>
+                      {paymentMethods.map(m => <option key={m.id} value={m.id}>{m.nombre}</option>)}
+                    </select>
+                    <div className="relative w-24">
+                      <span className="absolute left-2 top-1.5 text-gray-400 text-xs">$</span>
+                      <input
+                        type="number"
+                        value={p.monto}
+                        onChange={(e) => updateSplit(idx, 'monto', e.target.value)}
+                        className="w-full pl-5 p-1.5 text-xs font-bold rounded border border-purple-200 outline-none"
+                        placeholder="0"
+                      />
+                    </div>
+                    {splitPayments.length > 1 && (
+                      <button onClick={() => removeSplitLine(idx)} className="text-red-400 hover:text-red-600"><X size={14} /></button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-between items-center mt-2 pt-2 border-t border-purple-200">
+                <button onClick={addSplitLine} className="text-[10px] font-bold text-purple-600 flex items-center hover:underline">
+                  <Plus size={12} className="mr-1" /> Agregar otro
+                </button>
+                <span className={`text-xs font-bold ${restanteMixto === 0 ? 'text-green-600' : 'text-red-500'}`}>
+                  {restanteMixto === 0 ? 'OK' : `Faltan: $${restanteMixto.toLocaleString()}`}
+                </span>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-between items-end mb-4 border-b border-dashed pb-3"><div><span className="text-gray-500 font-medium text-xs uppercase">Total a Cobrar</span>{descuentoVisual > 0 && <div className="text-xs text-green-600 font-bold bg-green-50 px-1 rounded inline-block mt-1">Ahorro: ${descuentoVisual.toLocaleString()}</div>}</div><div onClick={() => setIsEditingPrice(true)} className="cursor-pointer group flex items-center relative" title="Editar precio final">{isEditingPrice ? (<input autoFocus type="number" className="text-3xl font-black text-right w-36 border-b-2 border-blue-500 outline-none bg-transparent" value={customTotal === null ? subtotalCalculado : customTotal} onChange={e => setCustomTotal(e.target.value)} onBlur={() => setIsEditingPrice(false)} onKeyDown={e => { if (e.key === 'Enter') setIsEditingPrice(false) }} />) : (<><span className={`text-3xl font-black tracking-tighter transition-colors ${descuentoVisual !== 0 ? 'text-blue-600' : 'text-slate-800'}`}>$ {totalFinal.toLocaleString()}</span><div className="ml-2 p-1 rounded-full bg-gray-100 text-gray-400 group-hover:bg-blue-100 group-hover:text-blue-600 transition-colors"><Edit3 size={16} /></div></>)}</div></div>
-          <div className="grid grid-cols-2 gap-3"><button onClick={() => setIsReservationModalOpen(true)} disabled={cart.length === 0} className="bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 py-3.5 rounded-xl font-bold flex items-center justify-center transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"><CalendarClock className="mr-2" size={18} /> Reservar</button><button onClick={handleCheckoutClick} disabled={cart.length === 0 || !selectedMethod} className={`text-white py-3.5 rounded-xl font-bold flex items-center justify-center shadow-lg transition-all active:scale-95 ${cart.length > 0 && selectedMethod ? 'bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 shadow-green-200' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}>COBRAR <ArrowRight className="ml-2" size={20} /></button></div>
+          <div className="grid grid-cols-2 gap-3"><button onClick={() => setIsReservationModalOpen(true)} disabled={cart.length === 0} className="bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100 py-3.5 rounded-xl font-bold flex items-center justify-center transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"><CalendarClock className="mr-2" size={18} /> Reservar</button>
+
+            <button
+              onClick={handleCheckoutClick}
+              disabled={cart.length === 0 || (!isSplitPayment && !selectedMethod)}
+              className={`text-white py-3.5 rounded-xl font-bold flex items-center justify-center shadow-lg transition-all active:scale-95 ${cart.length > 0 && (selectedMethod || isSplitPayment) ? 'bg-gradient-to-r from-green-600 to-green-500 hover:from-green-500 hover:to-green-400 shadow-green-200' : 'bg-gray-200 text-gray-400 cursor-not-allowed'}`}
+            >
+              COBRAR <ArrowRight className="ml-2" size={20} />
+            </button>
+          </div>
         </div>
       </div>
 

@@ -11,6 +11,7 @@ from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import desc, func, extract
 from datetime import date, datetime, timedelta
 from app.services.tiendanube_service import tn_service
+from app.sales.models import VentaPago
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
@@ -48,20 +49,19 @@ def add_movement():
 @jwt_required()
 def get_sales_history():
     try:
-        # 1. Verificar si es solo sesión actual
         solo_actual = request.args.get('current_session') == 'true'
         
-        query = Venta.query.options(db.joinedload(Venta.metodo)).order_by(desc(Venta.fecha_venta))
+        query = Venta.query.options(
+            db.joinedload(Venta.metodo),
+            db.joinedload(Venta.pagos).joinedload(VentaPago.metodo)
+        ).order_by(desc(Venta.fecha_venta))
 
         if solo_actual:
             sesion = SesionCaja.query.filter_by(estado='abierta').first()
             if sesion:
                 query = query.filter(Venta.fecha_venta >= sesion.fecha_apertura)
             else:
-                return jsonify({
-                    "history": [], 
-                    "today_summary": {"total": 0, "count": 0}
-                }), 200
+                return jsonify({"history": [], "today_summary": {"total": 0, "count": 0}}), 200
         else:
             query = query.limit(100)
 
@@ -69,63 +69,71 @@ def get_sales_history():
         
         lista_ventas = []
         for v in ventas:
+            # --- DETALLE DE ITEMS ---
             items_summary = []
             items_detail = []
-
             for d in v.detalles:
-                # --- LÓGICA DE PROTECCIÓN (Manual vs Inventario) ---
                 if d.variante:
-                    # Es un producto de inventario
-                    nombre_prod = d.variante.producto.nombre if d.variante.producto else "Producto Eliminado"
-                    talle_prod = d.variante.talla
+                    nombre = d.variante.producto.nombre if d.variante.producto else "Prod. Borrado"
+                    talle = d.variante.talla
                 else:
-                    # Es un ítem manual (id_variante es None)
-                    # Usamos 'producto_nombre' que guardamos al vender, o un texto por defecto
-                    # Usamos getattr por si tu modelo de BD aun no tiene la columna actualizada en memoria
-                    nombre_prod = getattr(d, 'producto_nombre', 'Ítem Manual') or 'Ítem Manual'
-                    talle_prod = "-"
-
-                # A. Texto para la tabla
-                txt = f"{nombre_prod} ({talle_prod}) x{d.cantidad}" if talle_prod != "-" else f"{nombre_prod} x{d.cantidad}"
-                items_summary.append(txt)
+                    nombre = getattr(d, 'producto_nombre', 'Ítem Manual') or 'Ítem Manual'
+                    talle = "-"
                 
-                # B. Objeto para el ticket
-                items_detail.append({
-                    "nombre": nombre_prod,
-                    "talle": talle_prod,
-                    "cantidad": d.cantidad,
-                    "precio": float(d.precio_unitario),
-                    "subtotal": float(d.subtotal)
-                })
+                txt = f"{nombre} ({talle}) x{d.cantidad}" if talle != "-" else f"{nombre} x{d.cantidad}"
+                items_summary.append(txt)
+                items_detail.append({"nombre": nombre, "talle": talle, "cantidad": d.cantidad, "precio": float(d.precio_unitario), "subtotal": float(d.subtotal)})
+
+            # --- LÓGICA VISUAL (TEXTO) ---
+            metodo_visual = "N/A"
+            if v.pagos and len(v.pagos) > 0:
+                partes = []
+                for p in v.pagos:
+                    n = p.metodo.nombre if p.metodo else "?"
+                    partes.append(f"{n} ${float(p.monto):g}")
+                metodo_visual = " + ".join(partes)
+            else:
+                metodo_visual = v.metodo.nombre if v.metodo else "N/A"
+
+            # --- LÓGICA DE DATOS (NÚMEROS PARA EL FRONTEND) ---
+            # Esto es lo nuevo: enviamos el array limpio para que el frontend pueda sumar bien
+            pagos_data = []
+            if v.pagos and len(v.pagos) > 0:
+                for p in v.pagos:
+                    pagos_data.append({
+                        "metodo": p.metodo.nombre if p.metodo else "Otros",
+                        "monto": float(p.monto)
+                    })
+            else:
+                # Si es venta vieja o simple, simulamos la estructura
+                nombre_m = v.metodo.nombre if v.metodo else "Otros"
+                pagos_data.append({"metodo": nombre_m, "monto": float(v.total)})
 
             lista_ventas.append({
                 "id": v.id_venta,
                 "fecha": v.fecha_venta.strftime('%d/%m/%Y %H:%M'),
                 "total": float(v.total),
-                "metodo": v.metodo.nombre if v.metodo else "N/A",
-                "items": ", ".join(items_summary), # <--- Ahora esto ya no fallará
+                "metodo": metodo_visual, # Texto para mostrar
+                "pagos_detalle": pagos_data, # Datos para calcular <--- CLAVE
+                "items": ", ".join(items_summary),
                 "items_detail": items_detail,
                 "estado": v.estado
             })
 
-        # Totales del día
         hoy = date.today()
         total_hoy = db.session.query(func.sum(Venta.total)).filter(func.date(Venta.fecha_venta) == hoy).scalar() or 0
         cantidad_ventas_hoy = db.session.query(func.count(Venta.id_venta)).filter(func.date(Venta.fecha_venta) == hoy).scalar() or 0
 
         return jsonify({
             "history": lista_ventas,
-            "today_summary": {
-                "total": float(total_hoy),
-                "count": cantidad_ventas_hoy
-            }
+            "today_summary": {"total": float(total_hoy), "count": cantidad_ventas_hoy}
         }), 200
 
     except Exception as e:
         print(f"Error historial: {e}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({"msg": "Error cargando historial", "error": str(e)}), 500
+        return jsonify({"msg": "Error cargando historial"}), 500
+
+        
 
 # --- NUEVO ENDPOINT: Listar Métodos ---
 @bp.route('/payment-methods', methods=['GET'])
@@ -166,41 +174,45 @@ def scan_product(code):
 @bp.route('/caja/status', methods=['GET'])
 @jwt_required()
 def get_caja_status():
-    # 1. Buscar sesión abierta
     sesion = SesionCaja.query.filter_by(estado='abierta').first()
+    if not sesion: return jsonify({"estado": "cerrada"}), 200
     
-    if not sesion:
-        return jsonify({"estado": "cerrada"}), 200
-    
-    # 2. Buscar ventas y retiros
-    ventas = Venta.query.filter(Venta.fecha_venta >= sesion.fecha_apertura).all()
+    # Optimizamos la consulta para traer los pagos junto con la venta (evita errores de carga)
+    ventas = Venta.query.options(db.joinedload(Venta.pagos).joinedload(VentaPago.metodo))\
+        .filter(Venta.fecha_venta >= sesion.fecha_apertura).all()
+        
     retiros = MovimientoCaja.query.filter_by(id_sesion=sesion.id_sesion, tipo='retiro').all()
     
-    # --- NUEVO: Serializar la lista de retiros para el frontend ---
-    lista_retiros = [{
-        "id": r.id_movimiento,
-        "hora": r.fecha.strftime('%H:%M'),
-        "descripcion": r.descripcion,
-        "monto": float(r.monto)
-    } for r in retiros]
-    # -------------------------------------------------------------
-
+    lista_retiros = [{"id": r.id_movimiento, "hora": r.fecha.strftime('%H:%M'), "descripcion": r.descripcion, "monto": float(r.monto)} for r in retiros]
     total_retiros = sum(m.monto for m in retiros)
 
-    # 4. Calcular Desglose (Igual que antes)
+    # --- LÓGICA DE SUMA MIXTA CORREGIDA ---
     total_ventas = 0
     desglose = {"Efectivo": 0, "Tarjeta": 0, "Transferencia": 0, "Otros": 0}
 
     for v in ventas:
         total_ventas += v.total
-        nombre_metodo = v.metodo.nombre if v.metodo else "Otros"
-        if "Efectivo" in nombre_metodo: desglose["Efectivo"] += v.total
-        elif "Tarjeta" in nombre_metodo: desglose["Tarjeta"] += v.total
-        elif "Transferencia" in nombre_metodo: desglose["Transferencia"] += v.total
-        else: desglose["Otros"] += v.total
+        
+        # Si tiene pagos en la tabla nueva (prioridad)
+        if v.pagos and len(v.pagos) > 0:
+            for p in v.pagos:
+                nombre_metodo = p.metodo.nombre if p.metodo else "Otros"
+                monto = float(p.monto)
+                
+                # Clasificación por nombre
+                if "Efectivo" in nombre_metodo: desglose["Efectivo"] += monto
+                elif "Tarjeta" in nombre_metodo: desglose["Tarjeta"] += monto
+                elif "Transferencia" in nombre_metodo: desglose["Transferencia"] += monto
+                else: desglose["Otros"] += monto
+        else:
+            # Fallback para ventas antiguas (sin tabla pagos)
+            nombre_metodo = v.metodo.nombre if v.metodo else "Otros"
+            if "Efectivo" in nombre_metodo: desglose["Efectivo"] += float(v.total)
+            elif "Tarjeta" in nombre_metodo: desglose["Tarjeta"] += float(v.total)
+            elif "Transferencia" in nombre_metodo: desglose["Transferencia"] += float(v.total)
+            else: desglose["Otros"] += float(v.total)
 
-    # 5. Calcular Totales Esperados
-    efectivo_en_caja = float(sesion.monto_inicial) + float(desglose["Efectivo"]) - float(total_retiros)
+    efectivo_en_caja = float(sesion.monto_inicial) + desglose["Efectivo"] - float(total_retiros)
 
     return jsonify({
         "estado": "abierta",
@@ -209,23 +221,15 @@ def get_caja_status():
         "monto_inicial": float(sesion.monto_inicial),
         "ventas_total": float(total_ventas),
         "total_retiros": float(total_retiros),
-        
-        # --- NUEVO CAMPO EN LA RESPUESTA ---
-        "movimientos": lista_retiros, 
-        # -----------------------------------
-
-        "desglose": {
-            "efectivo_ventas": float(desglose["Efectivo"]),
-            "tarjeta": float(desglose["Tarjeta"]),
-            "transferencia": float(desglose["Transferencia"]),
-            "otros": float(desglose["Otros"])
-        },
+        "movimientos": lista_retiros,
+        "desglose": desglose,
         "totales_esperados": {
             "efectivo_en_caja": efectivo_en_caja,
-            "digital": float(desglose["Tarjeta"]) + float(desglose["Transferencia"]) + float(desglose["Otros"])
+            "digital": desglose["Tarjeta"] + desglose["Transferencia"] + desglose["Otros"]
         }
     }), 200
 
+    
 # --- 2. ABRIR CAJA ---
 @bp.route('/caja/open', methods=['POST'])
 @jwt_required()
@@ -248,44 +252,37 @@ def open_caja():
 @jwt_required()
 def close_caja():
     sesion = SesionCaja.query.filter_by(estado='abierta').first()
-    if not sesion:
-        return jsonify({"msg": "No hay caja para cerrar"}), 400
+    if not sesion: return jsonify({"msg": "No hay caja para cerrar"}), 400
 
     data = request.get_json()
-    total_real_usuario = data.get('total_real') # El efectivo que contó el usuario
+    total_real_usuario = float(data.get('total_real', 0))
 
-    if total_real_usuario is None:
-        return jsonify({"msg": "Debes ingresar el monto contado"}), 400
-
-    # 1. Obtener todas las ventas de la sesión
     ventas = Venta.query.filter(Venta.fecha_venta >= sesion.fecha_apertura).all()
     
-    # 2. Sumar SOLO lo que fue en EFECTIVO
+    # Calcular Efectivo Real Sistema (Soportando mixtos)
     ventas_efectivo = 0
-    total_ventas_global = 0 # Para guardarlo como dato estadístico
+    total_ventas_global = 0
 
     for v in ventas:
         total_ventas_global += v.total
-        # Verificamos si el método contiene "Efectivo"
-        if v.metodo and "Efectivo" in v.metodo.nombre:
-            ventas_efectivo += v.total
+        if v.pagos:
+            for p in v.pagos:
+                if "Efectivo" in (p.metodo.nombre or ""):
+                    ventas_efectivo += p.monto
+        else:
+            if v.metodo and "Efectivo" in v.metodo.nombre:
+                ventas_efectivo += v.total
 
-    # 3. Sumar Retiros/Gastos (Restan a la caja)
     retiros = MovimientoCaja.query.filter_by(id_sesion=sesion.id_sesion, tipo='retiro').all()
     total_retiros = sum(m.monto for m in retiros)
 
-    # 4. Cálculo del Dinero Esperado en el Cajón
-    # Esperado = Base + Entradas Efectivo - Salidas Efectivo
     esperado_efectivo = float(sesion.monto_inicial) + float(ventas_efectivo) - float(total_retiros)
-    
-    # 5. Calcular Diferencia (Sobra o Falta)
-    diferencia = float(total_real_usuario) - esperado_efectivo
+    diferencia = total_real_usuario - esperado_efectivo
 
-    # Actualizar sesión
     sesion.fecha_cierre = datetime.now()
-    sesion.total_ventas_sistema = total_ventas_global # Guardamos todo lo vendido
+    sesion.total_ventas_sistema = total_ventas_global
     sesion.total_real = total_real_usuario
-    sesion.diferencia = diferencia # La diferencia es solo sobre el efectivo
+    sesion.diferencia = diferencia
     sesion.estado = 'cerrada'
 
     db.session.commit()
@@ -293,8 +290,8 @@ def close_caja():
     return jsonify({
         "msg": "Caja cerrada",
         "resumen": {
-            "esperado": esperado_efectivo, # Enviamos lo que debía haber en billetes
-            "real": float(total_real_usuario),
+            "esperado": esperado_efectivo,
+            "real": total_real_usuario,
             "diferencia": diferencia
         }
     }), 200
@@ -611,6 +608,10 @@ def get_reservas():
         })
     return jsonify(resultado), 200
 
+# ==========================================
+# REEMPLAZAR DESDE AQUÍ
+# ==========================================
+
 @bp.route('/reservas/crear', methods=['POST'])
 @jwt_required()
 def create_reserva():
@@ -620,118 +621,147 @@ def create_reserva():
     telefono = data.get('telefono', '')
     sena = float(data.get('sena', 0))
     total_calculado = float(data.get('total', 0))
-    id_metodo_pago = data.get('id_metodo_pago') # Recibimos el método
+    id_metodo_pago = data.get('id_metodo_pago') 
     
     if not items: return jsonify({"msg": "Sin items"}), 400
 
-    # 1. Crear Reserva (Lógica de stock y apartada)
-    saldo = total_calculado - sena
-    fecha_vencimiento = datetime.now() + timedelta(days=30)
+    try:
+        # 1. Crear Reserva (Lógica interna de apartado)
+        saldo = total_calculado - sena
+        fecha_vencimiento = datetime.now() + timedelta(days=15)
 
-    nueva_reserva = Reserva(
-        cliente_nombre=cliente,
-        telefono=telefono,
-        total=total_calculado,
-        monto_sena=sena,
-        saldo_restante=saldo,
-        fecha_vencimiento=fecha_vencimiento,
-        estado='pendiente'
-    )
-    db.session.add(nueva_reserva)
-    db.session.flush()
-
-    # 2. REGISTRAR LA SEÑA COMO UNA VENTA (Para que impacte en caja y reportes)
-    if sena > 0:
-        if not id_metodo_pago:
-             # Rollback si hay plata pero no método (seguridad)
-             db.session.rollback()
-             return jsonify({"msg": "Falta el medio de pago para la seña"}), 400
-
-        # Creamos una venta por el monto de la seña
-        venta_sena = Venta(
-            total=sena,
-            subtotal=sena,
-            descuento=0,
-            id_metodo_pago=id_metodo_pago,
-            fecha_venta=datetime.now()
+        nueva_reserva = Reserva(
+            cliente_nombre=cliente,
+            telefono=telefono,
+            total=total_calculado,
+            monto_sena=sena,
+            saldo_restante=saldo,
+            fecha_reserva=datetime.now(),
+            fecha_vencimiento=fecha_vencimiento,
+            estado='pendiente'
         )
-        db.session.add(venta_sena)
-        db.session.flush()
+        db.session.add(nueva_reserva)
+        db.session.flush() # Obtenemos ID de reserva
 
-        # Creamos un detalle de venta simbólico para que el sistema sepa qué es
-        # Usamos el primer artículo de la reserva como referencia visual, 
-        # pero con cantidad 1 y precio = seña.
-        # IMPORTANTE: No descontamos stock aquí (ya se descuenta en el paso 3)
-        primer_item = items[0]
-        detalle_v = DetalleVenta(
-            id_venta=venta_sena.id_venta,
-            id_variante=primer_item['id_variante'],
-            cantidad=1, 
-            precio_unitario=sena, # El precio es el valor de la seña
-            subtotal=sena
-        )
-        db.session.add(detalle_v)
+        # 2. REGISTRAR LA SEÑA COMO UNA VENTA REAL
+        # Esto es lo que hace que aparezca en tu página de Ventas
+        if sena > 0:
+            if not id_metodo_pago:
+                db.session.rollback()
+                return jsonify({"msg": "Falta el medio de pago para la seña"}), 400
 
-    # 3. Procesar Items y DESCONTAR STOCK FÍSICO
-    for item in items:
-        variante = ProductoVariante.query.get(item['id_variante'])
-        
-        if variante.inventario.stock_actual < item['cantidad']:
-            db.session.rollback()
-            return jsonify({"msg": f"Sin stock suficiente: {variante.producto.nombre}"}), 400
-
-        # Descuento real del inventario
-        variante.inventario.stock_actual -= item['cantidad']
-
-        # SYNC TIENDA NUBE
-        if variante.tiendanube_variant_id and variante.producto.tiendanube_id:
-            tn_service.update_variant_stock(
-                tn_product_id=variante.producto.tiendanube_id,
-                tn_variant_id=variante.tiendanube_variant_id,
-                new_stock=variante.inventario.stock_actual
+            venta_sena = Venta(
+                total=sena,
+                subtotal=sena,
+                descuento=0,
+                id_metodo_pago=id_metodo_pago,
+                fecha_venta=datetime.now(),
+                # Guardamos referencia en observaciones
+                observaciones=f"Seña Reserva #{nueva_reserva.id_reserva} - {cliente}"
             )
+            db.session.add(venta_sena)
+            db.session.flush()
 
-        # Detalle de la reserva (guardamos qué productos son realmente)
-        detalle_r = DetalleReserva(
-            id_reserva=nueva_reserva.id_reserva,
-            id_variante=variante.id_variante,
-            cantidad=item['cantidad'],
-            precio_historico=item['precio'],
-            subtotal=item['subtotal']
-        )
-        db.session.add(detalle_r)
+            # Creamos un detalle visual para el historial
+            detalle_v = DetalleVenta(
+                id_venta=venta_sena.id_venta,
+                id_variante=None, # No descontamos stock aquí (se descuenta abajo)
+                producto_nombre=f"SEÑA RESERVA #{nueva_reserva.id_reserva} ({items[0].get('nombre')}...)", 
+                cantidad=1, 
+                precio_unitario=sena,
+                subtotal=sena
+            )
+            db.session.add(detalle_v)
 
-    db.session.commit()
-    return jsonify({"msg": "Reserva creada exitosamente", "id": nueva_reserva.id_reserva}), 201
+        # 3. Procesar Items y DESCONTAR STOCK FÍSICO
+        for item in items:
+            variante = ProductoVariante.query.get(item['id_variante'])
+            
+            if variante.inventario.stock_actual < item['cantidad']:
+                db.session.rollback()
+                return jsonify({"msg": f"Sin stock suficiente: {variante.producto.nombre}"}), 400
+
+            # Descuento real del inventario
+            variante.inventario.stock_actual -= item['cantidad']
+
+            # SYNC TIENDA NUBE (Si corresponde)
+            if variante.tiendanube_variant_id and variante.producto.tiendanube_id:
+                try:
+                    tn_service.update_variant_stock(
+                        tn_product_id=variante.producto.tiendanube_id,
+                        tn_variant_id=variante.tiendanube_variant_id,
+                        new_stock=variante.inventario.stock_actual
+                    )
+                except Exception as e:
+                    print(f"Error Sync TN Reserva: {e}")
+
+            # Guardar el detalle real en la tabla de reservas
+            detalle_r = DetalleReserva(
+                id_reserva=nueva_reserva.id_reserva,
+                id_variante=variante.id_variante,
+                cantidad=item['cantidad'],
+                precio_historico=item['precio'],
+                subtotal=item['subtotal']
+            )
+            db.session.add(detalle_r)
+
+        db.session.commit()
+        return jsonify({"msg": "Reserva creada exitosamente", "id": nueva_reserva.id_reserva}), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"msg": str(e)}), 500
 
 
 @bp.route('/reservas/<int:id>/retirar', methods=['POST'])
 @jwt_required()
 def retirar_reserva(id):
+    # Recibimos el método de pago desde el frontend
+    data = request.get_json() or {}
+    id_metodo_pago = data.get('id_metodo_pago')
+
     reserva = Reserva.query.get_or_404(id)
     if reserva.estado != 'pendiente':
         return jsonify({"msg": "La reserva no está pendiente"}), 400
 
-    # Registrar el ingreso del SALDO RESTANTE en caja
-    if reserva.saldo_restante > 0:
-        sesion = SesionCaja.query.filter_by(estado='abierta').first()
-        if not sesion: return jsonify({"msg": "Debe abrir caja para cobrar el saldo"}), 400
+    try:
+        # REGISTRAR VENTA POR EL SALDO RESTANTE
+        # Aquí estaba el problema: antes creabas un MovimientoCaja, ahora creamos una VENTA.
+        if reserva.saldo_restante > 0:
+            if not id_metodo_pago:
+                return jsonify({"msg": "Seleccione un método de pago para el saldo"}), 400
+
+            nueva_venta = Venta(
+                total=reserva.saldo_restante,
+                subtotal=reserva.saldo_restante,
+                descuento=0,
+                id_metodo_pago=id_metodo_pago,
+                fecha_venta=datetime.now(),
+                observaciones=f"Saldo Restante Reserva #{reserva.id_reserva} - {reserva.cliente_nombre}"
+            )
+            db.session.add(nueva_venta)
+            db.session.flush()
+
+            # Detalle visual para el historial
+            detalle = DetalleVenta(
+                id_venta=nueva_venta.id_venta,
+                id_variante=None, # Ya se descontó stock al crear la reserva
+                producto_nombre=f"SALDO RETIRO RESERVA #{reserva.id_reserva}",
+                cantidad=1,
+                precio_unitario=reserva.saldo_restante,
+                subtotal=reserva.saldo_restante
+            )
+            db.session.add(detalle)
+
+        reserva.estado = 'retirada'
+        db.session.commit()
+        return jsonify({"msg": "Reserva retirada y venta registrada"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"msg": str(e)}), 500
+
         
-        mov = MovimientoCaja(
-            id_sesion=sesion.id_sesion,
-            tipo='ingreso',
-            monto=reserva.saldo_restante,
-            descripcion=f"Saldo retiro Reserva #{reserva.id_reserva}"
-        )
-        db.session.add(mov)
-
-        # Opcional: Aquí podrías crear una "Venta" formal si quieres que figure en reportes de ventas
-        # y no solo como movimiento de caja. Para simplificar, lo dejamos como movimiento de caja.
-
-    reserva.estado = 'retirada'
-    db.session.commit()
-    return jsonify({"msg": "Reserva retirada y saldo cobrado"}), 200
-
 @bp.route('/reservas/<int:id>/cancelar', methods=['POST'])
 @jwt_required()
 def cancelar_reserva(id):
@@ -1000,20 +1030,20 @@ def validar_nota(code):
         "msg": "Nota válida"
     }), 200
 
-# 3. MODIFICAR EL CHECKOUT (Para "quemar" la nota)
-# Busca tu función 'checkout' actual y modifícala así:
-
+# 3. CHECKOUT (Para "quemar" la nota)
 @bp.route('/checkout', methods=['POST'])
 @jwt_required()
 def checkout():
     try:
         data = request.get_json()
         print(f"📦 INICIO CHECKOUT. Items: {len(data.get('items', []))}") 
-        
         items = data.get('items', [])
-        metodo_pago_id = data.get('metodo_pago_id')
         cliente_id = data.get('cliente_id')
         codigo_nota = data.get('codigo_nota_credito')
+
+        # Nuevos campos para pago mixto
+        pagos_multiples = data.get('pagos', []) # Lista de {id_metodo: 1, monto: 500}
+        metodo_pago_id_simple = data.get('metodo_pago_id') # Fallback simple
         
         # Validaciones básicas
         if not items: return jsonify({"msg": "Carrito vacío"}), 400
@@ -1041,11 +1071,29 @@ def checkout():
             descuento=0, 
             fecha_venta=datetime.now(), # Usar datetime.now() del servidor
             id_cliente=cliente_id,
-            id_metodo_pago=metodo_pago_id,
+            id_metodo_pago=metodo_pago_id_simple,
             observaciones=observaciones_venta
         )
         db.session.add(nueva_venta)
         db.session.flush() # Obtenemos el ID de venta
+
+        # --- GUARDAR PAGOS ---
+        if pagos_multiples:
+            for p in pagos_multiples:
+                nuevo_pago = VentaPago(
+                    id_venta=nueva_venta.id_venta,
+                    id_metodo_pago=p['id_metodo'],
+                    monto=p['monto']
+                )
+                db.session.add(nuevo_pago)
+        elif metodo_pago_id_simple:
+            # Si viene formato simple, creamos 1 registro de pago igual para mantener consistencia
+            pago_unico = VentaPago(
+                id_venta=nueva_venta.id_venta,
+                id_metodo_pago=metodo_pago_id_simple,
+                monto=data.get('total_final')
+            )
+            db.session.add(pago_unico)
 
         if nota_usada:
             nota_usada.id_venta_uso = nueva_venta.id_venta
@@ -1141,88 +1189,79 @@ def checkout():
 def export_caja_pdf(id):
     sesion = SesionCaja.query.get_or_404(id)
     
-    # Buscar ventas de esa sesión
-    ventas = Venta.query.filter(
-        Venta.fecha_venta >= sesion.fecha_apertura, 
-        Venta.fecha_venta <= sesion.fecha_cierre
-    ).order_by(Venta.fecha_venta.asc()).all()
+    # Cargar ventas con sus pagos
+    ventas = Venta.query.options(db.joinedload(Venta.pagos).joinedload(VentaPago.metodo))\
+        .filter(Venta.fecha_venta >= sesion.fecha_apertura, Venta.fecha_venta <= sesion.fecha_cierre)\
+        .order_by(Venta.fecha_venta.asc()).all()
 
-    # Configuración del PDF
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     elements = []
     styles = getSampleStyleSheet()
 
-    # 1. TÍTULO
+    # Título y Datos Generales (Igual que antes)
     title_style = ParagraphStyle('Title', parent=styles['Heading1'], alignment=1, spaceAfter=20)
     elements.append(Paragraph(f"Reporte de Cierre de Caja #{sesion.id_sesion}", title_style))
 
-    # 2. DATOS GENERALES (Apertura, Cierre, Diferencia)
     datos_grales = [
         ["Apertura:", sesion.fecha_apertura.strftime('%d/%m/%Y %H:%M')],
         ["Cierre:", sesion.fecha_cierre.strftime('%d/%m/%Y %H:%M')],
         ["Caja Inicial:", f"$ {sesion.monto_inicial:,.2f}"],
         ["Total Sistema:", f"$ {sesion.total_ventas_sistema:,.2f}"],
-        ["Total Real (Efvo):", f"$ {sesion.total_real:,.2f}"],
+        ["Total Real:", f"$ {sesion.total_real:,.2f}"],
         ["Diferencia:", f"$ {sesion.diferencia:,.2f}"]
     ]
     t_info = Table(datos_grales, colWidths=[120, 200])
     t_info.setStyle(TableStyle([
         ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
-        ('FONTSIZE', (0,0), (-1,-1), 10),
         ('TEXTCOLOR', (0,5), (1,5), colors.red if sesion.diferencia < 0 else colors.green),
         ('FONTNAME', (0,5), (1,5), 'Helvetica-Bold'),
     ]))
     elements.append(t_info)
     elements.append(Spacer(1, 20))
 
-    # 3. TABLA DE VENTAS
-    # Encabezados
-    data_ventas = [['Hora', 'Ticket', 'Método', 'Items (Resumen)', 'Total']]
-    
+    # Tabla de Ventas
+    data_ventas = [['Hora', 'Ticket', 'Método / Desglose', 'Items', 'Total']]
     total_acumulado = 0
+    
     for v in ventas:
         hora = v.fecha_venta.strftime('%H:%M')
-        metodo = v.metodo.nombre if v.metodo else "-"
-        # Resumen breve de items (ej: "Camiseta Boca x2...")
-        resumen_items = f"{len(v.detalles)} items"
-        if len(v.detalles) > 0:
-            primer_item = v.detalles[0].producto_nombre or "Prod"
-            resumen_items = f"{primer_item[:20]}..." if len(v.detalles) == 1 else f"{primer_item[:15]}... (+{len(v.detalles)-1})"
+        
+        # --- LÓGICA VISUAL MÉTODO EN PDF ---
+        if v.pagos and len(v.pagos) > 1:
+            # Formato: "Mixto: Efec $500 / Transf $500"
+            detalles = [f"{p.metodo.nombre[:4]} ${p.monto:,.0f}" for p in v.pagos if p.metodo]
+            metodo_str = "MIXTO: " + " / ".join(detalles)
+        elif v.pagos and len(v.pagos) == 1:
+            metodo_str = v.pagos[0].metodo.nombre
+        else:
+            metodo_str = v.metodo.nombre if v.metodo else "-"
+        
+        # Resumen items
+        cant_items = len(v.detalles)
+        resumen_items = f"{cant_items} items"
+        if cant_items > 0:
+            first = v.detalles[0].producto_nombre or "Prod"
+            resumen_items = f"{first[:15]}..." if cant_items == 1 else f"{first[:10]}... (+{cant_items-1})"
 
-        data_ventas.append([
-            hora, 
-            f"#{v.id_venta}", 
-            metodo, 
-            resumen_items, 
-            f"$ {v.total:,.0f}"
-        ])
+        data_ventas.append([hora, f"#{v.id_venta}", metodo_str, resumen_items, f"$ {v.total:,.0f}"])
         total_acumulado += v.total
 
-    # Fila final de total
-    data_ventas.append(['', '', '', 'TOTAL VENTAS:', f"$ {total_acumulado:,.0f}"])
+    data_ventas.append(['', '', '', 'TOTAL:', f"$ {total_acumulado:,.0f}"])
 
-    # Estilos de la tabla grande
-    table = Table(data_ventas, colWidths=[50, 60, 100, 200, 80])
+    # Estilos tabla (Ajustamos anchos para que entre el texto mixto)
+    table = Table(data_ventas, colWidths=[40, 50, 200, 120, 80])
     table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1e293b')), # Slate 800 header
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1e293b')),
         ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('ALIGN', (-1,0), (-1,-1), 'RIGHT'), # Alinear montos a la derecha
-        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
-        ('FONTSIZE', (0,0), (-1,-1), 9),
-        ('BOTTOMPADDING', (0,0), (-1,0), 8),
-        ('BACKGROUND', (0,-1), (-1,-1), colors.HexColor('#f1f5f9')), # Footer gris claro
-        ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,-1), 8), # Letra un poco más chica para que entre el mixto
+        ('ALIGN', (-1,0), (-1,-1), 'RIGHT'),
         ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
     ]))
-    
     elements.append(table)
 
-    # Generar PDF
     doc.build(elements)
     buffer.seek(0)
-    
     return send_file(buffer, mimetype='application/pdf', as_attachment=False, download_name=f'cierre_{id}.pdf')
 
 
