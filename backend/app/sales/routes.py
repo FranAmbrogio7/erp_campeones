@@ -1452,3 +1452,154 @@ def download_budget_pdf(id):
     except Exception as e:
         print(f"Error PDF: {e}")
         return jsonify({"msg": "Error generando PDF"}), 500
+
+
+@bp.route('/reservas/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_reserva(id):
+    reserva = Reserva.query.get_or_404(id)
+    
+    # Protección: No dejar borrar pendientes para no perder el rastro del stock retenido
+    if reserva.estado == 'pendiente':
+        return jsonify({"msg": "No se puede eliminar una reserva pendiente. Primero cancélala para devolver el stock."}), 400
+
+    try:
+        # 1. Borrar detalles primero (si no tienes cascada en el modelo)
+        DetalleReserva.query.filter_by(id_reserva=id).delete()
+        
+        # 2. Borrar la reserva
+        db.session.delete(reserva)
+        db.session.commit()
+        return jsonify({"msg": "Reserva eliminada del historial"}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"msg": "Error al eliminar", "error": str(e)}), 500
+
+
+
+# --- RUTAS DE PRESUPUESTOS ---
+
+@bp.route('/budgets/create', methods=['POST'])
+@jwt_required()
+def create_budget():
+    try:
+        data = request.get_json()
+        
+        # 1. Cálculos seguros
+        try:
+            total_final = float(data.get('total', 0))
+            descuento = float(data.get('descuento', 0))
+        except:
+            total_final = 0.0
+            descuento = 0.0
+        
+        subtotal_cabecera = total_final
+        if descuento > 0 and descuento < 100:
+            subtotal_cabecera = total_final / (1 - (descuento / 100))
+        
+        # 2. Guardar Cabecera
+        nuevo_presupuesto = Presupuesto(
+            cliente=data.get('cliente', 'Consumidor Final'),
+            fecha_emision=datetime.now(),
+            descuento_porcentaje=descuento,
+            subtotal=subtotal_cabecera,
+            total_final=total_final,
+            observaciones=""
+        )
+        
+        db.session.add(nuevo_presupuesto)
+        db.session.flush()
+        
+        # 3. Guardar Ítems y Generar Respuesta Robusta
+        items_response = []
+        
+        for item in data.get('items', []):
+            try:
+                cantidad = int(item.get('cantidad', 1))
+                precio = float(item.get('precio', 0))
+            except:
+                cantidad = 1
+                precio = 0.0
+                
+            talle = item.get('talle', '-')
+            nombre = item.get('nombre', 'Ítem sin nombre')
+            
+            # Guardar en DB
+            var_id = item.get('id_variante')
+            if isinstance(var_id, str) and not var_id.isdigit(): var_id = None
+            
+            detalle = DetallePresupuesto(
+                id_presupuesto=nuevo_presupuesto.id_presupuesto,
+                id_variante=var_id,
+                producto_nombre=nombre,
+                talle=talle,
+                cantidad=cantidad,
+                precio_unitario=precio,
+                subtotal=precio * cantidad
+            )
+            db.session.add(detalle)
+            
+            # AGREGAMOS ALIAS PARA EVITAR ERRORES EN FRONTEND
+            # Enviamos el dato con múltiples nombres por si el componente de impresión busca uno específico
+            items_response.append({
+                "nombre": nombre,
+                "descripcion": nombre,   # Alias
+                "producto": nombre,      # Alias
+                "talle": talle,
+                "cantidad": cantidad,
+                "precio": precio,
+                "precio_unitario": precio, # Alias
+                "subtotal": precio * cantidad
+            })
+            
+        db.session.commit()
+        
+        return jsonify({
+            "msg": "Presupuesto guardado",
+            "budget": {
+                "id": nuevo_presupuesto.id_presupuesto,
+                "fecha": nuevo_presupuesto.fecha_emision.strftime('%d/%m/%Y'),
+                "cliente": nuevo_presupuesto.cliente,
+                "items": items_response,
+                "total": total_final,
+                "descuento": descuento,
+                "subtotal": subtotal_cabecera
+            }
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error creando presupuesto: {e}")
+        return jsonify({"msg": "Error al guardar presupuesto"}), 500
+
+@bp.route('/budgets/history', methods=['GET'])
+@jwt_required()
+def get_budgets_history():
+    try:
+        presupuestos = Presupuesto.query.order_by(desc(Presupuesto.fecha_emision)).limit(50).all()
+        resultado = []
+        for p in presupuestos:
+            items = []
+            for d in p.detalles:
+                items.append({
+                    "id_variante": d.id_variante,
+                    "nombre": d.producto_nombre,
+                    "talle": d.talle,
+                    "cantidad": d.cantidad,
+                    "precio": float(d.precio_unitario or 0), # Protección contra null
+                    "precio_unitario": float(d.precio_unitario or 0)
+                })
+            
+            resultado.append({
+                "id": p.id_presupuesto,
+                "fecha": p.fecha_emision.strftime('%d/%m/%Y %H:%M'),
+                "cliente": p.cliente,
+                "total": float(p.total_final or 0), # Protección contra null
+                "descuento": float(p.descuento_porcentaje or 0),
+                "items": items
+            })
+        return jsonify(resultado), 200
+    except Exception as e:
+        print(f"Error historial: {e}")
+        return jsonify({"msg": "Error cargando historial"}), 500

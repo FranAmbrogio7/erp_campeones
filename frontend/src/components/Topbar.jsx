@@ -8,6 +8,8 @@ import {
   Shirt, ArrowRightLeft, ClipboardCheck, Truck, QrCode, Tags,
   CalendarClock, FileSpreadsheet, PieChart
 } from 'lucide-react';
+import ThemeToggle from './ThemeToggle'; // <--- Asegúrate de que esté importado
+
 
 const Topbar = () => {
   const { user, logout } = useAuth();
@@ -56,10 +58,11 @@ const Topbar = () => {
       ]
     },
     { type: 'link', key: 'notas', name: 'Notas', icon: FileText, path: '/notas' }
+
   ];
 
   return (
-    <header className="bg-slate-900 text-white shadow-md fixed top-0 left-0 right-0 z-[1000] h-16 transition-all">
+    <header className="bg-slate-900 text-white shadow-md fixed top-0 left-0 right-0 z-[1000] h-16 transition-all border-b border-slate-800">
       <div className="h-full max-w-[1920px] mx-auto px-4 flex items-center justify-between">
 
         {/* --- 1. LOGO --- */}
@@ -75,11 +78,10 @@ const Topbar = () => {
           </Link>
         </div>
 
-        {/* --- 2. NAVEGACIÓN DESKTOP (SIN FLICKER) --- */}
+        {/* --- 2. NAVEGACIÓN DESKTOP --- */}
         <nav className="hidden md:flex items-center gap-1 h-full mx-4">
           {menuStructure.map((item, idx) => {
 
-            // LINK SIMPLE
             if (item.type === 'link') {
               const isActive = pathname === item.path;
               return (
@@ -95,14 +97,11 @@ const Topbar = () => {
               );
             }
 
-            // DROPDOWN (Folder) - SOLUCIÓN "GROUP"
             if (item.type === 'folder') {
               const isActiveParent = item.items.some(sub => sub.path === pathname);
 
               return (
                 <div key={idx} className="group relative h-full flex items-center">
-
-                  {/* Botón Trigger (ocupa toda la altura) */}
                   <button
                     className={`h-full flex items-center px-4 text-sm font-bold transition-all border-b-2 outline-none ${isActiveParent
                       ? 'border-blue-500 text-white bg-slate-800/50'
@@ -114,23 +113,14 @@ const Topbar = () => {
                     <ChevronDown size={14} className="ml-1 transition-transform group-hover:rotate-180 duration-200" />
                   </button>
 
-                  {/* Dropdown Menu (Mecánica GROUP-HOVER) */}
-                  {/* invisible + opacity-0: Oculto por defecto
-                      group-hover:visible + opacity-100: Se muestra al pasar el mouse sobre el PADRE
-                      top-full: Pegado exactamente al borde inferior (sin huecos)
-                  */}
                   <div className="absolute top-full left-0 w-60 pt-2 invisible opacity-0 translate-y-2 group-hover:visible group-hover:opacity-100 group-hover:translate-y-0 transition-all duration-200 ease-out transform origin-top-left">
-
                     <div className="bg-white rounded-xl shadow-2xl border border-gray-200 overflow-hidden relative">
-                      {/* Triangulito decorativo (opcional) */}
                       <div className="absolute top-0 left-6 w-3 h-3 bg-white border-l border-t border-gray-200 transform -translate-y-1/2 rotate-45"></div>
-
                       <div className="bg-slate-50 px-4 py-3 border-b border-gray-100">
                         <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">
                           Módulo {item.name}
                         </span>
                       </div>
-
                       <div className="p-2 grid gap-1">
                         {item.items.map((sub, subIdx) => (
                           <Link
@@ -148,7 +138,6 @@ const Topbar = () => {
                       </div>
                     </div>
                   </div>
-
                 </div>
               );
             }
@@ -157,6 +146,12 @@ const Topbar = () => {
 
         {/* --- 3. USUARIO Y MENU MÓVIL --- */}
         <div className="flex items-center gap-3">
+
+          {/* >>>> AQUÍ AGREGAMOS EL SWITCH DESKTOP <<<< */}
+          <div className="hidden md:block mr-2">
+            <ThemeToggle />
+          </div>
+
           <div className="hidden md:flex items-center gap-3 pl-4 border-l border-slate-700">
             <div className="text-right">
               <p className="text-xs font-bold text-white leading-tight">{user?.nombre || 'Usuario'}</p>
@@ -172,9 +167,16 @@ const Topbar = () => {
         </div>
       </div>
 
-      {/* --- 4. MENÚ MÓVIL (Sin cambios) --- */}
+      {/* --- 4. MENÚ MÓVIL --- */}
       {isMobileOpen && (
         <div className="md:hidden fixed top-16 left-0 right-0 bottom-0 bg-slate-950/95 backdrop-blur-sm z-40 overflow-y-auto p-4 border-t border-slate-800 animate-fade-in">
+
+          {/* >>>> AQUÍ AGREGAMOS EL SWITCH MÓVIL <<<< */}
+          <div className="flex justify-between items-center mb-6 bg-slate-900 p-4 rounded-xl border border-slate-800">
+            <span className="text-sm font-bold text-slate-400">Apariencia</span>
+            <ThemeToggle />
+          </div>
+
           <div className="space-y-4 pb-20">
             {menuStructure.map((item, idx) => {
               if (item.type === 'link') {
@@ -212,4 +214,4 @@ const Topbar = () => {
   );
 };
 
-export default Topbar;  
+export default Topbar;
