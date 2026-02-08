@@ -10,8 +10,8 @@ const MainLayout = () => {
   useEffect(() => {
     const handleShortcuts = (e) => {
       // Evitamos conflictos si el usuario está escribiendo en un input
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
-
+      /*       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+       */
       // F1 -> CAJA
       if (e.key === 'F1') { e.preventDefault(); navigate('/caja'); }
       // F2 -> INVENTARIO
@@ -19,7 +19,7 @@ const MainLayout = () => {
       // F3 -> CAMBIOS
       if (e.key === 'F3') { e.preventDefault(); navigate('/cambios'); }
       // F4 -> NUEVO PRODUCTO
-      if (e.key === 'F4') { e.preventDefault(); navigate('/productos'); }
+      if (e.key === 'F4') { e.preventDefault(); navigate('/caja-control'); }
     };
     window.addEventListener('keydown', handleShortcuts);
     return () => window.removeEventListener('keydown', handleShortcuts);
