@@ -1,83 +1,130 @@
+# backend/app/returns/routes.py
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required
 from app.extensions import db
-from app.products.models import Inventario
-from app.sales.models import Venta, DetalleVenta, NotaCredito
-from datetime import datetime
+# IMPORTANTE: Importamos ProductoVariante para acceder a los IDs de Tienda Nube
+from app.products.models import Inventario, ProductoVariante
+from app.sales.models import Venta, DetalleVenta, NotaCredito, VentaPago
+from datetime import datetime, timedelta
+# IMPORTANTE: Servicio de Tienda Nube
+from app.services.tiendanube_service import tn_service
 
 bp = Blueprint('returns', __name__, url_prefix='/api/returns')
+
+# --- FUNCIÓN AUXILIAR HORA ARGENTINA ---
+def ahora_argentina():
+    return datetime.utcnow() - timedelta(hours=3)
 
 @bp.route('/process', methods=['POST'])
 @jwt_required()
 def process_return():
     data = request.get_json()
-    items_in = data.get('items_in', [])
-    items_out = data.get('items_out', [])
+    items_in = data.get('items_in', [])   # Entran (Cliente devuelve) -> Stock +1
+    items_out = data.get('items_out', []) # Salen (Cliente lleva)   -> Stock -1
     
-    # Datos de pago
     metodo_pago_id = data.get('metodo_pago_id')
-    # diferencia_pago = data.get('diferencia_pago', 0) # No lo usamos directo, usamos 'balance'
+    # diferencia_pago no lo usamos directo, usamos 'balance' calculado
 
     try:
-        # 1. ACTUALIZAR STOCK (Devolución: Sumar)
+        # 1. PROCESAR ENTRADAS (Devolución) -> Sumar Stock
         total_in = 0
         for item in items_in:
             var_id = item.get('id_variante')
-            inventario = Inventario.query.filter_by(id_variante=var_id).first()
-            if inventario:
-                inventario.stock_actual += 1
+            
+            # Buscamos la variante para tener los IDs de TN
+            variante = ProductoVariante.query.get(var_id)
+            
+            if variante and variante.inventario:
+                # 1.1 Local
+                variante.inventario.stock_actual += 1
+                
+                # 1.2 Tienda Nube
+                if variante.producto.tiendanube_id and variante.tiendanube_variant_id:
+                    try:
+                        tn_service.update_variant_stock(
+                            tn_product_id=variante.producto.tiendanube_id,
+                            tn_variant_id=variante.tiendanube_variant_id,
+                            new_stock=variante.inventario.stock_actual
+                        )
+                    except Exception as e:
+                        print(f"Error Sync TN (Returns In): {e}")
+
             total_in += float(item.get('precio', 0))
 
-        # 2. ACTUALIZAR STOCK (Cambio: Restar)
+        # 2. PROCESAR SALIDAS (Cambio) -> Restar Stock
         total_out = 0
         for item in items_out:
             var_id = item.get('id_variante')
-            inventario = Inventario.query.filter_by(id_variante=var_id).first()
-            if inventario:
-                inventario.stock_actual -= 1
+            variante = ProductoVariante.query.get(var_id)
+            
+            if variante and variante.inventario:
+                # 1.1 Local
+                variante.inventario.stock_actual -= 1
+                
+                # 1.2 Tienda Nube
+                if variante.producto.tiendanube_id and variante.tiendanube_variant_id:
+                    try:
+                        tn_service.update_variant_stock(
+                            tn_product_id=variante.producto.tiendanube_id,
+                            tn_variant_id=variante.tiendanube_variant_id,
+                            new_stock=variante.inventario.stock_actual
+                        )
+                    except Exception as e:
+                        print(f"Error Sync TN (Returns Out): {e}")
+
             total_out += float(item.get('precio', 0))
 
+        # 3. BALANCE FINANCIERO
         balance = total_out - total_in
         nota_credito = None
 
-        # 3. GENERAR NOTA DE CRÉDITO (Si sobra plata al cliente)
+        # CASO A: Saldo a favor del cliente -> Nota de Crédito
         if balance < 0:
             monto_nota = abs(balance)
+            # Código único basado en timestamp para evitar duplicados
             codigo_unico = f"NC-{int(datetime.utcnow().timestamp())}"
+            
             nota_credito = NotaCredito(
                 codigo=codigo_unico,
                 monto=monto_nota,
-                fecha_emision=ahora_argentina(),
-                estado='activa'
+                fecha_emision=ahora_argentina(), # <--- HORA
+                estado='activa',
+                observaciones="Generada por cambio/devolución"
             )
             db.session.add(nota_credito)
-            db.session.commit()
 
-        # 4. REGISTRAR VENTA (Si el cliente paga diferencia)
+        # CASO B: Cliente debe pagar diferencia -> Venta
         if balance > 0 and metodo_pago_id:
             nueva_venta = Venta(
-                fecha_venta=datetime.utcnow(),
-                subtotal=balance, # En un cambio, el subtotal es la diferencia a pagar
+                fecha_venta=ahora_argentina(), # <--- HORA
+                subtotal=balance,
                 descuento=0,
                 total=balance,
                 id_metodo_pago=metodo_pago_id,
                 observaciones="Generada por CAMBIO/DEVOLUCIÓN"
-                # ELIMINADO: usuario_id (Tu base de datos no tiene este campo en Venta)
             )
             db.session.add(nueva_venta)
-            db.session.flush() # Para obtener el ID de la venta antes de guardar detalles
+            db.session.flush()
 
-            # Registramos los items que salieron como detalle de esta "mini venta"
+            # Detalle genérico para la venta
             for item in items_out:
                 detalle = DetalleVenta(
                     id_venta=nueva_venta.id_venta,
                     id_variante=item.get('id_variante'),
-                    producto_nombre=item.get('nombre'),
+                    producto_nombre=f"CAMBIO: {item.get('nombre')}",
                     cantidad=1,
                     precio_unitario=item.get('precio'),
                     subtotal=item.get('precio')
                 )
                 db.session.add(detalle)
+            
+            # Registrar Pago
+            pago = VentaPago(
+                id_venta=nueva_venta.id_venta,
+                id_metodo_pago=metodo_pago_id,
+                monto=balance
+            )
+            db.session.add(pago)
 
         db.session.commit()
 
@@ -91,5 +138,5 @@ def process_return():
 
     except Exception as e:
         db.session.rollback()
-        print(f"Error en returns: {e}") # Para ver el error en la consola del servidor
+        print(f"Error en returns: {e}")
         return jsonify({"msg": f"Error en transacción: {str(e)}"}), 500
