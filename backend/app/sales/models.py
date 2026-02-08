@@ -124,8 +124,8 @@ class DetalleReserva(db.Model):
 class Presupuesto(db.Model):
     __tablename__ = 'presupuestos'
     id_presupuesto = db.Column(db.Integer, primary_key=True)
-    cliente_nombre = db.Column(db.String(100))
-    fecha = db.Column(db.DateTime, default=datetime.now)
+    cliente = db.Column(db.String(100))
+    fecha_emision = db.Column(db.DateTime, default=datetime.now)
     subtotal = db.Column(db.Numeric(10, 2))
     descuento_porcentaje = db.Column(db.Integer, default=0)
     total_final = db.Column(db.Numeric(10, 2))
@@ -141,6 +141,8 @@ class DetallePresupuesto(db.Model):
     cantidad = db.Column(db.Integer)
     precio_unitario = db.Column(db.Numeric(10, 2))
     subtotal = db.Column(db.Numeric(10, 2))
+    producto_nombre = db.Column(db.String(255))
+    talle = db.Column(db.String(50))
     
     variante = db.relationship('ProductoVariante')
 

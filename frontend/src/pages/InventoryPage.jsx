@@ -7,7 +7,7 @@ import {
     Plus, Save, Image as ImageIcon, Printer, RefreshCw,
     AlertTriangle, CheckCircle2, ArrowUpRight,
     Archive, ArchiveRestore, Eye, EyeOff, Tags, TrendingUp, CheckSquare, Square, Trash2,
-    Copy, ListFilter, ImageOff // <--- ICONOS NUEVOS AGREGADOS
+    Copy, ListFilter, ImageOff
 } from 'lucide-react';
 import ModalBarcode from '../components/ModalBarcode';
 import EditProductModal from '../components/EditProductModal';
@@ -43,7 +43,7 @@ const InventoryPage = () => {
     const [viewMode, setViewMode] = useState('active'); // 'active' | 'archived'
     const [hideOutOfStock, setHideOutOfStock] = useState(false);
     const [selectedItems, setSelectedItems] = useState(new Set());
-    const [showAdvancedFilters, setShowAdvancedFilters] = useState(false); // <--- NUEVO ESTADO
+    const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
     // --- ESTADOS DE FILTROS ---
     const [page, setPage] = useState(1);
@@ -120,7 +120,6 @@ const InventoryPage = () => {
                 specific_id: selectedSpec || undefined,
                 active: viewMode === 'active' ? 'true' : 'false',
                 min_stock: hideOutOfStock ? 1 : undefined,
-                // --- NUEVOS PARÁMETROS ENVIADOS AL BACKEND ---
                 exact_stock: filterExactStock !== '' ? filterExactStock : undefined,
                 size_filter: filterSize || undefined,
                 no_image: filterNoImage ? 'true' : undefined
@@ -143,7 +142,7 @@ const InventoryPage = () => {
             fetchProducts(1);
         }, 400);
         return () => clearTimeout(delayFn);
-    }, [searchTerm, selectedCat, selectedSpec, viewMode, hideOutOfStock, filterExactStock, filterSize, filterNoImage]); // <--- Agregados al array de dependencias
+    }, [searchTerm, selectedCat, selectedSpec, viewMode, hideOutOfStock, filterExactStock, filterSize, filterNoImage]);
 
     // --- MANEJO DE SELECCIÓN ---
     const toggleSelect = (id) => {
@@ -215,19 +214,17 @@ const InventoryPage = () => {
         } catch (error) { playSound('error'); toast.error("Error al publicar", { id: toastId }); } finally { setProcessingId(null); }
     };
 
-    // --- NUEVO: FUNCIÓN DUPLICAR ---
+    // --- FUNCIÓN DUPLICAR ---
     const handleDuplicate = (product) => {
-        // 1. Preparamos el formulario con los datos copiados
         setNewProduct({
             nombre: product.nombre + ' (Copia)',
             precio: product.precio,
-            stock: 0, // Reiniciamos stock por seguridad
+            stock: 0,
             sku: '',
             categoria_id: product.categoria_id,
             categoria_especifica_id: product.categoria_especifica_id
         });
 
-        // 2. Intentamos adivinar la curva de talles del producto original
         const currentSizes = product.variantes.map(v => v.talle).sort().join(',');
         const foundGrid = Object.keys(SIZE_GRIDS).find(key =>
             SIZE_GRIDS[key].slice().sort().join(',') === currentSizes
@@ -239,9 +236,7 @@ const InventoryPage = () => {
             setSelectedGridType('ADULTO');
         }
 
-        // 3. Abrimos formulario
         setShowForm(true);
-        // Scroll y foco (opcional, mejora UX)
         setTimeout(() => {
             const formElement = document.getElementById('formCreate');
             if (formElement) formElement.scrollIntoView({ behavior: 'smooth' });
@@ -320,59 +315,60 @@ const InventoryPage = () => {
         } catch (e) { toast.error("Error", { id: t }); }
     };
 
+    // Adaptado para Dark Mode
     const getStockColorClass = (stock) => {
-        if (stock === 0) return "bg-red-100 text-red-700 border-red-200 ring-1 ring-red-50";
-        if (stock < 3) return "bg-amber-100 text-amber-800 border-amber-200 ring-1 ring-amber-50";
-        return "bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100";
+        if (stock === 0) return "bg-red-100 text-red-700 border-red-200 ring-1 ring-red-50 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800 dark:ring-red-900/20";
+        if (stock < 3) return "bg-amber-100 text-amber-800 border-amber-200 ring-1 ring-amber-50 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800 dark:ring-amber-900/20";
+        return "bg-emerald-50 text-emerald-700 border-emerald-100 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:text-emerald-300 dark:border-emerald-800 dark:hover:bg-emerald-900/50";
     };
 
     return (
-        <div className="h-[calc(100vh-4rem)] flex flex-col p-4 max-w-[1600px] mx-auto gap-4">
+        <div className="h-[calc(100vh-4rem)] flex flex-col p-4 max-w-[1600px] mx-auto gap-4 bg-gray-100 dark:bg-slate-950 transition-colors duration-300">
             <Toaster position="top-center" />
 
-            <div className="flex flex-col gap-4 shrink-0 bg-white p-4 rounded-2xl shadow-sm border border-gray-200">
+            <div className="flex flex-col gap-4 shrink-0 bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 transition-colors">
                 <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                     <div className="flex items-center gap-4">
-                        <div className="p-3 bg-blue-50 rounded-xl text-blue-600"><Package size={24} /></div>
+                        <div className="p-3 bg-blue-50 dark:bg-blue-900/30 rounded-xl text-blue-600 dark:text-blue-400"><Package size={24} /></div>
                         <div>
-                            <h1 className="text-xl font-black text-gray-800">{viewMode === 'active' ? 'Control de Stock' : 'Archivo Discontinuo'}</h1>
-                            {viewMode === 'active' && <div className="flex items-center gap-2 text-xs font-medium text-gray-500"><span className="flex items-center"><div className="w-2 h-2 rounded-full bg-emerald-500 mr-1"></div>Normal</span><span className="flex items-center"><div className="w-2 h-2 rounded-full bg-amber-500 mr-1"></div>Bajo</span><span className="flex items-center"><div className="w-2 h-2 rounded-full bg-red-500 mr-1"></div>Agotado</span></div>}
+                            <h1 className="text-xl font-black text-gray-800 dark:text-white">{viewMode === 'active' ? 'Control de Stock' : 'Archivo Discontinuo'}</h1>
+                            {viewMode === 'active' && <div className="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-slate-400"><span className="flex items-center"><div className="w-2 h-2 rounded-full bg-emerald-500 mr-1"></div>Normal</span><span className="flex items-center"><div className="w-2 h-2 rounded-full bg-amber-500 mr-1"></div>Bajo</span><span className="flex items-center"><div className="w-2 h-2 rounded-full bg-red-500 mr-1"></div>Agotado</span></div>}
                         </div>
                     </div>
-                    <div className="flex bg-gray-100 p-1 rounded-xl shadow-inner">
-                        <button onClick={() => setViewMode('active')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === 'active' ? 'bg-white text-blue-600 shadow-sm' : 'text-gray-500'}`}>Activos</button>
-                        <button onClick={() => setViewMode('archived')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center ${viewMode === 'archived' ? 'bg-white text-red-600 shadow-sm' : 'text-gray-500'}`}><Archive size={16} className="mr-2" /> Discontinuos</button>
+                    <div className="flex bg-gray-100 dark:bg-slate-700 p-1 rounded-xl shadow-inner">
+                        <button onClick={() => setViewMode('active')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all ${viewMode === 'active' ? 'bg-white dark:bg-slate-600 text-blue-600 dark:text-blue-300 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}>Activos</button>
+                        <button onClick={() => setViewMode('archived')} className={`px-6 py-2 rounded-lg text-sm font-bold transition-all flex items-center ${viewMode === 'archived' ? 'bg-white dark:bg-slate-600 text-red-600 dark:text-red-300 shadow-sm' : 'text-gray-500 dark:text-slate-400'}`}><Archive size={16} className="mr-2" /> Discontinuos</button>
                     </div>
                 </div>
 
                 {viewMode === 'active' && (
-                    <div className="flex flex-wrap items-center gap-2 w-full justify-end border-t border-gray-100 pt-3">
+                    <div className="flex flex-wrap items-center gap-2 w-full justify-end border-t border-gray-100 dark:border-slate-700 pt-3">
                         {/* --- NUEVO BOTÓN TOGGLE FILTROS AVANZADOS --- */}
-                        <button onClick={() => setShowAdvancedFilters(!showAdvancedFilters)} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all mr-auto ${showAdvancedFilters ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-white border-gray-200 text-gray-500'}`}>
+                        <button onClick={() => setShowAdvancedFilters(!showAdvancedFilters)} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all mr-auto ${showAdvancedFilters ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300' : 'bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-500 dark:text-slate-300'}`}>
                             <ListFilter size={16} className="mr-2" /> {showAdvancedFilters ? 'Ocultar Filtros' : 'Filtros Avanzados'}
                         </button>
 
-                        <button onClick={() => setHideOutOfStock(!hideOutOfStock)} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all ${hideOutOfStock ? 'bg-orange-50 border-orange-200 text-orange-700' : 'bg-white border-gray-200 text-gray-500'}`}>{hideOutOfStock ? <EyeOff size={16} className="mr-2" /> : <Eye size={16} className="mr-2" />} {hideOutOfStock ? 'Sin Stock: Oculto' : 'Sin Stock: Visible'}</button>
+                        <button onClick={() => setHideOutOfStock(!hideOutOfStock)} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all ${hideOutOfStock ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300' : 'bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-500 dark:text-slate-300'}`}>{hideOutOfStock ? <EyeOff size={16} className="mr-2" /> : <Eye size={16} className="mr-2" />} {hideOutOfStock ? 'Sin Stock: Oculto' : 'Sin Stock: Visible'}</button>
                         {selectedItems.size > 0 && (
-                            <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-lg animate-fade-in mr-2">
-                                <span className="text-xs font-bold text-slate-600 px-2">{selectedItems.size} sel.</span>
+                            <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg animate-fade-in mr-2">
+                                <span className="text-xs font-bold text-slate-600 dark:text-slate-300 px-2">{selectedItems.size} sel.</span>
                                 <button onClick={handlePrintLabelsSelected} className="bg-slate-800 text-white px-3 py-1.5 rounded-md text-xs font-bold flex items-center hover:bg-black transition-colors"><Printer size={14} className="mr-2" /> Imprimir</button>
-                                <button onClick={handleBulkToggleStatus} className="bg-red-100 text-red-700 px-3 py-1.5 rounded-md text-xs font-bold flex items-center hover:bg-red-200 transition-colors"><Archive size={14} className="mr-2" /> Archivar</button>
+                                <button onClick={handleBulkToggleStatus} className="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 px-3 py-1.5 rounded-md text-xs font-bold flex items-center hover:bg-red-200 transition-colors"><Archive size={14} className="mr-2" /> Archivar</button>
                             </div>
                         )}
-                        <div className="h-8 w-px bg-gray-200 mx-1 hidden md:block"></div>
-                        <button onClick={handlePrintLabelsByFilter} className="bg-indigo-50 text-indigo-700 border border-indigo-200 px-3 py-2 rounded-lg flex items-center hover:bg-indigo-100 font-bold text-xs"><Tags size={16} className="mr-2" /> Etiquetas (Filtro)</button>
-                        <button onClick={() => setIsBulkModalOpen(true)} className="bg-emerald-50 text-emerald-700 border border-emerald-200 px-3 py-2 rounded-lg flex items-center hover:bg-emerald-100 font-bold text-xs"><TrendingUp size={16} className="mr-2" /> Precios</button>
-                        <button onClick={handleForceSync} disabled={isSyncing} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all ${isSyncing ? 'bg-gray-100 text-gray-400' : 'bg-white text-indigo-600 border-indigo-200 hover:bg-indigo-50'}`}><RefreshCw size={14} className={`mr-2 ${isSyncing ? "animate-spin" : ""}`} /> {isSyncing ? "Sync..." : "Sync Nube"}</button>
-                        <button onClick={() => setShowForm(!showForm)} className={`flex items-center px-4 py-2 rounded-lg text-xs font-bold text-white shadow-lg transition-all active:scale-95 ${showForm ? 'bg-gray-500 hover:bg-gray-600' : 'bg-slate-900 hover:bg-black'}`}>{showForm ? <X size={16} className="mr-2" /> : <Plus size={16} className="mr-2" />} {showForm ? "Cancelar" : "Nuevo"}</button>
+                        <div className="h-8 w-px bg-gray-200 dark:bg-slate-700 mx-1 hidden md:block"></div>
+                        <button onClick={handlePrintLabelsByFilter} className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-3 py-2 rounded-lg flex items-center hover:bg-indigo-100 font-bold text-xs"><Tags size={16} className="mr-2" /> Etiquetas (Filtro)</button>
+                        <button onClick={() => setIsBulkModalOpen(true)} className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-3 py-2 rounded-lg flex items-center hover:bg-emerald-100 font-bold text-xs"><TrendingUp size={16} className="mr-2" /> Precios</button>
+                        <button onClick={handleForceSync} disabled={isSyncing} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all ${isSyncing ? 'bg-gray-100 dark:bg-slate-800 text-gray-400' : 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/30'}`}><RefreshCw size={14} className={`mr-2 ${isSyncing ? "animate-spin" : ""}`} /> {isSyncing ? "Sync..." : "Sync Nube"}</button>
+                        <button onClick={() => setShowForm(!showForm)} className={`flex items-center px-4 py-2 rounded-lg text-xs font-bold text-white shadow-lg transition-all active:scale-95 ${showForm ? 'bg-gray-500 hover:bg-gray-600' : 'bg-slate-900 hover:bg-black dark:bg-blue-600 dark:hover:bg-blue-700'}`}>{showForm ? <X size={16} className="mr-2" /> : <Plus size={16} className="mr-2" />} {showForm ? "Cancelar" : "Nuevo"}</button>
                     </div>
                 )}
 
                 {viewMode === 'archived' && selectedItems.size > 0 && (
-                    <div className="flex w-full justify-end border-t border-gray-100 pt-3">
-                        <div className="flex items-center gap-2 bg-red-50 p-1 rounded-lg animate-fade-in">
-                            <span className="text-xs font-bold text-red-600 px-2">{selectedItems.size} seleccionados</span>
-                            <button onClick={handleBulkToggleStatus} className="bg-green-100 text-green-700 px-3 py-1.5 rounded-md text-xs font-bold flex items-center hover:bg-green-200 transition-colors"><ArchiveRestore size={14} className="mr-2" /> Restaurar</button>
+                    <div className="flex w-full justify-end border-t border-gray-100 dark:border-slate-700 pt-3">
+                        <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 p-1 rounded-lg animate-fade-in">
+                            <span className="text-xs font-bold text-red-600 dark:text-red-300 px-2">{selectedItems.size} seleccionados</span>
+                            <button onClick={handleBulkToggleStatus} className="bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 px-3 py-1.5 rounded-md text-xs font-bold flex items-center hover:bg-green-200 transition-colors"><ArchiveRestore size={14} className="mr-2" /> Restaurar</button>
                         </div>
                     </div>
                 )}
@@ -381,40 +377,40 @@ const InventoryPage = () => {
             {!showForm && (
                 <div className="flex flex-col gap-2 z-10">
                     {/* FILTROS BÁSICOS ORIGINALES */}
-                    <div className="bg-white p-2 rounded-xl shadow-sm border border-gray-200 flex flex-col md:flex-row gap-2 animate-fade-in">
+                    <div className="bg-white dark:bg-slate-800 p-2 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 flex flex-col md:flex-row gap-2 animate-fade-in transition-colors">
                         <div className="relative flex-1">
                             <Search className="absolute left-3 top-3 text-gray-400" size={18} />
                             <input
                                 ref={searchInputRef}
                                 value={searchTerm} onChange={e => setSearchTerm(e.target.value)}
                                 placeholder={viewMode === 'active' ? "Buscar producto activo..." : "Buscar en archivo..."}
-                                className={`w-full pl-10 pr-4 py-2.5 border-transparent focus:border-blue-200 focus:ring-4 focus:ring-blue-50 rounded-lg outline-none transition-all font-medium text-sm ${viewMode === 'active' ? 'bg-gray-50' : 'bg-red-50'}`}
+                                className={`w-full pl-10 pr-4 py-2.5 border-transparent focus:border-blue-200 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/30 rounded-lg outline-none transition-all font-medium text-sm ${viewMode === 'active' ? 'bg-gray-50 dark:bg-slate-700 dark:text-white' : 'bg-red-50 dark:bg-red-900/20 dark:text-red-200'}`}
                             />
                             {searchTerm && <button onClick={() => setSearchTerm('')} className="absolute right-3 top-3 text-gray-400 hover:text-red-500"><X size={16} /></button>}
                         </div>
-                        <select value={selectedCat} onChange={e => setSelectedCat(e.target.value)} className="md:w-48 bg-gray-50 border-transparent focus:bg-white focus:border-blue-200 focus:ring-4 focus:ring-blue-50 rounded-lg outline-none px-3 py-2 text-sm font-bold text-gray-600"><option value="">Categoría: Todas</option>{categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
-                        <select value={selectedSpec} onChange={e => setSelectedSpec(e.target.value)} className="md:w-48 bg-gray-50 border-transparent focus:bg-white focus:border-blue-200 focus:ring-4 focus:ring-blue-50 rounded-lg outline-none px-3 py-2 text-sm font-bold text-gray-600"><option value="">Liga: Todas</option>{specificCategories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
+                        <select value={selectedCat} onChange={e => setSelectedCat(e.target.value)} className="md:w-48 bg-gray-50 dark:bg-slate-700 border-transparent focus:bg-white dark:focus:bg-slate-600 focus:border-blue-200 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/30 rounded-lg outline-none px-3 py-2 text-sm font-bold text-gray-600 dark:text-slate-200"><option value="">Categoría: Todas</option>{categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
+                        <select value={selectedSpec} onChange={e => setSelectedSpec(e.target.value)} className="md:w-48 bg-gray-50 dark:bg-slate-700 border-transparent focus:bg-white dark:focus:bg-slate-600 focus:border-blue-200 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/30 rounded-lg outline-none px-3 py-2 text-sm font-bold text-gray-600 dark:text-slate-200"><option value="">Liga: Todas</option>{specificCategories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
                     </div>
 
                     {/* --- NUEVO: PANEL DE FILTROS AVANZADOS (DESPLEGABLE) --- */}
                     {showAdvancedFilters && (
-                        <div className="bg-indigo-50 p-3 rounded-xl border border-indigo-100 flex flex-wrap gap-4 items-center animate-fade-in-down">
+                        <div className="bg-indigo-50 dark:bg-indigo-900/10 p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/50 flex flex-wrap gap-4 items-center animate-fade-in-down transition-colors">
                             <div className="flex items-center gap-2">
-                                <label className="text-xs font-bold text-indigo-800 uppercase">Stock Exacto:</label>
-                                <input type="number" min="0" placeholder="Ej: 0" className="w-20 p-1.5 rounded-lg border border-indigo-200 text-sm font-bold text-center outline-none focus:ring-2 focus:ring-indigo-300" value={filterExactStock} onChange={e => setFilterExactStock(e.target.value)} />
+                                <label className="text-xs font-bold text-indigo-800 dark:text-indigo-300 uppercase">Stock Exacto:</label>
+                                <input type="number" min="0" placeholder="Ej: 0" className="w-20 p-1.5 rounded-lg border border-indigo-200 dark:border-indigo-700 text-sm font-bold text-center outline-none focus:ring-2 focus:ring-indigo-300 bg-white dark:bg-slate-800 dark:text-white" value={filterExactStock} onChange={e => setFilterExactStock(e.target.value)} />
                             </div>
                             <div className="flex items-center gap-2">
-                                <label className="text-xs font-bold text-indigo-800 uppercase">Talle:</label>
-                                <input type="text" placeholder="Ej: S, 40..." className="w-24 p-1.5 rounded-lg border border-indigo-200 text-sm font-bold text-center outline-none focus:ring-2 focus:ring-indigo-300 uppercase" value={filterSize} onChange={e => setFilterSize(e.target.value)} />
+                                <label className="text-xs font-bold text-indigo-800 dark:text-indigo-300 uppercase">Talle:</label>
+                                <input type="text" placeholder="Ej: S, 40..." className="w-24 p-1.5 rounded-lg border border-indigo-200 dark:border-indigo-700 text-sm font-bold text-center outline-none focus:ring-2 focus:ring-indigo-300 bg-white dark:bg-slate-800 dark:text-white uppercase" value={filterSize} onChange={e => setFilterSize(e.target.value)} />
                             </div>
                             <button
                                 onClick={() => setFilterNoImage(!filterNoImage)}
-                                className={`flex items-center px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${filterNoImage ? 'bg-red-100 text-red-700 border-red-300' : 'bg-white text-gray-500 border-gray-200 hover:bg-gray-50'}`}
+                                className={`flex items-center px-3 py-1.5 rounded-lg text-xs font-bold border transition-all ${filterNoImage ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 border-red-300 dark:border-red-700' : 'bg-white dark:bg-slate-800 text-gray-500 dark:text-slate-400 border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700'}`}
                             >
                                 <ImageOff size={14} className="mr-2" /> {filterNoImage ? 'Viendo Sin Imagen' : 'Filtrar Sin Imagen'}
                             </button>
                             {(filterExactStock || filterSize || filterNoImage) && (
-                                <button onClick={() => { setFilterExactStock(''); setFilterSize(''); setFilterNoImage(false); }} className="ml-auto text-xs text-indigo-500 hover:text-indigo-700 underline font-bold">Limpiar Avanzados</button>
+                                <button onClick={() => { setFilterExactStock(''); setFilterSize(''); setFilterNoImage(false); }} className="ml-auto text-xs text-indigo-500 hover:text-indigo-700 dark:text-indigo-400 dark:hover:text-indigo-300 underline font-bold">Limpiar Avanzados</button>
                             )}
                         </div>
                     )}
@@ -422,29 +418,29 @@ const InventoryPage = () => {
             )}
 
             {showForm && (
-                <div id="formCreate" className="bg-white p-6 rounded-2xl shadow-lg border border-blue-100 animate-fade-in-down shrink-0 relative overflow-hidden">
+                <div id="formCreate" className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg border border-blue-100 dark:border-slate-700 animate-fade-in-down shrink-0 relative overflow-hidden transition-colors">
                     <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-500"></div>
-                    <h3 className="font-bold text-lg mb-4 text-gray-800 flex items-center"><Plus className="mr-2 text-blue-500" /> Alta Rápida de Producto</h3>
+                    <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white flex items-center"><Plus className="mr-2 text-blue-500" /> Alta Rápida de Producto</h3>
                     <form onSubmit={handleSubmitCreate} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                        <div className="md:col-span-4"><label className="text-xs font-bold text-gray-500 uppercase">Nombre</label><input id="inputName" autoFocus required className="w-full border-2 border-gray-100 bg-gray-50 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400" placeholder="Ej: Camiseta..." value={newProduct.nombre} onChange={e => setNewProduct({ ...newProduct, nombre: e.target.value })} /></div>
-                        <div className="md:col-span-2"><label className="text-xs font-bold text-gray-500 uppercase">Categoría</label><select required className="w-full border-2 border-gray-100 bg-gray-50 p-2.5 rounded-lg outline-none focus:border-blue-400" value={newProduct.categoria_id} onChange={e => setNewProduct({ ...newProduct, categoria_id: e.target.value })}><option value="">Seleccionar...</option>{categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
-                        <div className="md:col-span-2"><label className="text-xs font-bold text-gray-500 uppercase">Liga</label><select className="w-full border-2 border-gray-100 bg-gray-50 p-2.5 rounded-lg outline-none focus:border-blue-400" value={newProduct.categoria_especifica_id} onChange={e => setNewProduct({ ...newProduct, categoria_especifica_id: e.target.value })}><option value="">(Opcional)</option>{specificCategories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
-                        <div className="md:col-span-2"><label className="text-xs font-bold text-gray-500 uppercase">Precio</label><input type="number" required className="w-full border-2 border-gray-100 bg-gray-50 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400" placeholder="$" value={newProduct.precio} onChange={e => setNewProduct({ ...newProduct, precio: e.target.value })} /></div>
-                        <div className="md:col-span-1"><label className="text-xs font-bold text-gray-500 uppercase">Curva</label><select className="w-full border-2 border-gray-100 bg-gray-50 p-2.5 rounded-lg text-xs font-bold outline-none" value={selectedGridType} onChange={e => setSelectedGridType(e.target.value)}>{Object.keys(SIZE_GRIDS).map(g => <option key={g} value={g}>{g}</option>)}</select></div>
-                        <div className="md:col-span-1"><label className="text-xs font-bold text-gray-500 uppercase">Stock Ini</label><input type="number" required className="w-full border-2 border-gray-100 bg-gray-50 p-2.5 rounded-lg text-center font-bold outline-none focus:border-blue-400" value={newProduct.stock} onChange={e => setNewProduct({ ...newProduct, stock: e.target.value })} /></div>
+                        <div className="md:col-span-4"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Nombre</label><input id="inputName" autoFocus required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" placeholder="Ej: Camiseta..." value={newProduct.nombre} onChange={e => setNewProduct({ ...newProduct, nombre: e.target.value })} /></div>
+                        <div className="md:col-span-2"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Categoría</label><select required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" value={newProduct.categoria_id} onChange={e => setNewProduct({ ...newProduct, categoria_id: e.target.value })}><option value="">Seleccionar...</option>{categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
+                        <div className="md:col-span-2"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Liga</label><select className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" value={newProduct.categoria_especifica_id} onChange={e => setNewProduct({ ...newProduct, categoria_especifica_id: e.target.value })}><option value="">(Opcional)</option>{specificCategories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
+                        <div className="md:col-span-2"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Precio</label><input type="number" required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" placeholder="$" value={newProduct.precio} onChange={e => setNewProduct({ ...newProduct, precio: e.target.value })} /></div>
+                        <div className="md:col-span-1"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Curva</label><select className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg text-xs font-bold outline-none dark:text-white" value={selectedGridType} onChange={e => setSelectedGridType(e.target.value)}>{Object.keys(SIZE_GRIDS).map(g => <option key={g} value={g}>{g}</option>)}</select></div>
+                        <div className="md:col-span-1"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Stock Ini</label><input type="number" required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg text-center font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" value={newProduct.stock} onChange={e => setNewProduct({ ...newProduct, stock: e.target.value })} /></div>
                         <div className="md:col-span-12 mt-2"><button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-md transition-all active:scale-[0.99]">GUARDAR PRODUCTO</button></div>
                     </form>
                 </div>
             )}
 
-            <div className={`bg-white rounded-2xl shadow-sm border flex-1 flex flex-col overflow-hidden relative ${viewMode === 'active' ? 'border-gray-200' : 'border-red-200'}`}>
-                {viewMode === 'archived' && <div className="bg-red-50 text-red-800 text-xs font-bold p-2 text-center border-b border-red-100">VISTA DE ARCHIVO</div>}
+            <div className={`bg-white dark:bg-slate-800 rounded-2xl shadow-sm border flex-1 flex flex-col overflow-hidden relative transition-colors ${viewMode === 'active' ? 'border-gray-200 dark:border-slate-700' : 'border-red-200 dark:border-red-900'}`}>
+                {viewMode === 'archived' && <div className="bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 text-xs font-bold p-2 text-center border-b border-red-100 dark:border-red-900/50">VISTA DE ARCHIVO</div>}
 
                 <div className="overflow-auto flex-1">
                     <table className="min-w-full text-sm text-left">
-                        <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-xs sticky top-0 z-10">
+                        <thead className="bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 font-bold uppercase text-xs sticky top-0 z-10 transition-colors">
                             <tr>
-                                <th className="px-4 py-3 w-10 text-center"><button onClick={toggleSelectAll} className="text-gray-400 hover:text-blue-600">{selectedItems.size === products.length && products.length > 0 ? <CheckSquare size={18} /> : <Square size={18} />}</button></th>
+                                <th className="px-4 py-3 w-10 text-center"><button onClick={toggleSelectAll} className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400">{selectedItems.size === products.length && products.length > 0 ? <CheckSquare size={18} /> : <Square size={18} />}</button></th>
                                 <th className="px-4 py-3 text-center w-16">Foto</th>
                                 <th className="px-4 py-3">Producto</th>
                                 <th className="px-4 py-3 w-32">Precio</th>
@@ -453,29 +449,29 @@ const InventoryPage = () => {
                                 <th className="px-4 py-3 text-right w-20">Acción</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100">
+                        <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
                             {loading ? <tr><td colSpan="7" className="p-10 text-center text-gray-400 italic">Cargando...</td></tr> : products.length === 0 ? <tr><td colSpan="7" className="p-10 text-center text-gray-400 italic">Sin resultados.</td></tr> : products.map(p => (
-                                <tr key={p.id} className={`hover:bg-blue-50/30 transition-colors group ${processingId === p.id ? 'opacity-50 pointer-events-none' : ''}`}>
-                                    <td className="px-4 py-3 text-center"><button onClick={() => toggleSelect(p.id)} className={`transition-colors ${selectedItems.has(p.id) ? 'text-blue-600' : 'text-gray-300 hover:text-gray-500'}`}>{selectedItems.has(p.id) ? <CheckSquare size={18} /> : <Square size={18} />}</button></td>
-                                    <td className="px-4 py-3 text-center"><div onClick={() => p.imagen && setImageModalSrc(`/api/static/uploads/${p.imagen}`)} className="h-10 w-10 rounded-lg bg-white border border-gray-200 flex items-center justify-center overflow-hidden cursor-zoom-in relative group/img mx-auto">{p.imagen ? <img src={`/api/static/uploads/${p.imagen}`} className="h-full w-full object-cover" /> : <Shirt size={16} className="text-gray-300" />}</div></td>
-                                    <td className="px-4 py-3"><div className="font-bold text-gray-800">{p.nombre}</div><div className="flex gap-2 mt-1"><span className="text-[10px] px-2 py-0.5 bg-gray-100 text-gray-600 rounded font-bold uppercase">{p.categoria}</span>{p.liga !== '-' && <span className="text-[10px] px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded font-bold uppercase">{p.liga}</span>}</div></td>
-                                    <td className="px-4 py-3 font-mono font-bold text-gray-700">$ {p.precio.toLocaleString()}</td>
+                                <tr key={p.id} className={`hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-colors group ${processingId === p.id ? 'opacity-50 pointer-events-none' : ''}`}>
+                                    <td className="px-4 py-3 text-center"><button onClick={() => toggleSelect(p.id)} className={`transition-colors ${selectedItems.has(p.id) ? 'text-blue-600 dark:text-blue-400' : 'text-gray-300 dark:text-slate-600 hover:text-gray-500 dark:hover:text-slate-400'}`}>{selectedItems.has(p.id) ? <CheckSquare size={18} /> : <Square size={18} />}</button></td>
+                                    <td className="px-4 py-3 text-center"><div onClick={() => p.imagen && setImageModalSrc(`/api/static/uploads/${p.imagen}`)} className="h-10 w-10 rounded-lg bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 flex items-center justify-center overflow-hidden cursor-zoom-in relative group/img mx-auto">{p.imagen ? <img src={`/api/static/uploads/${p.imagen}`} className="h-full w-full object-cover" /> : <Shirt size={16} className="text-gray-300 dark:text-slate-500" />}</div></td>
+                                    <td className="px-4 py-3"><div className="font-bold text-gray-800 dark:text-white">{p.nombre}</div><div className="flex gap-2 mt-1"><span className="text-[10px] px-2 py-0.5 bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 rounded font-bold uppercase">{p.categoria}</span>{p.liga !== '-' && <span className="text-[10px] px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 rounded font-bold uppercase">{p.liga}</span>}</div></td>
+                                    <td className="px-4 py-3 font-mono font-bold text-gray-700 dark:text-slate-300">$ {p.precio.toLocaleString()}</td>
                                     <td className="px-4 py-3"><div className="flex flex-wrap gap-2">{p.variantes.map(v => (<div key={v.id_variante} onClick={() => { setSelectedVariantForBarcode({ nombre: p.nombre, talle: v.talle, sku: v.sku, precio: p.precio }); setIsBarcodeModalOpen(true); }} className={`flex items-center pl-2 pr-1 py-1 rounded-md text-xs cursor-pointer transition-all active:scale-95 shadow-sm border ${getStockColorClass(v.stock)}`} title={`SKU: ${v.sku}`}><span className="font-bold mr-1.5">{v.talle}</span><span className="font-mono text-[10px] opacity-80 border-l border-current pl-1.5 mr-1">{v.stock}</span><button onClick={(e) => handlePrintSingleLabel(e, p, v)} className="p-0.5 rounded hover:bg-black/10 transition-colors ml-0.5" title="Imprimir"><Printer size={10} /></button></div>))}</div></td>
-                                    <td className="px-4 py-3 text-center">{processingId === p.id ? <Loader2 size={18} className="animate-spin text-blue-600 mx-auto" /> : p.tiendanube_id ? <span className="inline-flex items-center justify-center p-1.5 bg-green-100 text-green-600 rounded-full" title="Sincronizado"><Cloud size={16} /></span> : <button onClick={() => handlePublish(p)} className="inline-flex items-center justify-center p-1.5 bg-gray-100 text-gray-400 rounded-full hover:bg-indigo-100 hover:text-indigo-600 transition-colors" title="Publicar"><UploadCloud size={16} /></button>}</td>
+                                    <td className="px-4 py-3 text-center">{processingId === p.id ? <Loader2 size={18} className="animate-spin text-blue-600 mx-auto" /> : p.tiendanube_id ? <span className="inline-flex items-center justify-center p-1.5 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full" title="Sincronizado"><Cloud size={16} /></span> : <button onClick={() => handlePublish(p)} className="inline-flex items-center justify-center p-1.5 bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-slate-400 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/50 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors" title="Publicar"><UploadCloud size={16} /></button>}</td>
                                     <td className="px-4 py-3 text-right">
                                         <div className="flex justify-end gap-1">
                                             {viewMode === 'active' ? (
                                                 <>
                                                     {/* --- NUEVO BOTÓN DUPLICAR --- */}
-                                                    <button onClick={() => handleDuplicate(p)} className="text-gray-400 hover:text-indigo-600 p-2 hover:bg-indigo-50 rounded-lg" title="Duplicar"><Copy size={18} /></button>
+                                                    <button onClick={() => handleDuplicate(p)} className="text-gray-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg" title="Duplicar"><Copy size={18} /></button>
 
-                                                    <button onClick={() => handleToggleStatus(p)} className="text-gray-400 hover:text-red-500 p-2 hover:bg-red-50 rounded-lg" title="Archivar"><Archive size={18} /></button>
-                                                    <button onClick={() => { setEditingProduct(p); setIsEditModalOpen(true); }} className="text-gray-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-lg" title="Editar"><Edit size={18} /></button>
+                                                    <button onClick={() => handleToggleStatus(p)} className="text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 p-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg" title="Archivar"><Archive size={18} /></button>
+                                                    <button onClick={() => { setEditingProduct(p); setIsEditModalOpen(true); }} className="text-gray-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 p-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg" title="Editar"><Edit size={18} /></button>
                                                 </>
                                             ) : (
                                                 <>
-                                                    <button onClick={() => handleToggleStatus(p)} className="text-green-500 hover:text-green-700 p-2 hover:bg-green-50 rounded-lg" title="Restaurar"><ArchiveRestore size={18} /></button>
-                                                    <button onClick={() => handleDelete(p.id)} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg" title="Eliminar"><Trash2 size={18} /></button>
+                                                    <button onClick={() => handleToggleStatus(p)} className="text-green-500 dark:text-green-400 hover:text-green-700 dark:hover:text-green-300 p-2 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg" title="Restaurar"><ArchiveRestore size={18} /></button>
+                                                    <button onClick={() => handleDelete(p.id)} className="text-red-400 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 p-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg" title="Eliminar"><Trash2 size={18} /></button>
                                                 </>
                                             )}
                                         </div>
@@ -486,9 +482,9 @@ const InventoryPage = () => {
                     </table>
                 </div>
 
-                <div className="bg-white p-3 border-t border-gray-200 flex items-center justify-between shrink-0">
-                    <span className="text-xs text-gray-400 font-medium">Pág <span className="text-gray-800 font-bold">{page}</span> de {totalPages}</span>
-                    <div className="flex gap-2"><button onClick={() => page > 1 && fetchProducts(page - 1)} disabled={page === 1} className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50"><ChevronLeft size={16} /></button><button onClick={() => page < totalPages && fetchProducts(page + 1)} disabled={page === totalPages} className="p-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50"><ChevronRight size={16} /></button></div>
+                <div className="bg-white dark:bg-slate-800 p-3 border-t border-gray-200 dark:border-slate-700 flex items-center justify-between shrink-0 transition-colors">
+                    <span className="text-xs text-gray-400 font-medium">Pág <span className="text-gray-800 dark:text-white font-bold">{page}</span> de {totalPages}</span>
+                    <div className="flex gap-2"><button onClick={() => page > 1 && fetchProducts(page - 1)} disabled={page === 1} className="p-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300"><ChevronLeft size={16} /></button><button onClick={() => page < totalPages && fetchProducts(page + 1)} disabled={page === totalPages} className="p-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300"><ChevronRight size={16} /></button></div>
                 </div>
             </div>
 

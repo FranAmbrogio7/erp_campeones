@@ -9,6 +9,9 @@ const MainLayout = () => {
   // --- ATAJOS DE TECLADO GLOBALES ---
   useEffect(() => {
     const handleShortcuts = (e) => {
+      // Evitamos conflictos si el usuario está escribiendo en un input
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+
       // F1 -> CAJA
       if (e.key === 'F1') { e.preventDefault(); navigate('/caja'); }
       // F2 -> INVENTARIO
@@ -23,27 +26,25 @@ const MainLayout = () => {
   }, [navigate]);
 
   return (
-    // CAMBIO CLAVE 1: 'flex-col' para que sea vertical (Arriba hacia abajo)
-    <div className="flex flex-col h-screen bg-gray-100 font-sans overflow-hidden">
+    // CAMBIO CLAVE: Agregamos 'dark:bg-slate-950' y 'dark:text-white'
+    // 'transition-colors' suaviza el cambio entre modos
+    <div className="flex flex-col h-screen bg-gray-100 dark:bg-slate-950 font-sans overflow-hidden transition-colors duration-300">
 
       {/* Topbar Fija (z-index alto) */}
       <Topbar />
 
       {/* Toast Global */}
-      <Toaster position="top-center" />
+      <Toaster position="top-center"
+        toastOptions={{
+          // Opcional: Personalizar toasts para dark mode automáticamente
+          className: 'dark:bg-slate-800 dark:text-white',
+        }}
+      />
 
-      {/* CAMBIO CLAVE 2: Estructura del Main 
-          - flex-1: Ocupa todo el espacio restante.
-          - pt-16: Deja espacio para la barra de arriba (4rem = 16).
-          - overflow-y-auto: HABILITA EL SCROLL si el contenido es muy largo (Arqueo).
-          - relative: Para posicionamiento de modales internos.
-      */}
+      {/* Contenedor Principal */}
       <main className="flex-1 pt-16 overflow-y-auto relative scroll-smooth">
 
-        {/* Renderizamos la página hija. 
-            Nota: Quitamos el padding global (p-8) para que el POS y el Inventario 
-            puedan usar el 100% del ancho/alto si lo necesitan. 
-        */}
+        {/* Renderizamos la página hija */}
         <Outlet />
 
       </main>

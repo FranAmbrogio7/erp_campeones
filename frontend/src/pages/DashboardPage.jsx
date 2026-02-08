@@ -16,7 +16,6 @@ const DashboardPage = () => {
 
     const [data, setData] = useState({
         financial: { hoy: 0, mes: 0, tickets: 0, caja_status: 'cerrada' },
-        // Aunque el backend mande low_stock, ya no lo mostramos visualmente
     });
 
     useEffect(() => {
@@ -32,17 +31,15 @@ const DashboardPage = () => {
         };
         if (api) fetchDashboard();
 
-        // --- TEMPORIZADOR DEL RELOJ ---
         const timer = setInterval(() => setCurrentTime(new Date()), 1000);
         return () => clearInterval(timer);
     }, []);
 
-    // Formateo de Hora y Fecha
     const formattedTime = currentTime.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     const formattedDate = currentTime.toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' });
 
     if (loading) return (
-        <div className="flex h-full items-center justify-center text-gray-400 p-10">
+        <div className="flex h-full items-center justify-center text-gray-400 dark:text-gray-500 p-10 bg-gray-100 dark:bg-slate-950 transition-colors">
             <div className="animate-spin h-8 w-8 border-4 border-blue-500 border-t-transparent rounded-full mr-3"></div>
             Cargando...
         </div>
@@ -51,118 +48,124 @@ const DashboardPage = () => {
     const cajaAbierta = data.financial.caja_status === 'abierta';
 
     return (
-        <div className="h-full overflow-y-auto bg-gray-100 p-4 md:p-8 custom-scrollbar pb-24">
+        <div className="h-full overflow-y-auto bg-gray-100 dark:bg-slate-950 p-4 md:p-8 custom-scrollbar pb-24 transition-colors duration-300">
 
             {/* 1. HEADER: DATOS FINANCIEROS Y SALUDO */}
-            <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-gray-200 pb-6 mb-6">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-gray-200 dark:border-slate-800 pb-6 mb-6">
                 <div className="w-full md:w-auto">
-                    <h1 className="text-2xl md:text-3xl font-black text-gray-800 tracking-tight flex items-center">
+                    <h1 className="text-2xl md:text-3xl font-black text-gray-800 dark:text-white tracking-tight flex items-center transition-colors">
                         Hola, {user?.nombre || 'Campeón'} 👋
                     </h1>
-                    <div className="flex items-center text-gray-500 mt-1 font-medium text-xs md:text-sm">
-                        <Clock size={14} className="mr-2 text-blue-600" />
+                    <div className="flex items-center text-gray-500 dark:text-slate-400 mt-1 font-medium text-xs md:text-sm transition-colors">
+                        <Clock size={14} className="mr-2 text-blue-600 dark:text-blue-400" />
                         <span className="capitalize">{formattedDate}</span>
-                        <span className="mx-2 text-gray-300">|</span>
-                        <span className="font-mono text-gray-800 font-bold bg-white px-2 py-0.5 rounded border border-gray-200 shadow-sm">{formattedTime}</span>
+                        <span className="mx-2 text-gray-300 dark:text-slate-700">|</span>
+                        <span className="font-mono text-gray-800 dark:text-slate-200 font-bold bg-white dark:bg-slate-800 px-2 py-0.5 rounded border border-gray-200 dark:border-slate-700 shadow-sm transition-colors">
+                            {formattedTime}
+                        </span>
                     </div>
                 </div>
 
                 {/* Widget Financiero */}
-                <div className="w-full md:w-auto mt-4 md:mt-0 flex items-center bg-white border border-gray-200 rounded-2xl p-3 shadow-sm divide-x divide-gray-100">
+                <div className="w-full md:w-auto mt-4 md:mt-0 flex items-center bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-2xl p-3 shadow-sm divide-x divide-gray-100 dark:divide-slate-700 transition-colors">
                     <div className="px-4 text-center md:text-left">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Ventas Hoy</p>
-                        <p className="text-xl font-black text-gray-800">$ {data.financial.hoy.toLocaleString()}</p>
+                        <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider">Ventas Hoy</p>
+                        <p className="text-xl font-black text-gray-800 dark:text-white transition-colors">$ {data.financial.hoy.toLocaleString()}</p>
                     </div>
                     <div className="px-4 text-center md:text-left">
-                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Mes Actual</p>
-                        <p className="text-xl font-black text-blue-600">$ {data.financial.mes.toLocaleString()}</p>
+                        <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider">Mes Actual</p>
+                        <p className="text-xl font-black text-blue-600 dark:text-blue-400 transition-colors">$ {data.financial.mes.toLocaleString()}</p>
                     </div>
                 </div>
             </div>
 
             {/* 2. CENTRO DE CONTROL (PRINCIPALES) */}
             <div className="mb-6">
-                <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 ml-1">Accesos Principales</h2>
+                <h2 className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-3 ml-1 transition-colors">Accesos Principales</h2>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
 
                     {/* PTO VENTA (Gigante) */}
-                    <Link to="/caja" className="col-span-2 bg-gradient-to-br from-slate-900 to-slate-800 text-white p-6 rounded-3xl shadow-lg active:scale-[0.98] transition-all group relative overflow-hidden flex flex-col justify-between min-h-[160px]">
+                    <Link to="/caja" className="col-span-2 bg-gradient-to-br from-slate-900 to-slate-800 dark:from-blue-600 dark:to-blue-800 text-white p-6 rounded-3xl shadow-lg active:scale-[0.98] transition-all group relative overflow-hidden flex flex-col justify-between min-h-[160px]">
                         <div className="relative z-10">
                             <div className="bg-white/10 w-fit p-3 rounded-2xl backdrop-blur-sm mb-4 border border-white/5">
                                 <ShoppingCart size={28} className="text-white" />
                             </div>
                             <h3 className="text-2xl font-bold">Punto de Venta</h3>
-                            <p className="text-slate-400 text-sm mt-1 font-medium">Facturar y cobrar</p>
+                            <p className="text-slate-400 dark:text-blue-200 text-sm mt-1 font-medium">Facturar y cobrar</p>
                         </div>
-                        <ShoppingCart className="absolute -right-6 -bottom-6 text-white/5 rotate-12 group-hover:scale-110 transition-transform duration-500" size={180} />
+                        <ShoppingCart className="absolute -right-6 -bottom-6 text-white/5 dark:text-white/10 rotate-12 group-hover:scale-110 transition-transform duration-500" size={180} />
                     </Link>
 
                     {/* BOTONES SECUNDARIOS */}
-                    <Link to="/inventario" className="bg-white p-5 rounded-3xl border border-gray-200 shadow-sm hover:shadow-md active:scale-95 transition-all flex flex-col justify-between h-32 md:h-auto group">
-                        <div className="bg-blue-50 w-12 h-12 rounded-2xl flex items-center justify-center text-blue-600 mb-2 group-hover:bg-blue-600 group-hover:text-white transition-colors">
+                    {/* Inventario */}
+                    <Link to="/inventario" className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-gray-200 dark:border-slate-700 shadow-sm hover:shadow-md active:scale-95 transition-all flex flex-col justify-between h-32 md:h-auto group">
+                        <div className="bg-blue-50 dark:bg-slate-700 w-12 h-12 rounded-2xl flex items-center justify-center text-blue-600 dark:text-blue-400 mb-2 group-hover:bg-blue-600 group-hover:text-white transition-colors">
                             <Package size={22} />
                         </div>
                         <div>
-                            <h3 className="font-bold text-gray-800 text-lg">Inventario</h3>
-                            <p className="text-xs text-gray-400 font-medium">Control de Stock</p>
+                            <h3 className="font-bold text-gray-800 dark:text-white text-lg transition-colors">Inventario</h3>
+                            <p className="text-xs text-gray-400 dark:text-slate-500 font-medium transition-colors">Control de Stock</p>
                         </div>
                     </Link>
 
-                    <Link to="/caja-control" className="bg-white p-5 rounded-3xl border border-gray-200 shadow-sm hover:shadow-md active:scale-95 transition-all flex flex-col justify-between h-32 md:h-auto group">
-                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-2 transition-colors ${cajaAbierta ? 'bg-emerald-50 text-emerald-600 group-hover:bg-emerald-600 group-hover:text-white' : 'bg-red-50 text-red-600 group-hover:bg-red-600 group-hover:text-white'}`}>
+                    {/* Caja */}
+                    <Link to="/caja-control" className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-gray-200 dark:border-slate-700 shadow-sm hover:shadow-md active:scale-95 transition-all flex flex-col justify-between h-32 md:h-auto group">
+                        <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mb-2 transition-colors ${cajaAbierta ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 group-hover:bg-emerald-600 group-hover:text-white' : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 group-hover:bg-red-600 group-hover:text-white'}`}>
                             {cajaAbierta ? <Unlock size={22} /> : <Lock size={22} />}
                         </div>
                         <div>
-                            <h3 className="font-bold text-gray-800 text-lg">Caja</h3>
-                            <p className={`text-xs font-bold ${cajaAbierta ? 'text-emerald-600' : 'text-red-500'}`}>
+                            <h3 className="font-bold text-gray-800 dark:text-white text-lg transition-colors">Caja</h3>
+                            <p className={`text-xs font-bold ${cajaAbierta ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'} transition-colors`}>
                                 {cajaAbierta ? 'Actualmente Abierta' : 'Turno Cerrado'}
                             </p>
                         </div>
                     </Link>
 
-                    {/* Links Externos */}
-                    <a href="https://campeones4.mitiendanube.com/admin/v2/dashboard/" target="_blank" rel="noopener noreferrer" className="bg-white p-5 rounded-3xl border border-gray-200 shadow-sm hover:shadow-md active:scale-95 transition-all flex flex-col justify-between h-32 md:h-auto group">
-                        <div className="bg-sky-50 w-12 h-12 rounded-2xl flex items-center justify-center text-sky-600 mb-2 group-hover:bg-sky-600 group-hover:text-white transition-colors">
+                    {/* Links Externos (Admin Nube) */}
+                    <a href="https://campeones4.mitiendanube.com/admin/v2/dashboard/" target="_blank" rel="noopener noreferrer" className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-gray-200 dark:border-slate-700 shadow-sm hover:shadow-md active:scale-95 transition-all flex flex-col justify-between h-32 md:h-auto group">
+                        <div className="bg-sky-50 dark:bg-slate-700 w-12 h-12 rounded-2xl flex items-center justify-center text-sky-600 dark:text-sky-400 mb-2 group-hover:bg-sky-600 group-hover:text-white transition-colors">
                             <LayoutDashboard size={22} />
                         </div>
                         <div>
-                            <h3 className="font-bold text-gray-800 text-lg">Admin Nube</h3>
-                            <p className="text-xs text-gray-400 font-medium">Panel Web</p>
+                            <h3 className="font-bold text-gray-800 dark:text-white text-lg transition-colors">Admin Nube</h3>
+                            <p className="text-xs text-gray-400 dark:text-slate-500 font-medium transition-colors">Panel Web</p>
                         </div>
                     </a>
 
-                    <a href="https://www.campeonesindumentaria.com.ar/" target="_blank" rel="noopener noreferrer" className="bg-white p-5 rounded-3xl border border-gray-200 shadow-sm hover:shadow-md active:scale-95 transition-all flex flex-col justify-between h-32 md:h-auto group">
-                        <div className="bg-purple-50 w-12 h-12 rounded-2xl flex items-center justify-center text-purple-600 mb-2 group-hover:bg-purple-600 group-hover:text-white transition-colors">
+                    {/* Ver Tienda */}
+                    <a href="https://www.campeonesindumentaria.com.ar/" target="_blank" rel="noopener noreferrer" className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-gray-200 dark:border-slate-700 shadow-sm hover:shadow-md active:scale-95 transition-all flex flex-col justify-between h-32 md:h-auto group">
+                        <div className="bg-purple-50 dark:bg-slate-700 w-12 h-12 rounded-2xl flex items-center justify-center text-purple-600 dark:text-purple-400 mb-2 group-hover:bg-purple-600 group-hover:text-white transition-colors">
                             <Store size={22} />
                         </div>
                         <div>
-                            <h3 className="font-bold text-gray-800 text-lg">Ver Tienda</h3>
-                            <p className="text-xs text-gray-400 font-medium">Sitio Online</p>
+                            <h3 className="font-bold text-gray-800 dark:text-white text-lg transition-colors">Ver Tienda</h3>
+                            <p className="text-xs text-gray-400 dark:text-slate-500 font-medium transition-colors">Sitio Online</p>
                         </div>
                     </a>
 
-                    {/* Utilidades */}
-                    <Link to="/etiquetas" className="bg-white p-5 rounded-3xl border border-gray-200 shadow-sm hover:shadow-md active:scale-95 transition-all flex flex-col justify-between h-32 md:h-auto group">
-                        <div className="bg-orange-50 w-12 h-12 rounded-2xl flex items-center justify-center text-orange-600 mb-2 group-hover:bg-orange-600 group-hover:text-white transition-colors">
+                    {/* Etiquetas */}
+                    <Link to="/etiquetas" className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-gray-200 dark:border-slate-700 shadow-sm hover:shadow-md active:scale-95 transition-all flex flex-col justify-between h-32 md:h-auto group">
+                        <div className="bg-orange-50 dark:bg-slate-700 w-12 h-12 rounded-2xl flex items-center justify-center text-orange-600 dark:text-orange-400 mb-2 group-hover:bg-orange-600 group-hover:text-white transition-colors">
                             <Printer size={22} />
                         </div>
                         <div>
-                            <h3 className="font-bold text-gray-800 text-lg">Etiquetas</h3>
-                            <p className="text-xs text-gray-400 font-medium">Códigos QR</p>
+                            <h3 className="font-bold text-gray-800 dark:text-white text-lg transition-colors">Etiquetas</h3>
+                            <p className="text-xs text-gray-400 dark:text-slate-500 font-medium transition-colors">Códigos QR</p>
                         </div>
                     </Link>
 
-                    <Link to="/reportes" className="bg-white p-5 rounded-3xl border border-gray-200 shadow-sm hover:shadow-md active:scale-95 transition-all flex flex-col justify-between relative overflow-hidden h-32 md:h-auto group">
+                    {/* Reportes */}
+                    <Link to="/reportes" className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-gray-200 dark:border-slate-700 shadow-sm hover:shadow-md active:scale-95 transition-all flex flex-col justify-between relative overflow-hidden h-32 md:h-auto group">
                         <div className="relative z-10">
-                            <div className="bg-indigo-50 w-12 h-12 rounded-2xl flex items-center justify-center text-indigo-600 mb-2 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
+                            <div className="bg-indigo-50 dark:bg-slate-700 w-12 h-12 rounded-2xl flex items-center justify-center text-indigo-600 dark:text-indigo-400 mb-2 group-hover:bg-indigo-600 group-hover:text-white transition-colors">
                                 <BarChart3 size={22} />
                             </div>
                             <div>
-                                <h3 className="font-bold text-gray-800 text-lg">Reportes</h3>
-                                <p className="text-xs text-gray-400 font-medium">Estadísticas</p>
+                                <h3 className="font-bold text-gray-800 dark:text-white text-lg transition-colors">Reportes</h3>
+                                <p className="text-xs text-gray-400 dark:text-slate-500 font-medium transition-colors">Estadísticas</p>
                             </div>
                         </div>
-                        <TrendingUp className="text-indigo-50 absolute -right-4 top-6 scale-[2.5] opacity-50 rotate-12 group-hover:text-indigo-100 transition-colors" />
+                        <TrendingUp className="text-indigo-50 dark:text-slate-700/50 absolute -right-4 top-6 scale-[2.5] opacity-50 rotate-12 group-hover:text-indigo-100 dark:group-hover:text-indigo-900 transition-colors" />
                     </Link>
 
                 </div>
@@ -173,58 +176,58 @@ const DashboardPage = () => {
 
                 {/* NUEVO: PANEL DE ACCESOS DIRECTOS DE GESTIÓN */}
                 <div className="lg:col-span-2">
-                    <h2 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3 ml-1">Gestión Operativa</h2>
+                    <h2 className="text-xs font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider mb-3 ml-1 transition-colors">Gestión Operativa</h2>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 
-                        <Link to="/cambios" className="flex items-center p-4 bg-white rounded-2xl border border-gray-200 shadow-sm hover:border-blue-300 hover:shadow-md transition-all group">
-                            <div className="w-12 h-12 bg-red-50 text-red-600 rounded-xl flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
+                        <Link to="/cambios" className="flex items-center p-4 bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm hover:border-blue-300 dark:hover:border-blue-500 hover:shadow-md transition-all group">
+                            <div className="w-12 h-12 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
                                 <ArrowRightLeft size={24} />
                             </div>
                             <div>
-                                <h4 className="font-bold text-gray-800">Cambios y Devol.</h4>
-                                <p className="text-xs text-gray-500">Gestionar devoluciones</p>
+                                <h4 className="font-bold text-gray-800 dark:text-white transition-colors">Cambios y Devol.</h4>
+                                <p className="text-xs text-gray-500 dark:text-slate-400 transition-colors">Gestionar devoluciones</p>
                             </div>
-                            <div className="ml-auto bg-gray-50 p-2 rounded-full text-gray-300 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
+                            <div className="ml-auto bg-gray-50 dark:bg-slate-700 p-2 rounded-full text-gray-300 dark:text-slate-500 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/30 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                                 <ArrowRight size={16} />
                             </div>
                         </Link>
 
-                        <Link to="/presupuestos" className="flex items-center p-4 bg-white rounded-2xl border border-gray-200 shadow-sm hover:border-blue-300 hover:shadow-md transition-all group">
-                            <div className="w-12 h-12 bg-yellow-50 text-yellow-600 rounded-xl flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
+                        <Link to="/presupuestos" className="flex items-center p-4 bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm hover:border-blue-300 dark:hover:border-blue-500 hover:shadow-md transition-all group">
+                            <div className="w-12 h-12 bg-yellow-50 dark:bg-yellow-900/20 text-yellow-600 dark:text-yellow-400 rounded-xl flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
                                 <FileSpreadsheet size={24} />
                             </div>
                             <div>
-                                <h4 className="font-bold text-gray-800">Presupuestos</h4>
-                                <p className="text-xs text-gray-500">Crear y guardar</p>
+                                <h4 className="font-bold text-gray-800 dark:text-white transition-colors">Presupuestos</h4>
+                                <p className="text-xs text-gray-500 dark:text-slate-400 transition-colors">Crear y guardar</p>
                             </div>
-                            <div className="ml-auto bg-gray-50 p-2 rounded-full text-gray-300 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
+                            <div className="ml-auto bg-gray-50 dark:bg-slate-700 p-2 rounded-full text-gray-300 dark:text-slate-500 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/30 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                                 <ArrowRight size={16} />
                             </div>
                         </Link>
 
-                        <Link to="/reservas" className="flex items-center p-4 bg-white rounded-2xl border border-gray-200 shadow-sm hover:border-blue-300 hover:shadow-md transition-all group">
-                            <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
+                        <Link to="/reservas" className="flex items-center p-4 bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm hover:border-blue-300 dark:hover:border-blue-500 hover:shadow-md transition-all group">
+                            <div className="w-12 h-12 bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 rounded-xl flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
                                 <CalendarClock size={24} />
                             </div>
                             <div>
-                                <h4 className="font-bold text-gray-800">Reservas</h4>
-                                <p className="text-xs text-gray-500">Ver señas activas</p>
+                                <h4 className="font-bold text-gray-800 dark:text-white transition-colors">Reservas</h4>
+                                <p className="text-xs text-gray-500 dark:text-slate-400 transition-colors">Ver señas activas</p>
                             </div>
-                            <div className="ml-auto bg-gray-50 p-2 rounded-full text-gray-300 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
+                            <div className="ml-auto bg-gray-50 dark:bg-slate-700 p-2 rounded-full text-gray-300 dark:text-slate-500 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/30 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                                 <ArrowRight size={16} />
                             </div>
                         </Link>
 
-                        <Link to="/compras" className="flex items-center p-4 bg-white rounded-2xl border border-gray-200 shadow-sm hover:border-blue-300 hover:shadow-md transition-all group">
-                            <div className="w-12 h-12 bg-teal-50 text-teal-600 rounded-xl flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
+                        <Link to="/compras" className="flex items-center p-4 bg-white dark:bg-slate-800 rounded-2xl border border-gray-200 dark:border-slate-700 shadow-sm hover:border-blue-300 dark:hover:border-blue-500 hover:shadow-md transition-all group">
+                            <div className="w-12 h-12 bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 rounded-xl flex items-center justify-center mr-4 group-hover:scale-110 transition-transform">
                                 <Truck size={24} />
                             </div>
                             <div>
-                                <h4 className="font-bold text-gray-800">Compras</h4>
-                                <p className="text-xs text-gray-500">Reponer mercadería</p>
+                                <h4 className="font-bold text-gray-800 dark:text-white transition-colors">Compras</h4>
+                                <p className="text-xs text-gray-500 dark:text-slate-400 transition-colors">Reponer mercadería</p>
                             </div>
-                            <div className="ml-auto bg-gray-50 p-2 rounded-full text-gray-300 group-hover:bg-blue-50 group-hover:text-blue-600 transition-colors">
+                            <div className="ml-auto bg-gray-50 dark:bg-slate-700 p-2 rounded-full text-gray-300 dark:text-slate-500 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/30 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
                                 <ArrowRight size={16} />
                             </div>
                         </Link>
@@ -233,7 +236,7 @@ const DashboardPage = () => {
                 </div>
 
                 {/* RESUMEN RÁPIDO (LATERAL) */}
-                <div className="bg-slate-900 text-white rounded-3xl p-6 relative overflow-hidden flex flex-col justify-center h-full min-h-[200px] shadow-xl">
+                <div className="bg-slate-900 dark:bg-black text-white rounded-3xl p-6 relative overflow-hidden flex flex-col justify-center h-full min-h-[200px] shadow-xl border border-slate-700 dark:border-slate-800">
                     <h3 className="font-bold text-lg mb-6 relative z-10 flex items-center">
                         Resumen Rápido
                     </h3>
