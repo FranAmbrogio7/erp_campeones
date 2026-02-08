@@ -87,7 +87,7 @@ def process_return():
             nota_credito = NotaCredito(
                 codigo=codigo_unico,
                 monto=monto_nota,
-                fecha_emision=datetime.utcnow(), # <--- HORA
+                fecha_emision=datetime.utcnow() - timedelta(hours=3), # <--- HORA
                 estado='activa',
                 observaciones="Generada por cambio/devolución"
             )
@@ -96,7 +96,7 @@ def process_return():
         # CASO B: Cliente debe pagar diferencia -> Venta
         if balance > 0 and metodo_pago_id:
             nueva_venta = Venta(
-                fecha_venta=datetime.utcnow(), # <--- HORA
+                fecha_venta=datetime.utcnow() - timedelta(hours=3), # <--- HORA
                 subtotal=balance,
                 descuento=0,
                 total=balance,
