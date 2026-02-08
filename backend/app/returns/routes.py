@@ -3,7 +3,7 @@ from flask_jwt_extended import jwt_required
 from app.extensions import db
 from app.products.models import Inventario
 from app.sales.models import Venta, DetalleVenta, NotaCredito
-from datetime import datetime, timedelta
+from datetime import datetime
 
 bp = Blueprint('returns', __name__, url_prefix='/api/returns')
 
@@ -56,7 +56,7 @@ def process_return():
         # 4. REGISTRAR VENTA (Si el cliente paga diferencia)
         if balance > 0 and metodo_pago_id:
             nueva_venta = Venta(
-                fecha_venta=ahora_argentina(),
+                fecha_venta=datetime.utcnow(),
                 subtotal=balance, # En un cambio, el subtotal es la diferencia a pagar
                 descuento=0,
                 total=balance,
@@ -93,8 +93,3 @@ def process_return():
         db.session.rollback()
         print(f"Error en returns: {e}") # Para ver el error en la consola del servidor
         return jsonify({"msg": f"Error en transacción: {str(e)}"}), 500
-
-
-def ahora_argentina():
-    # UTC menos 3 horas
-    return datetime.utcnow() - timedelta(hours=3)
