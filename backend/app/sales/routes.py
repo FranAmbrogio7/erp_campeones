@@ -1069,7 +1069,7 @@ def checkout():
             total=data.get('total_final'),
             subtotal=data.get('subtotal_calculado'),
             descuento=0, 
-            fecha_venta=datetime.now(), # Usar datetime.now() del servidor
+            fecha_venta=ahora_argentina(), # Usar datetime.now() del servidor
             id_cliente=cliente_id,
             id_metodo_pago=metodo_pago_id_simple,
             observaciones=observaciones_venta
@@ -1189,49 +1189,144 @@ def checkout():
 def export_caja_pdf(id):
     sesion = SesionCaja.query.get_or_404(id)
     
-    # Cargar ventas con sus pagos
+    # 1. Cargar datos: Ventas y Retiros
     ventas = Venta.query.options(db.joinedload(Venta.pagos).joinedload(VentaPago.metodo))\
         .filter(Venta.fecha_venta >= sesion.fecha_apertura, Venta.fecha_venta <= sesion.fecha_cierre)\
         .order_by(Venta.fecha_venta.asc()).all()
 
+    retiros = MovimientoCaja.query.filter_by(id_sesion=sesion.id_sesion).all()
+
+    # 2. PROCESAMIENTO DE TOTALES POR MÉTODO
+    totales_por_metodo = {}
+    total_ventas_calculado = 0
+    
+    for v in ventas:
+        total_ventas_calculado += v.total
+        
+        # Si tiene pagos detallados (Estructura nueva)
+        if v.pagos:
+            for p in v.pagos:
+                nombre_metodo = p.metodo.nombre if p.metodo else "Sin definir"
+                totales_por_metodo[nombre_metodo] = totales_por_metodo.get(nombre_metodo, 0) + float(p.monto)
+        # Fallback estructura vieja
+        else:
+            nombre_metodo = v.metodo.nombre if v.metodo else "Sin definir"
+            totales_por_metodo[nombre_metodo] = totales_por_metodo.get(nombre_metodo, 0) + float(v.total)
+
+    # Calcular total de retiros
+    total_retiros = sum(r.monto for r in retiros)
+
+    # Calcular Efectivo Teórico en Caja
+    # Asumimos que los métodos que contienen "Efectivo" suman al arqueo
+    total_efectivo_ventas = sum(monto for metodo, monto in totales_por_metodo.items() if "Efectivo" in metodo)
+    caja_teorica = float(sesion.monto_inicial) + total_efectivo_ventas - float(total_retiros)
+
+    # --- GENERACIÓN DEL PDF ---
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=30, leftMargin=30, topMargin=30, bottomMargin=30)
     elements = []
     styles = getSampleStyleSheet()
 
-    # Título y Datos Generales (Igual que antes)
-    title_style = ParagraphStyle('Title', parent=styles['Heading1'], alignment=1, spaceAfter=20)
-    elements.append(Paragraph(f"Reporte de Cierre de Caja #{sesion.id_sesion}", title_style))
+    # TÍTULO
+    title_style = ParagraphStyle('Title', parent=styles['Heading1'], alignment=1, spaceAfter=10)
+    elements.append(Paragraph(f"REPORTE DE CIERRE DE CAJA #{sesion.id_sesion}", title_style))
+    elements.append(Spacer(1, 10))
 
+    # SECCIÓN 1: DATOS GENERALES (CABECERA)
     datos_grales = [
         ["Apertura:", sesion.fecha_apertura.strftime('%d/%m/%Y %H:%M')],
         ["Cierre:", sesion.fecha_cierre.strftime('%d/%m/%Y %H:%M')],
-        ["Caja Inicial:", f"$ {sesion.monto_inicial:,.2f}"],
-        ["Total Sistema:", f"$ {sesion.total_ventas_sistema:,.2f}"],
-        ["Total Real:", f"$ {sesion.total_real:,.2f}"],
-        ["Diferencia:", f"$ {sesion.diferencia:,.2f}"]
+        ["Caja Base (Inicial):", f"$ {sesion.monto_inicial:,.2f}"],
+        ["Ventas Totales:", f"$ {sesion.total_ventas_sistema:,.2f}"],
     ]
-    t_info = Table(datos_grales, colWidths=[120, 200])
+    t_info = Table(datos_grales, colWidths=[140, 200])
     t_info.setStyle(TableStyle([
-        ('FONTNAME', (0,0), (-1,-1), 'Helvetica'),
-        ('TEXTCOLOR', (0,5), (1,5), colors.red if sesion.diferencia < 0 else colors.green),
-        ('FONTNAME', (0,5), (1,5), 'Helvetica-Bold'),
+        ('FONTNAME', (0,0), (-1,-1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0,0), (-1,-1), 10),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
     ]))
     elements.append(t_info)
     elements.append(Spacer(1, 20))
 
-    # Tabla de Ventas
-    data_ventas = [['Hora', 'Ticket', 'Método / Desglose', 'Items', 'Total']]
-    total_acumulado = 0
+    # SECCIÓN 2: DESGLOSE POR MEDIO DE PAGO (LO QUE PEDISTE)
+    elements.append(Paragraph("Resumen por Medio de Pago", styles['Heading3']))
+    
+    data_resumen = [['Método de Pago', 'Total Recaudado']]
+    for metodo, monto in totales_por_metodo.items():
+        data_resumen.append([metodo, f"$ {monto:,.2f}"])
+    
+    # Fila de total
+    data_resumen.append(['TOTAL VENTAS', f"$ {total_ventas_calculado:,.2f}"])
+
+    t_resumen = Table(data_resumen, colWidths=[250, 150])
+    t_resumen.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (1,0), colors.HexColor('#e2e8f0')), # Gris encabezado
+        ('TEXTCOLOR', (0,0), (1,0), colors.black),
+        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
+        ('ALIGN', (1,0), (1,-1), 'RIGHT'), # Montos a la derecha
+        ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+        ('FONTNAME', (0,-1), (-1,-1), 'Helvetica-Bold'), # Negrita fila total
+        ('TopPadding', (0,-1), (-1,-1), 12), # Separación para el total
+        ('LINEBELOW', (0,0), (-1,-1), 0.5, colors.grey),
+    ]))
+    elements.append(t_resumen)
+    elements.append(Spacer(1, 20))
+
+    # SECCIÓN 3: BALANCE DE EFECTIVO Y ARQUEO
+    elements.append(Paragraph("Auditoría de Efectivo", styles['Heading3']))
+    
+    data_arqueo = [
+        ['(+) Caja Inicial', f"$ {sesion.monto_inicial:,.2f}"],
+        ['(+) Ventas en Efectivo', f"$ {total_efectivo_ventas:,.2f}"],
+        ['(-) Salidas / Retiros', f"$ -{total_retiros:,.2f}"],
+        ['(=) Total Esperado en Cajón', f"$ {caja_teorica:,.2f}"],
+        ['Total Real (Contado)', f"$ {sesion.total_real:,.2f}"],
+        ['DIFERENCIA', f"$ {sesion.diferencia:,.2f}"]
+    ]
+    
+    t_arqueo = Table(data_arqueo, colWidths=[250, 150])
+    # Color de la diferencia (Verde si sobra/cero, Rojo si falta)
+    color_dif = colors.green if sesion.diferencia >= 0 else colors.red
+    
+    t_arqueo.setStyle(TableStyle([
+        ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+        ('BACKGROUND', (0,3), (1,3), colors.HexColor('#f1f5f9')), # Fondo gris para "Esperado"
+        ('FONTNAME', (0,3), (-1,-1), 'Helvetica-Bold'), # Negrita ultimas 3 filas
+        ('TEXTCOLOR', (1,5), (1,5), color_dif), # Color diferencia
+        ('ALIGN', (1,0), (1,-1), 'RIGHT'),
+    ]))
+    elements.append(t_arqueo)
+    elements.append(Spacer(1, 20))
+
+    # SECCIÓN 4: DETALLE DE RETIROS (Si hay)
+    if retiros:
+        elements.append(Paragraph("Detalle de Salidas / Gastos", styles['Heading3']))
+        data_retiros = [['Hora', 'Descripción', 'Monto']]
+        for r in retiros:
+            data_retiros.append([r.fecha.strftime('%H:%M'), r.descripcion, f"$ {r.monto:,.2f}"])
+        
+        t_retiros = Table(data_retiros, colWidths=[60, 240, 100])
+        t_retiros.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#fee2e2')), # Rojo claro encabezado
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('ALIGN', (2,0), (2,-1), 'RIGHT'),
+        ]))
+        elements.append(t_retiros)
+        elements.append(Spacer(1, 20))
+
+    # SECCIÓN 5: LISTADO DETALLADO DE VENTAS
+    elements.append(Paragraph("Detalle de Tickets Emitidos", styles['Heading3']))
+    
+    data_ventas = [['Hora', 'Ticket', 'Método', 'Items', 'Total']]
     
     for v in ventas:
         hora = v.fecha_venta.strftime('%H:%M')
         
-        # --- LÓGICA VISUAL MÉTODO EN PDF ---
+        # Formato mixto compacto para la tabla
         if v.pagos and len(v.pagos) > 1:
-            # Formato: "Mixto: Efec $500 / Transf $500"
             detalles = [f"{p.metodo.nombre[:4]} ${p.monto:,.0f}" for p in v.pagos if p.metodo]
-            metodo_str = "MIXTO: " + " / ".join(detalles)
+            metodo_str = "MIXTO:\n" + "\n".join(detalles) # Salto de linea para que entre
         elif v.pagos and len(v.pagos) == 1:
             metodo_str = v.pagos[0].metodo.nombre
         else:
@@ -1239,26 +1334,27 @@ def export_caja_pdf(id):
         
         # Resumen items
         cant_items = len(v.detalles)
-        resumen_items = f"{cant_items} items"
         if cant_items > 0:
             first = v.detalles[0].producto_nombre or "Prod"
-            resumen_items = f"{first[:15]}..." if cant_items == 1 else f"{first[:10]}... (+{cant_items-1})"
+            # Cortamos texto largo
+            texto_prod = first[:25] + "..." if len(first) > 25 else first
+            resumen_items = f"{texto_prod}" if cant_items == 1 else f"{texto_prod} (+{cant_items-1})"
+        else:
+            resumen_items = "Sin items"
 
         data_ventas.append([hora, f"#{v.id_venta}", metodo_str, resumen_items, f"$ {v.total:,.0f}"])
-        total_acumulado += v.total
 
-    data_ventas.append(['', '', '', 'TOTAL:', f"$ {total_acumulado:,.0f}"])
-
-    # Estilos tabla (Ajustamos anchos para que entre el texto mixto)
-    table = Table(data_ventas, colWidths=[40, 50, 200, 120, 80])
-    table.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1e293b')),
+    # Estilos tabla ventas
+    t_ventas = Table(data_ventas, colWidths=[40, 50, 100, 150, 60])
+    t_ventas.setStyle(TableStyle([
+        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#1e293b')), # Azul oscuro encabezado
         ('TEXTCOLOR', (0,0), (-1,0), colors.whitesmoke),
-        ('FONTSIZE', (0,0), (-1,-1), 8), # Letra un poco más chica para que entre el mixto
+        ('FONTSIZE', (0,0), (-1,-1), 8),
         ('ALIGN', (-1,0), (-1,-1), 'RIGHT'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
     ]))
-    elements.append(table)
+    elements.append(t_ventas)
 
     doc.build(elements)
     buffer.seek(0)
@@ -1603,3 +1699,12 @@ def get_budgets_history():
     except Exception as e:
         print(f"Error historial: {e}")
         return jsonify({"msg": "Error cargando historial"}), 500
+
+
+# --- FUNCIÓN AUXILIAR PARA HORA ARGENTINA ---
+def ahora_argentina():
+    # UTC menos 3 horas
+    return datetime.utcnow() - timedelta(hours=3)
+
+
+
