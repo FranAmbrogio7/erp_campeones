@@ -275,7 +275,7 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                             <div>
                                 <label className="text-xs font-bold text-slate-400 block mb-1 uppercase">Nuevo Talle</label>
                                 <select className="border border-slate-300 p-2 rounded-md text-sm w-24 font-bold text-slate-700 outline-none" value={newSize} onChange={e => setNewSize(e.target.value)}>
-                                    {['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', '4', '6', '8', '10', '12', '14', '16'].map(s => <option key={s}>{s}</option>)}
+                                    {['S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '6', '8', '10', '12', '14', '16'].map(s => <option key={s}>{s}</option>)}
                                 </select>
                             </div>
                             <div>
