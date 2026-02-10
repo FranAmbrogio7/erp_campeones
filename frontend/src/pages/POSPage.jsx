@@ -11,7 +11,7 @@ import {
   ShoppingCart, Trash2, Plus, Minus, ScanBarcode, Banknote,
   CreditCard, Smartphone, Lock, ArrowRight, Printer, Clock,
   Search, Shirt, CalendarClock, X, AlertTriangle, Receipt, Edit3,
-  Maximize2, Filter, ChevronDown, Layers, Split, Eye
+  Maximize2, Filter, ChevronDown, Layers, Split, Eye, TrendingUp // <--- IMPORT NUEVO
 } from 'lucide-react';
 
 const SOUNDS = {
@@ -52,8 +52,12 @@ const POSPage = () => {
 
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [selectedMethod, setSelectedMethod] = useState(null);
+
+  // Estados de Precio y Recargo
   const [customTotal, setCustomTotal] = useState(null);
   const [isEditingPrice, setIsEditingPrice] = useState(false);
+  const [surchargePercent, setSurchargePercent] = useState(0); // <--- ESTADO NUEVO
+
   const [creditNoteCode, setCreditNoteCode] = useState('');
 
   const [isSplitPayment, setIsSplitPayment] = useState(false);
@@ -79,9 +83,22 @@ const POSPage = () => {
     localStorage.setItem('pos_cart_backup', JSON.stringify(cart));
   }, [cart]);
 
+  // --- CÁLCULOS MATEMÁTICOS ACTUALIZADOS ---
   const subtotalCalculado = cart.reduce((sum, item) => sum + item.subtotal, 0);
-  const totalFinal = customTotal !== null && customTotal !== '' ? parseFloat(customTotal) : subtotalCalculado;
-  const descuentoVisual = subtotalCalculado - totalFinal;
+
+  // 1. Calculamos el monto del recargo
+  const surchargeAmount = subtotalCalculado * (surchargePercent / 100);
+
+  // 2. El total "sugerido" es subtotal + recargo
+  const totalWithSurcharge = subtotalCalculado + surchargeAmount;
+
+  // 3. Definimos el total final (si hay custom manual gana, sino el calculado con recargo)
+  const totalFinal = customTotal !== null && customTotal !== ''
+    ? parseFloat(customTotal)
+    : totalWithSurcharge;
+
+  // Diferencia para mostrar ahorro o ajuste manual
+  const descuentoVisual = subtotalCalculado - totalFinal; // Nota: si hay recargo, esto da negativo (que es correcto matemáticamente)
 
   const addSplitLine = () => setSplitPayments([...splitPayments, { id_metodo: '', monto: '' }]);
   const removeSplitLine = (index) => {
@@ -218,7 +235,14 @@ const POSPage = () => {
   };
 
   const removeFromCart = (id) => { setCustomTotal(null); setCart(prev => prev.filter(i => i.id_variante !== id)); };
-  const clearCart = () => { if (window.confirm("¿Vaciar carrito?")) setCart([]); };
+
+  const clearCart = () => {
+    if (window.confirm("¿Vaciar carrito?")) {
+      setCart([]);
+      setSurchargePercent(0); // Reseteamos recargo
+      setCustomTotal(null);
+    }
+  };
 
   const handleCheckoutClick = () => {
     if (cart.length === 0) return;
@@ -294,8 +318,12 @@ const POSPage = () => {
       });
 
       playSound('beep'); toast.success(`Venta #${res.data.id} OK`, { id: toastId });
+
+      // Limpieza
       setCart([]); setSkuInput(''); setSelectedMethod(null); setCustomTotal(null);
       setCreditNoteCode(''); setAppliedNote(null); setIsSplitPayment(false); setSplitPayments([{ id_metodo: '', monto: '' }]);
+      setSurchargePercent(0); // Reseteamos recargo
+
       fetchRecentSales();
     } catch (e) { playSound('error'); toast.error(e.response?.data?.msg || "Error", { id: toastId }); }
   };
@@ -471,7 +499,6 @@ const POSPage = () => {
         </div>
 
         {/* --- MODAL DETALLE DE VENTA --- */}
-        {/* --- MODAL DETALLE DE VENTA --- */}
         {viewingSale && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in" onClick={() => setViewingSale(null)}>
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh] transition-colors" onClick={e => e.stopPropagation()}>
@@ -593,6 +620,40 @@ const POSPage = () => {
         <div className="p-4 bg-white dark:bg-slate-800 border-t-2 border-gray-100 dark:border-slate-700 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-20 transition-colors">
           {appliedNote && <div className="mb-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3 rounded-lg flex justify-between items-center animate-pulse"><div><span className="text-xs font-bold text-green-700 dark:text-green-400 block">NOTA APLICADA</span><span className="text-sm font-mono text-gray-700 dark:text-gray-300">{appliedNote.codigo} (-${appliedNote.monto.toLocaleString()})</span></div><button onClick={() => { setAppliedNote(null); setCustomTotal(null); toast("Nota quitada"); }} className="text-red-400 hover:text-red-600 p-1"><X size={16} /></button></div>}
 
+          {/* --- SECCIÓN RECARGO / INTERÉS (NUEVO) --- */}
+          <div className="mb-4 bg-orange-50 dark:bg-orange-900/10 p-3 rounded-xl border border-orange-100 dark:border-orange-900/30">
+            <div className="flex justify-between items-center mb-2">
+              <span className="text-[10px] font-bold text-orange-600 dark:text-orange-400 uppercase flex items-center">
+                <TrendingUp size={12} className="mr-1" /> Recargo / Interés
+              </span>
+              <span className="text-xs font-bold text-orange-700 dark:text-orange-300">
+                {surchargePercent}% (+${surchargeAmount.toLocaleString()})
+              </span>
+            </div>
+
+            {/* Slider */}
+            <input
+              type="range" min="0" max="50" step="5"
+              value={surchargePercent}
+              onChange={(e) => { setSurchargePercent(Number(e.target.value)); setCustomTotal(null); }}
+              className="w-full h-1.5 bg-gray-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-orange-500 mb-2"
+            />
+
+            {/* Botones Rápidos */}
+            <div className="flex gap-2">
+              {[0, 10, 15, 20, 30].map(pct => (
+                <button
+                  key={pct}
+                  onClick={() => { setSurchargePercent(pct); setCustomTotal(null); }}
+                  className={`flex-1 py-1 text-[10px] font-bold rounded transition-all border ${surchargePercent === pct ? 'bg-orange-500 text-white border-orange-600 shadow-sm' : 'bg-white dark:bg-slate-800 text-gray-500 dark:text-gray-400 border-gray-200 dark:border-slate-600 hover:bg-orange-50 dark:hover:bg-slate-700'}`}
+                >
+                  {pct === 0 ? 'Sin Recargo' : `${pct}%`}
+                </button>
+              ))}
+            </div>
+          </div>
+          {/* ----------------------------- */}
+
           <div className="flex justify-between items-center mb-2">
             <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wide">Medio de Pago</p>
             <button
@@ -689,14 +750,8 @@ const POSPage = () => {
               <div className="flex gap-3 mt-6">
                 <button type="button" onClick={() => setIsCustomModalOpen(false)} className="flex-1 py-3 text-gray-600 dark:text-gray-300 font-bold hover:bg-gray-100 dark:hover:bg-slate-700 rounded-xl">Cancelar</button>
                 <button type="submit" className="flex-1 py-3 bg-yellow-500 text-white font-bold rounded-xl hover:bg-yellow-600 shadow-lg shadow-yellow-200 dark:shadow-none">Agregar</button>
-
-
-
-
-
               </div>
             </form>
-
           </div>
         </div>
       )}
