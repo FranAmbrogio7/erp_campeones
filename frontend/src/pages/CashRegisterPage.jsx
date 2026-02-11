@@ -50,12 +50,40 @@ const CashRegisterPage = () => {
             .reduce((acc, curr) => acc + curr.total, 0);
     }, [salesList]);
 
+    // 1. Filtrado visual de la tabla (qué filas se ven)
     const filteredSales = useMemo(() => {
         if (filterMethod === 'Todos') return salesList;
         return salesList.filter(v => v.metodo.includes(filterMethod));
     }, [salesList, filterMethod]);
 
-    const filteredTotal = useMemo(() => filteredSales.reduce((acc, curr) => acc + curr.total, 0), [filteredSales]);
+    // 2. Cálculo matemático corregido (Suma inteligente de partes)
+    const filteredTotal = useMemo(() => {
+        // Si no hay filtro, sumamos totales brutos
+        if (filterMethod === 'Todos') {
+            return salesList.reduce((acc, curr) => acc + curr.total, 0);
+        }
+
+        // Si hay filtro, sumamos SOLO la parte correspondiente al método
+        return salesList.reduce((acc, sale) => {
+            // Verificar si la venta tiene desglose de pagos (Backend nuevo)
+            if (sale.pagos_detalle && sale.pagos_detalle.length > 0) {
+                // Buscamos los pagos que coincidan con el filtro (Ej: "Tarjeta")
+                const partesQueCoinciden = sale.pagos_detalle.filter(p =>
+                    p.metodo.includes(filterMethod)
+                );
+
+                // Sumamos esos montos parciales
+                const sumaParcial = partesQueCoinciden.reduce((sum, p) => sum + p.monto, 0);
+                return acc + sumaParcial;
+            }
+
+            // Fallback para ventas antiguas sin detalle (si el string coincide, sumamos todo)
+            if (sale.metodo.includes(filterMethod)) {
+                return acc + sale.total;
+            }
+            return acc;
+        }, 0);
+    }, [salesList, filterMethod]);
 
     const getCountByMethod = (method) => {
         if (method === 'Todos') return salesList.length;
@@ -229,7 +257,7 @@ const CashRegisterPage = () => {
                                             <th className="p-4 bg-gray-50/95 dark:bg-slate-800/95">Hora</th>
                                             <th className="p-4 bg-gray-50/95 dark:bg-slate-800/95">Detalle</th>
                                             <th className="p-4 bg-gray-50/95 dark:bg-slate-800/95">Método</th>
-                                            <th className="p-4 bg-gray-50/95 dark:bg-slate-800/95 text-right">Monto</th>
+                                            <th className="p-4 bg-gray-50/95 dark:bg-slate-800/95 text-right">Monto Total</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-50 dark:divide-slate-700">
@@ -259,6 +287,7 @@ const CashRegisterPage = () => {
                                 </table>
                             </div>
 
+                            {/* FOOTER TOTALES - AQUI ESTÁ LA MAGIA CORREGIDA */}
                             <div className="p-4 bg-gray-50 dark:bg-slate-800 border-t border-gray-200 dark:border-slate-700 flex justify-between items-center transition-colors">
                                 <div>
                                     <span className="text-xs font-bold text-gray-400 dark:text-gray-500 uppercase block">Resumen Filtro: {filterMethod}</span>
