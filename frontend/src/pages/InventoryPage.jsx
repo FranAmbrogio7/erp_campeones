@@ -343,7 +343,7 @@ const InventoryPage = () => {
 
                 {viewMode === 'active' && (
                     <div className="flex flex-wrap items-center gap-2 w-full justify-end border-t border-gray-100 dark:border-slate-700 pt-3">
-                        {/* --- NUEVO BOTÓN TOGGLE FILTROS AVANZADOS --- */}
+                        {/* --- BOTÓN TOGGLE FILTROS AVANZADOS --- */}
                         <button onClick={() => setShowAdvancedFilters(!showAdvancedFilters)} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all mr-auto ${showAdvancedFilters ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300' : 'bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-500 dark:text-slate-300'}`}>
                             <ListFilter size={16} className="mr-2" /> {showAdvancedFilters ? 'Ocultar Filtros' : 'Filtros Avanzados'}
                         </button>
@@ -375,8 +375,8 @@ const InventoryPage = () => {
             </div>
 
             {!showForm && (
-                <div className="flex flex-col gap-2 z-10">
-                    {/* FILTROS BÁSICOS ORIGINALES */}
+                <div className="flex flex-col gap-3 z-10">
+                    {/* FILTROS BÁSICOS REDISEÑADOS: BUSCADOR + LIGAS */}
                     <div className="bg-white dark:bg-slate-800 p-2 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 flex flex-col md:flex-row gap-2 animate-fade-in transition-colors">
                         <div className="relative flex-1">
                             <Search className="absolute left-3 top-3 text-gray-400" size={18} />
@@ -388,11 +388,25 @@ const InventoryPage = () => {
                             />
                             {searchTerm && <button onClick={() => setSearchTerm('')} className="absolute right-3 top-3 text-gray-400 hover:text-red-500"><X size={16} /></button>}
                         </div>
-                        <select value={selectedCat} onChange={e => setSelectedCat(e.target.value)} className="md:w-48 bg-gray-50 dark:bg-slate-700 border-transparent focus:bg-white dark:focus:bg-slate-600 focus:border-blue-200 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/30 rounded-lg outline-none px-3 py-2 text-sm font-bold text-gray-600 dark:text-slate-200"><option value="">Categoría: Todas</option>{categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
-                        <select value={selectedSpec} onChange={e => setSelectedSpec(e.target.value)} className="md:w-48 bg-gray-50 dark:bg-slate-700 border-transparent focus:bg-white dark:focus:bg-slate-600 focus:border-blue-200 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/30 rounded-lg outline-none px-3 py-2 text-sm font-bold text-gray-600 dark:text-slate-200"><option value="">Liga: Todas</option>{specificCategories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
+                        {/* Selector de Ligas (Dropdown) */}
+                        <select value={selectedSpec} onChange={e => setSelectedSpec(e.target.value)} className="md:w-64 bg-gray-50 dark:bg-slate-700 border-transparent focus:bg-white dark:focus:bg-slate-600 focus:border-blue-200 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/30 rounded-lg outline-none px-3 py-2 text-sm font-bold text-gray-600 dark:text-slate-200 cursor-pointer">
+                            <option value="">Ligas / Tipos: Todas</option>
+                            {specificCategories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                        </select>
                     </div>
 
-                    {/* --- NUEVO: PANEL DE FILTROS AVANZADOS (DESPLEGABLE) --- */}
+                    {/* BOTONES DE CATEGORÍAS (CHIPS) */}
+                    <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar px-1">
+                        <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wide mr-1 shrink-0">Categorías:</span>
+                        <button onClick={() => setSelectedCat('')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all whitespace-nowrap shrink-0 ${selectedCat === '' ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white dark:bg-slate-800 text-gray-500 border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700'}`}>Todas</button>
+                        {categories.map(c => (
+                            <button key={c.id} onClick={() => setSelectedCat(selectedCat === c.id ? '' : c.id)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all whitespace-nowrap shrink-0 ${selectedCat == c.id ? 'bg-blue-600 text-white border-blue-600 shadow-md transform scale-105' : 'bg-white dark:bg-slate-800 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-slate-700 hover:bg-gray-100 dark:hover:bg-slate-700'}`}>
+                                {c.nombre}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* PANEL DE FILTROS AVANZADOS */}
                     {showAdvancedFilters && (
                         <div className="bg-indigo-50 dark:bg-indigo-900/10 p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/50 flex flex-wrap gap-4 items-center animate-fade-in-down transition-colors">
                             <div className="flex items-center gap-2">
@@ -462,7 +476,7 @@ const InventoryPage = () => {
                                         <div className="flex justify-end gap-1">
                                             {viewMode === 'active' ? (
                                                 <>
-                                                    {/* --- NUEVO BOTÓN DUPLICAR --- */}
+                                                    {/* BOTÓN DUPLICAR */}
                                                     <button onClick={() => handleDuplicate(p)} className="text-gray-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg" title="Duplicar"><Copy size={18} /></button>
 
                                                     <button onClick={() => handleToggleStatus(p)} className="text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 p-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg" title="Archivar"><Archive size={18} /></button>

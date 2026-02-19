@@ -180,3 +180,12 @@ class VentaPago(db.Model):
     monto = db.Column(db.Numeric(10, 2), nullable=False)
 
     metodo = db.relationship('MetodoPago')
+
+
+class Gasto(db.Model):
+    __tablename__ = 'gastos'
+    id_gasto = db.Column(db.Integer, primary_key=True)
+    fecha = db.Column(db.DateTime, default=datetime.now)
+    monto = db.Column(db.Numeric(10, 2), nullable=False)
+    categoria = db.Column(db.String(50)) # Alquiler, Sueldos, Mercadería, Servicios, Varios
+    descripcion = db.Column(db.String(255))

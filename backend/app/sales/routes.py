@@ -5,7 +5,7 @@ from io import StringIO
 from flask import Blueprint, jsonify, request, Response, send_file
 from app.extensions import db
 # IMPORTAMOS DESDE TUS ARCHIVOS SEPARADOS
-from app.sales.models import Venta, DetalleVenta, MetodoPago, SesionCaja, MovimientoCaja, Reserva, DetalleReserva, Presupuesto, DetallePresupuesto, NotaCredito
+from app.sales.models import Venta, DetalleVenta, MetodoPago, SesionCaja, MovimientoCaja, Reserva, DetalleReserva, Presupuesto, DetallePresupuesto, NotaCredito, Gasto
 from app.products.models import Producto, ProductoVariante, Inventario, Categoria
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import desc, func, extract
@@ -464,22 +464,42 @@ def get_period_stats():
         return jsonify({"msg": "Fechas requeridas"}), 400
 
     try:
-        # Añadimos hora al end_date para incluir todo el último día (hasta 23:59:59)
         end_date_full = f"{end_date} 23:59:59"
 
-        # 1. QUERY BASE: Ventas en el rango (excluyendo canceladas si tuvieras)
-        query_base = Venta.query.filter(
+        # 1. INGRESOS (VENTAS)
+        total_ingresos = db.session.query(func.sum(Venta.total)).filter(
             Venta.fecha_venta >= start_date,
             Venta.fecha_venta <= end_date_full
-        )
+        ).scalar() or 0
 
-        # 2. TOTALES GENERALES
-        total_ingresos = query_base.with_entities(func.sum(Venta.total)).scalar() or 0
-        total_tickets = query_base.with_entities(func.count(Venta.id_venta)).scalar() or 0
+        total_tickets = db.session.query(func.count(Venta.id_venta)).filter(
+            Venta.fecha_venta >= start_date,
+            Venta.fecha_venta <= end_date_full
+        ).scalar() or 0
+        
         ticket_promedio = total_ingresos / total_tickets if total_tickets > 0 else 0
 
-        # 3. VENTAS POR MÉTODO DE PAGO
-        # Group by MetodoPago
+        # 2. EGRESOS (GASTOS) - NUEVO BLOQUE
+        total_gastos = db.session.query(func.sum(Gasto.monto)).filter(
+            Gasto.fecha >= start_date,
+            Gasto.fecha <= end_date_full
+        ).scalar() or 0
+
+        # Lista de gastos para la tabla
+        gastos_query = Gasto.query.filter(
+            Gasto.fecha >= start_date,
+            Gasto.fecha <= end_date_full
+        ).order_by(desc(Gasto.fecha)).all()
+
+        gastos_list = [{
+            "id": g.id_gasto,
+            "fecha": g.fecha.strftime('%d/%m/%Y'),
+            "categoria": g.categoria,
+            "descripcion": g.descripcion,
+            "monto": float(g.monto)
+        } for g in gastos_query]
+
+        # 3. VENTAS POR MÉTODO
         by_method = db.session.query(
             MetodoPago.nombre, 
             func.sum(Venta.total), 
@@ -495,7 +515,7 @@ def get_period_stats():
             "count": m[2]
         } for m in by_method]
 
-        # 4. TOP 5 PRODUCTOS MÁS VENDIDOS (Por cantidad)
+        # 4. TOP PRODUCTOS
         top_products = db.session.query(
             Producto.nombre,
             func.sum(DetalleVenta.cantidad).label('qty_total'),
@@ -514,14 +534,18 @@ def get_period_stats():
             "recaudado": float(tp[2])
         } for tp in top_products]
 
+        # RESULTADO FINAL
         return jsonify({
             "summary": {
                 "ingresos": float(total_ingresos),
                 "tickets": total_tickets,
-                "promedio": float(ticket_promedio)
+                "promedio": float(ticket_promedio),
+                "gastos": float(total_gastos),          # Nuevo
+                "ganancia_neta": float(total_ingresos) - float(total_gastos) # Nuevo
             },
             "by_method": methods_data,
-            "top_products": top_products_data
+            "top_products": top_products_data,
+            "gastos_list": gastos_list # Nuevo
         }), 200
 
     except Exception as e:
@@ -1709,3 +1733,35 @@ def ahora_argentina():
 
 
 
+
+
+
+@bp.route('/expenses', methods=['POST'])
+@jwt_required()
+def create_expense():
+    data = request.get_json()
+    try:
+        nuevo_gasto = Gasto(
+            fecha=data.get('fecha') or ahora_argentina(),
+            monto=float(data.get('monto')),
+            categoria=data.get('categoria'),
+            descripcion=data.get('descripcion')
+        )
+        db.session.add(nuevo_gasto)
+        db.session.commit()
+        return jsonify({"msg": "Gasto registrado exitosamente"}), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"msg": str(e)}), 500
+
+@bp.route('/expenses/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_expense(id):
+    try:
+        gasto = Gasto.query.get_or_404(id)
+        db.session.delete(gasto)
+        db.session.commit()
+        return jsonify({"msg": "Gasto eliminado"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"msg": str(e)}), 500
