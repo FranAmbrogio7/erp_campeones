@@ -11,6 +11,7 @@ from flask import jsonify, request, send_file, current_app
 from app.products import bp
 # IMPORTAMOS DESDE EL ARCHIVO DE PRODUCTOS
 from app.products.models import Producto, ProductoVariante, Categoria, CategoriaEspecifica, Inventario
+from app.sales.models import DetalleVenta
 from app.extensions import db
 from flask_jwt_extended import jwt_required
 import barcode
@@ -132,6 +133,7 @@ def get_products():
     exact_stock = request.args.get('exact_stock', type=int) # Filtro "=="
     size_filter = request.args.get('size_filter') # Ej: "S", "40"
     no_image = request.args.get('no_image') == 'true'
+    sort_by = request.args.get('sort_by', 'recientes') # <--- PARÁMETRO DE ORDEN
 
     # 2. Query Base
     query = Producto.query.outerjoin(Categoria).outerjoin(CategoriaEspecifica)
@@ -168,7 +170,7 @@ def get_products():
             ))
         query = query.group_by(Producto.id_producto)
 
-    # --- FILTROS DE STOCK Y TALLE (LOGICA COMPLEJA) ---
+    # --- FILTROS DE STOCK Y TALLE ---
     
     # Caso 1: Filtro "Stock Mínimo General" (Ocultar stock 0)
     if min_stock is not None and min_stock > 0:
@@ -178,11 +180,8 @@ def get_products():
         query = query.filter(Producto.id_producto.in_(products_with_stock))
 
     # Caso 2: Filtro "Stock Exacto" y/o "Talle Específico"
-    # (Ej: Buscar "Talle S" con "Stock 0")
     if exact_stock is not None or size_filter:
-        # Subquery para encontrar variantes que cumplan LA condición exacta
         sub_q = db.session.query(ProductoVariante.id_producto).join(Inventario)
-        
         conditions = []
         if exact_stock is not None:
             conditions.append(Inventario.stock_actual == exact_stock)
@@ -192,8 +191,45 @@ def get_products():
         sub_q = sub_q.filter(and_(*conditions)).subquery()
         query = query.filter(Producto.id_producto.in_(sub_q))
 
-    # 4. Paginación y Respuesta
-    paginated_data = query.order_by(Producto.id_producto.desc()).paginate(page=page, per_page=per_page, error_out=False)
+# ==========================================
+    # --- 4. LÓGICA DE ORDENAMIENTO (SORTING) ---
+    # ==========================================
+    if sort_by == 'mas_vendidos':
+        # Creamos una subconsulta para saber cuánto se vendió de cada producto
+        sales_subq = db.session.query(
+            ProductoVariante.id_producto,
+            func.sum(DetalleVenta.cantidad).label('total_vendido')
+        ).join(DetalleVenta, DetalleVenta.id_variante == ProductoVariante.id_variante) \
+         .group_by(ProductoVariante.id_producto).subquery()
+        
+        # Unimos la subconsulta a la consulta principal y ordenamos (quitamos nulls_last)
+        query = query.outerjoin(sales_subq, Producto.id_producto == sales_subq.c.id_producto)
+        query = query.order_by(sales_subq.c.total_vendido.desc(), Producto.id_producto.desc())
+        
+    elif sort_by in ['mayor_stock', 'menor_stock']:
+        # Creamos una subconsulta para sumar el stock total de todas las variantes de un producto
+        stock_subq = db.session.query(
+            ProductoVariante.id_producto,
+            func.sum(Inventario.stock_actual).label('total_stock')
+        ).join(Inventario, Inventario.id_variante == ProductoVariante.id_variante) \
+         .group_by(ProductoVariante.id_producto).subquery()
+         
+        query = query.outerjoin(stock_subq, Producto.id_producto == stock_subq.c.id_producto)
+        
+        if sort_by == 'mayor_stock':
+            # Quitamos nulls_last
+            query = query.order_by(stock_subq.c.total_stock.desc(), Producto.id_producto.desc())
+        else:
+            # Quitamos nulls_first
+            query = query.order_by(stock_subq.c.total_stock.asc(), Producto.id_producto.desc())
+            
+    else: 
+        # Default: 'recientes'
+        query = query.order_by(Producto.id_producto.desc())
+
+
+    # 5. Paginación y Respuesta (Removido el order_by viejo de aquí)
+    paginated_data = query.paginate(page=page, per_page=per_page, error_out=False)
 
     resultado = []
     for prod in paginated_data.items:

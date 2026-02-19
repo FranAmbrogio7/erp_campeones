@@ -45,12 +45,13 @@ const InventoryPage = () => {
     const [selectedItems, setSelectedItems] = useState(new Set());
     const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
-    // --- ESTADOS DE FILTROS ---
+    // --- ESTADOS DE FILTROS Y PAGINACIÓN ---
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCat, setSelectedCat] = useState('');
     const [selectedSpec, setSelectedSpec] = useState('');
+    const [sortBy, setSortBy] = useState('mas_vendidos');
 
     // --- NUEVOS FILTROS ESPECÍFICOS ---
     const [filterExactStock, setFilterExactStock] = useState('');
@@ -108,13 +109,18 @@ const InventoryPage = () => {
         if (token) fetchDropdowns();
     }, [token]);
 
-    // 2. CARGA DE PRODUCTOS
-    const fetchProducts = async (currentPage = 1) => {
+    // 2. CARGA DE PRODUCTOS (Lógica Híbrida)
+    const fetchProducts = async (currentPage = page) => {
         setLoading(true);
         try {
+            // Si hay texto en el buscador, activamos scroll infinito (limit 1000)
+            const isSearching = searchTerm.trim() !== '';
+            const limit = isSearching ? 200 : 50;
+            const targetPage = isSearching ? 1 : currentPage;
+
             const params = {
-                page: currentPage,
-                limit: 15,
+                page: targetPage,
+                limit: limit,
                 search: searchTerm,
                 category_id: selectedCat || undefined,
                 specific_id: selectedSpec || undefined,
@@ -122,13 +128,19 @@ const InventoryPage = () => {
                 min_stock: hideOutOfStock ? 1 : undefined,
                 exact_stock: filterExactStock !== '' ? filterExactStock : undefined,
                 size_filter: filterSize || undefined,
-                no_image: filterNoImage ? 'true' : undefined
+                no_image: filterNoImage ? 'true' : undefined,
+                sort_by: sortBy
             };
 
             const res = await api.get('/products', { params });
             setProducts(res.data.products);
-            setTotalPages(res.data.meta.total_pages);
-            setPage(res.data.meta.current_page);
+
+            // Si la API devuelve meta (paginación)
+            if (res.data.meta) {
+                setTotalPages(res.data.meta.total_pages);
+                setPage(res.data.meta.current_page);
+            }
+
             setSelectedItems(new Set());
         } catch (error) {
             toast.error("Error cargando inventario");
@@ -137,12 +149,13 @@ const InventoryPage = () => {
         }
     };
 
+    // Resetear a página 1 cuando cambian los filtros
     useEffect(() => {
         const delayFn = setTimeout(() => {
             fetchProducts(1);
         }, 400);
         return () => clearTimeout(delayFn);
-    }, [searchTerm, selectedCat, selectedSpec, viewMode, hideOutOfStock, filterExactStock, filterSize, filterNoImage]);
+    }, [searchTerm, selectedCat, selectedSpec, viewMode, hideOutOfStock, filterExactStock, filterSize, filterNoImage, sortBy]);
 
     // --- MANEJO DE SELECCIÓN ---
     const toggleSelect = (id) => {
@@ -315,7 +328,6 @@ const InventoryPage = () => {
         } catch (e) { toast.error("Error", { id: t }); }
     };
 
-    // Adaptado para Dark Mode
     const getStockColorClass = (stock) => {
         if (stock === 0) return "bg-red-100 text-red-700 border-red-200 ring-1 ring-red-50 dark:bg-red-900/30 dark:text-red-300 dark:border-red-800 dark:ring-red-900/20";
         if (stock < 3) return "bg-amber-100 text-amber-800 border-amber-200 ring-1 ring-amber-50 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-800 dark:ring-amber-900/20";
@@ -326,6 +338,7 @@ const InventoryPage = () => {
         <div className="h-[calc(100vh-4rem)] flex flex-col p-4 max-w-[1600px] mx-auto gap-4 bg-gray-100 dark:bg-slate-950 transition-colors duration-300">
             <Toaster position="top-center" />
 
+            {/* HEADER ACCIONES */}
             <div className="flex flex-col gap-4 shrink-0 bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 transition-colors">
                 <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                     <div className="flex items-center gap-4">
@@ -343,7 +356,6 @@ const InventoryPage = () => {
 
                 {viewMode === 'active' && (
                     <div className="flex flex-wrap items-center gap-2 w-full justify-end border-t border-gray-100 dark:border-slate-700 pt-3">
-                        {/* --- BOTÓN TOGGLE FILTROS AVANZADOS --- */}
                         <button onClick={() => setShowAdvancedFilters(!showAdvancedFilters)} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all mr-auto ${showAdvancedFilters ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300' : 'bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-500 dark:text-slate-300'}`}>
                             <ListFilter size={16} className="mr-2" /> {showAdvancedFilters ? 'Ocultar Filtros' : 'Filtros Avanzados'}
                         </button>
@@ -376,7 +388,7 @@ const InventoryPage = () => {
 
             {!showForm && (
                 <div className="flex flex-col gap-3 z-10">
-                    {/* FILTROS BÁSICOS REDISEÑADOS: BUSCADOR + LIGAS */}
+                    {/* FILTROS BÁSICOS */}
                     <div className="bg-white dark:bg-slate-800 p-2 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 flex flex-col md:flex-row gap-2 animate-fade-in transition-colors">
                         <div className="relative flex-1">
                             <Search className="absolute left-3 top-3 text-gray-400" size={18} />
@@ -388,8 +400,15 @@ const InventoryPage = () => {
                             />
                             {searchTerm && <button onClick={() => setSearchTerm('')} className="absolute right-3 top-3 text-gray-400 hover:text-red-500"><X size={16} /></button>}
                         </div>
-                        {/* Selector de Ligas (Dropdown) */}
-                        <select value={selectedSpec} onChange={e => setSelectedSpec(e.target.value)} className="md:w-64 bg-gray-50 dark:bg-slate-700 border-transparent focus:bg-white dark:focus:bg-slate-600 focus:border-blue-200 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/30 rounded-lg outline-none px-3 py-2 text-sm font-bold text-gray-600 dark:text-slate-200 cursor-pointer">
+
+                        <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="md:w-48 bg-gray-50 dark:bg-slate-700 border-transparent focus:bg-white dark:focus:bg-slate-600 focus:border-blue-200 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/30 rounded-lg outline-none px-3 py-2 text-sm font-bold text-gray-600 dark:text-slate-200 cursor-pointer">
+                            <option value="recientes">Más Recientes</option>
+                            <option value="mas_vendidos">Más Vendidos</option>
+                            <option value="mayor_stock">Mayor Stock</option>
+                            <option value="menor_stock">Menor Stock</option>
+                        </select>
+
+                        <select value={selectedSpec} onChange={e => setSelectedSpec(e.target.value)} className="md:w-56 bg-gray-50 dark:bg-slate-700 border-transparent focus:bg-white dark:focus:bg-slate-600 focus:border-blue-200 dark:focus:border-blue-500 focus:ring-4 focus:ring-blue-50 dark:focus:ring-blue-900/30 rounded-lg outline-none px-3 py-2 text-sm font-bold text-gray-600 dark:text-slate-200 cursor-pointer">
                             <option value="">Ligas / Tipos: Todas</option>
                             {specificCategories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                         </select>
@@ -450,7 +469,7 @@ const InventoryPage = () => {
             <div className={`bg-white dark:bg-slate-800 rounded-2xl shadow-sm border flex-1 flex flex-col overflow-hidden relative transition-colors ${viewMode === 'active' ? 'border-gray-200 dark:border-slate-700' : 'border-red-200 dark:border-red-900'}`}>
                 {viewMode === 'archived' && <div className="bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 text-xs font-bold p-2 text-center border-b border-red-100 dark:border-red-900/50">VISTA DE ARCHIVO</div>}
 
-                <div className="overflow-auto flex-1">
+                <div className="overflow-auto flex-1 custom-scrollbar">
                     <table className="min-w-full text-sm text-left">
                         <thead className="bg-slate-50 dark:bg-slate-900 text-slate-500 dark:text-slate-400 font-bold uppercase text-xs sticky top-0 z-10 transition-colors">
                             <tr>
@@ -476,9 +495,7 @@ const InventoryPage = () => {
                                         <div className="flex justify-end gap-1">
                                             {viewMode === 'active' ? (
                                                 <>
-                                                    {/* BOTÓN DUPLICAR */}
                                                     <button onClick={() => handleDuplicate(p)} className="text-gray-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg" title="Duplicar"><Copy size={18} /></button>
-
                                                     <button onClick={() => handleToggleStatus(p)} className="text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 p-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg" title="Archivar"><Archive size={18} /></button>
                                                     <button onClick={() => { setEditingProduct(p); setIsEditModalOpen(true); }} className="text-gray-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 p-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg" title="Editar"><Edit size={18} /></button>
                                                 </>
@@ -496,9 +513,24 @@ const InventoryPage = () => {
                     </table>
                 </div>
 
+                {/* --- FOOTER PAGINACIÓN / SCROLL --- */}
                 <div className="bg-white dark:bg-slate-800 p-3 border-t border-gray-200 dark:border-slate-700 flex items-center justify-between shrink-0 transition-colors">
-                    <span className="text-xs text-gray-400 font-medium">Pág <span className="text-gray-800 dark:text-white font-bold">{page}</span> de {totalPages}</span>
-                    <div className="flex gap-2"><button onClick={() => page > 1 && fetchProducts(page - 1)} disabled={page === 1} className="p-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300"><ChevronLeft size={16} /></button><button onClick={() => page < totalPages && fetchProducts(page + 1)} disabled={page === totalPages} className="p-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300"><ChevronRight size={16} /></button></div>
+                    {searchTerm.trim() !== '' ? (
+                        <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                            Mostrando <span className="text-gray-800 dark:text-white font-bold">{products.length}</span> resultados de la búsqueda
+                        </span>
+                    ) : (
+                        <>
+                            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+                                Pág <span className="text-gray-800 dark:text-white font-bold">{page}</span> de {totalPages}
+                            </span>
+                            <div className="flex gap-2">
+                                <button onClick={() => page > 1 && fetchProducts(page - 1)} disabled={page === 1} className="p-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300"><ChevronLeft size={16} /></button>
+                                <button onClick={() => page < totalPages && fetchProducts(page + 1)} disabled={page === totalPages} className="p-2 border rounded-lg hover:bg-gray-50 dark:hover:bg-slate-700 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300"><ChevronRight size={16} /></button>
+                            </div>
+                        </>
+                    )}
+                    {loading && <Loader2 className="animate-spin text-blue-500 absolute left-1/2" size={16} />}
                 </div>
             </div>
 
