@@ -12,7 +12,7 @@ import {
   CreditCard, Smartphone, Lock, ArrowRight, Printer, Clock,
   Search, Shirt, CalendarClock, X, AlertTriangle, Receipt, Edit3,
   Maximize2, Filter, ChevronDown, Layers, Split, Eye,
-  TrendingUp, TrendingDown, Users // <--- IMPORTS NUEVOS
+  TrendingUp, TrendingDown, Users
 } from 'lucide-react';
 
 const SOUNDS = {
@@ -29,15 +29,11 @@ const POSPage = () => {
   const [isRegisterOpen, setIsRegisterOpen] = useState(null);
   const [skuInput, setSkuInput] = useState('');
 
-  // === NUEVA LÓGICA MULTI-CARRITO ===
-  // 1. Estado para manejar múltiples carritos (4 slots)
+  // === LÓGICA MULTI-CARRITO ===
   const [allCarts, setAllCarts] = useState(() => {
     try {
-      // Intentamos recuperar la estructura nueva
       const savedMulti = localStorage.getItem('pos_multi_carts_backup');
       if (savedMulti) return JSON.parse(savedMulti);
-
-      // Migración: Si existe el carrito viejo, lo ponemos en el slot 0
       const oldCart = localStorage.getItem('pos_cart_backup');
       const initial = oldCart ? [JSON.parse(oldCart), [], [], []] : [[], [], [], []];
       return initial;
@@ -46,24 +42,18 @@ const POSPage = () => {
     }
   });
 
-  // 2. Estado para saber en qué pestaña estamos (0, 1, 2, 3)
   const [activeTab, setActiveTab] = useState(0);
-
-  // 3. "cart" ahora es derivado del slot activo (para no romper tu código existente)
   const cart = allCarts[activeTab];
 
-  // 4. "setCart" ahora es un proxy que actualiza solo el slot activo
   const setCart = (valueOrFn) => {
     setAllCarts(prev => {
       const newCarts = [...prev];
-      // Manejamos si viene una función (setCart(prev => ...)) o un valor directo
       const currentVal = newCarts[activeTab];
       const newVal = typeof valueOrFn === 'function' ? valueOrFn(currentVal) : valueOrFn;
       newCarts[activeTab] = newVal;
       return newCarts;
     });
   };
-  // ===================================
 
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [manualTerm, setManualTerm] = useState('');
@@ -82,8 +72,9 @@ const POSPage = () => {
   // Estados de Precio, Recargo y Descuento
   const [customTotal, setCustomTotal] = useState(null);
   const [isEditingPrice, setIsEditingPrice] = useState(false);
+  const [editingItemId, setEditingItemId] = useState(null); // <--- NUEVO: Item en edición
   const [surchargePercent, setSurchargePercent] = useState(0);
-  const [discountPercent, setDiscountPercent] = useState(0); // <--- NUEVO: Descuento
+  const [discountPercent, setDiscountPercent] = useState(0);
 
   const [creditNoteCode, setCreditNoteCode] = useState('');
 
@@ -106,29 +97,16 @@ const POSPage = () => {
 
   useScanDetection(inputRef);
 
-  // Guardar en LocalStorage cada vez que cambien los carritos
   useEffect(() => {
     localStorage.setItem('pos_multi_carts_backup', JSON.stringify(allCarts));
   }, [allCarts]);
 
   // --- CÁLCULOS MATEMÁTICOS ACTUALIZADOS ---
   const subtotalCalculado = cart.reduce((sum, item) => sum + item.subtotal, 0);
-
-  // 1. Calculamos Recargo
   const surchargeAmount = subtotalCalculado * (surchargePercent / 100);
-
-  // 2. Calculamos Descuento (NUEVO)
   const discountAmount = subtotalCalculado * (discountPercent / 100);
-
-  // 3. Total sugerido (Base + Recargo - Descuento)
   const totalWithAdjustments = subtotalCalculado + surchargeAmount - discountAmount;
-
-  // 4. Definimos el total final (si hay custom manual gana, sino el calculado)
-  const totalFinal = customTotal !== null && customTotal !== ''
-    ? parseFloat(customTotal)
-    : totalWithAdjustments;
-
-  // Diferencia visual
+  const totalFinal = customTotal !== null && customTotal !== '' ? parseFloat(customTotal) : totalWithAdjustments;
   const descuentoVisual = subtotalCalculado - totalFinal;
 
   const addSplitLine = () => setSplitPayments([...splitPayments, { id_metodo: '', monto: '' }]);
@@ -181,11 +159,12 @@ const POSPage = () => {
   };
 
   useEffect(() => {
-    if (!isRegisterOpen || isEditingPrice || isConfirmModalOpen || isReservationModalOpen || zoomImage || isCustomModalOpen) return;
+    if (!isRegisterOpen || isEditingPrice || editingItemId || isConfirmModalOpen || isReservationModalOpen || zoomImage || isCustomModalOpen) return;
     if (isSearchMode) searchInputRef.current?.focus();
     else if (document.activeElement !== creditNoteInputRef.current) inputRef.current?.focus();
-  }, [cart, isRegisterOpen, isEditingPrice, isConfirmModalOpen, isReservationModalOpen, isSearchMode, zoomImage, isCustomModalOpen]);
+  }, [cart, isRegisterOpen, isEditingPrice, editingItemId, isConfirmModalOpen, isReservationModalOpen, isSearchMode, zoomImage, isCustomModalOpen]);
 
+  // --- BÚSQUEDA ORDENADA POR MAS VENDIDOS ---
   useEffect(() => {
     if (!manualTerm.trim() && !selectedCat && !selectedSpec) {
       setManualResults([]);
@@ -193,7 +172,10 @@ const POSPage = () => {
     }
     const delaySearch = setTimeout(async () => {
       try {
-        const params = { limit: 100 };
+        const params = {
+          limit: 100,
+          sort_by: 'mas_vendidos' // <--- MEJORA: Orden por defecto
+        };
         if (manualTerm.trim()) params.search = manualTerm;
         if (selectedCat) params.category_id = selectedCat;
         if (selectedSpec) params.specific_id = selectedSpec;
@@ -239,7 +221,6 @@ const POSPage = () => {
 
   const addToCart = (product) => {
     setCustomTotal(null);
-    // Usamos el setCart "proxy" que definimos arriba
     setCart((prevCart) => {
       const existing = prevCart.find(i => i.id_variante === product.id_variante);
       if (existing) {
@@ -266,21 +247,32 @@ const POSPage = () => {
     }));
   };
 
+  // --- NUEVA FUNCIÓN: EDITAR PRECIO UNITARIO ---
+  const updateItemPrice = (id, newPrice) => {
+    setCustomTotal(null); // Resetea total custom si editan items sueltos
+    setCart(prev => prev.map(item => {
+      if (item.id_variante === id) {
+        const parsedPrice = parseFloat(newPrice);
+        const validPrice = isNaN(parsedPrice) ? item.precio : parsedPrice;
+        return { ...item, precio: validPrice, subtotal: validPrice * item.cantidad };
+      }
+      return item;
+    }));
+  };
+
   const removeFromCart = (id) => { setCustomTotal(null); setCart(prev => prev.filter(i => i.id_variante !== id)); };
 
   const clearCart = () => {
     if (window.confirm("¿Vaciar carrito?")) {
       setCart([]);
       setSurchargePercent(0);
-      setDiscountPercent(0); // Resetear descuento
+      setDiscountPercent(0);
       setCustomTotal(null);
     }
   };
 
-  // Función para cambiar de pestaña/carrito
   const handleSwitchTab = (index) => {
     setActiveTab(index);
-    // Reseteamos las configuraciones de cobro al cambiar de cliente
     setCustomTotal(null);
     setSurchargePercent(0);
     setDiscountPercent(0);
@@ -364,12 +356,9 @@ const POSPage = () => {
 
       playSound('beep'); toast.success(`Venta #${res.data.id} OK`, { id: toastId });
 
-      // Limpieza
       setCart([]); setSkuInput(''); setSelectedMethod(null); setCustomTotal(null);
       setCreditNoteCode(''); setAppliedNote(null); setIsSplitPayment(false); setSplitPayments([{ id_metodo: '', monto: '' }]);
-      setSurchargePercent(0);
-      setDiscountPercent(0); // Resetear
-
+      setSurchargePercent(0); setDiscountPercent(0);
       fetchRecentSales();
     } catch (e) { playSound('error'); toast.error(e.response?.data?.msg || "Error", { id: toastId }); }
   };
@@ -422,8 +411,8 @@ const POSPage = () => {
       <ConfirmModal isOpen={isConfirmModalOpen} onClose={() => setIsConfirmModalOpen(false)} onConfirm={processSale} title="Cobrar" message={`Total: $${totalFinal.toLocaleString()}`} confirmText="Confirmar" />
       <ReservationModal isOpen={isReservationModalOpen} onClose={() => setIsReservationModalOpen(false)} onConfirm={processReservation} total={totalFinal} paymentMethods={paymentMethods} />
 
-      {/* --- COLUMNA IZQUIERDA --- */}
-      <div className="w-full md:w-2/3 flex flex-col gap-4 h-full">
+      {/* --- COLUMNA IZQUIERDA (Redimensionada para dar más espacio al carrito) --- */}
+      <div className="w-full md:w-[55%] xl:w-[60%] flex flex-col gap-4 h-full">
 
         {/* Panel Escáner */}
         <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 relative z-50 transition-all duration-300">
@@ -548,8 +537,6 @@ const POSPage = () => {
         {viewingSale && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in" onClick={() => setViewingSale(null)}>
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh] transition-colors" onClick={e => e.stopPropagation()}>
-
-              {/* Header Modal */}
               <div className="bg-slate-50 dark:bg-slate-900 p-4 border-b border-gray-200 dark:border-slate-700 flex justify-between items-center">
                 <div>
                   <h3 className="font-bold text-lg text-gray-800 dark:text-white">Venta #{viewingSale.id}</h3>
@@ -557,8 +544,6 @@ const POSPage = () => {
                 </div>
                 <button onClick={() => setViewingSale(null)} className="text-gray-400 hover:text-red-500 p-1"><X size={20} /></button>
               </div>
-
-              {/* Lista de Items */}
               <div className="overflow-y-auto p-0 flex-1 custom-scrollbar">
                 <table className="w-full text-sm text-left">
                   <thead className="bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-slate-300 text-xs uppercase sticky top-0">
@@ -582,8 +567,6 @@ const POSPage = () => {
                   </tbody>
                 </table>
               </div>
-
-              {/* Footer Modal */}
               <div className="p-4 bg-slate-50 dark:bg-slate-900 border-t border-gray-200 dark:border-slate-700 flex justify-between items-center">
                 <button
                   onClick={() => { handleReprint(viewingSale); }}
@@ -606,7 +589,7 @@ const POSPage = () => {
             <h3 className="text-sm font-bold text-gray-700 dark:text-white flex items-center"><Clock size={16} className="mr-2 text-blue-500 dark:text-blue-400" /> Últimas Ventas</h3>
             <span className="text-[10px] uppercase font-bold text-gray-400 dark:text-slate-500 bg-gray-200 dark:bg-slate-700 px-2 py-0.5 rounded-full">Turno Actual</span>
           </div>
-          <div className="flex-1 overflow-y-auto p-0">
+          <div className="flex-1 overflow-y-auto p-0 custom-scrollbar">
             <table className="w-full text-xs text-left">
               <thead className="bg-white dark:bg-slate-800 text-gray-400 dark:text-slate-500 font-bold sticky top-0 shadow-sm z-10"><tr><th className="p-3">Hora</th><th className="p-3">Items</th><th className="p-3 text-center">Pago</th><th className="p-3 text-right">Total</th><th className="p-3 text-center">Acciones</th></tr></thead>
               <tbody className="divide-y divide-gray-50 dark:divide-slate-700">
@@ -636,10 +619,10 @@ const POSPage = () => {
         </div>
       </div>
 
-      {/* --- COLUMNA DERECHA (Carrito y Cobro) --- */}
-      <div className="w-full md:w-1/3 bg-white dark:bg-slate-800 flex flex-col rounded-2xl shadow-lg border border-gray-200 dark:border-slate-700 overflow-hidden h-full relative z-10 transition-colors">
+      {/* --- COLUMNA DERECHA (Carrito y Cobro - Rediseñado y más espacioso) --- */}
+      <div className="w-full md:w-[45%] xl:w-[40%] bg-white dark:bg-slate-800 flex flex-col rounded-2xl shadow-lg border border-gray-200 dark:border-slate-700 overflow-hidden h-full relative z-10 transition-colors">
 
-        {/* --- NUEVO: PESTAÑAS MULTI-CLIENTE --- */}
+        {/* --- PESTAÑAS MULTI-CLIENTE --- */}
         <div className="flex border-b border-gray-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900">
           {[0, 1, 2, 3].map((idx) => (
             <button
@@ -666,18 +649,61 @@ const POSPage = () => {
             {cart.length > 0 && <button onClick={clearCart} className="text-red-300 hover:text-red-100 p-1 hover:bg-slate-700 rounded transition-colors"><Trash2 size={16} /></button>}
           </div>
         </div>
-        <div className="flex-1 overflow-y-auto p-3 space-y-2 bg-slate-50 dark:bg-slate-900/50">
-          {cart.length === 0 ? <div className="flex flex-col items-center justify-center h-full text-gray-300 dark:text-slate-600 opacity-50"><ScanBarcode size={48} className="mb-2" /><p className="text-sm font-bold">Esperando productos...</p></div> : cart.map(item => (
-            <div key={item.id_variante} className="bg-white dark:bg-slate-800 p-3 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 animate-fade-in-down transition-colors">
-              <div className="flex justify-between font-bold text-sm text-gray-800 dark:text-white mb-1"><span className="truncate w-2/3">{item.nombre}</span><span className="text-green-700 dark:text-green-400 font-mono">${item.subtotal.toLocaleString()}</span></div>
-              <div className="text-xs text-gray-500 dark:text-slate-400 mb-2 flex justify-between"><span>Talle: <b>{item.talle}</b></span><span>SKU: {item.sku}</span></div>
-              <div className="flex justify-between items-center bg-gray-50 dark:bg-slate-700 p-1 rounded-lg border border-gray-100 dark:border-slate-600">
-                <div className="flex items-center gap-1">
-                  <button onClick={() => updateQuantity(item.id_variante, -1)} className="p-1.5 bg-white dark:bg-slate-600 border dark:border-slate-500 rounded-md hover:bg-gray-200 dark:hover:bg-slate-500 dark:text-white"><Minus size={12} /></button>
-                  <span className="font-bold text-sm w-8 text-center dark:text-white">{item.cantidad}</span>
-                  <button onClick={() => updateQuantity(item.id_variante, 1)} className="p-1.5 bg-white dark:bg-slate-600 border dark:border-slate-500 rounded-md hover:bg-gray-200 dark:hover:bg-slate-500 dark:text-white"><Plus size={12} /></button>
+
+        {/* --- LISTA DE ITEMS (MEJORA UX) --- */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-1.5 bg-slate-50 dark:bg-slate-900/50 custom-scrollbar">
+          {cart.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-gray-300 dark:text-slate-600 opacity-50">
+              <ScanBarcode size={48} className="mb-2" />
+              <p className="text-sm font-bold">Esperando productos...</p>
+            </div>
+          ) : cart.map(item => (
+            <div key={item.id_variante} className="bg-white dark:bg-slate-800 p-2.5 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 animate-fade-in-down transition-colors relative">
+
+              {/* Botón Borrar (Absoluto arriba derecha) */}
+              <button onClick={() => removeFromCart(item.id_variante)} className="absolute right-2 top-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 p-1.5 rounded-lg transition-colors">
+                <X size={16} />
+              </button>
+
+              <div className="flex flex-col justify-between h-full">
+                {/* Fila Superior: Info del Producto */}
+                <div className="pr-8 mb-2">
+                  <p className="font-bold text-sm text-gray-800 dark:text-white truncate leading-tight" title={item.nombre}>{item.nombre}</p>
+                  <div className="text-[11px] text-gray-500 dark:text-slate-400 mt-1 flex gap-2">
+                    <span className="bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 rounded font-medium">Talle: {item.talle}</span>
+                    <span className="truncate py-0.5">SKU: {item.sku}</span>
+                  </div>
                 </div>
-                <button onClick={() => removeFromCart(item.id_variante)} className="text-red-400 hover:text-red-600 dark:text-red-500 dark:hover:text-red-400 p-1.5 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-md"><X size={16} /></button>
+
+                {/* Fila Inferior: Controles y Precio Editables */}
+                <div className="flex justify-between items-end pt-2 border-t border-gray-50 dark:border-slate-700/50">
+                  {/* Controles de Cantidad Compactos */}
+                  <div className="flex items-center bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-200 dark:border-slate-700 p-0.5 shadow-inner">
+                    <button onClick={() => updateQuantity(item.id_variante, -1)} className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-700 rounded-md transition-colors"><Minus size={14} /></button>
+                    <span className="font-bold text-xs w-8 text-center text-gray-800 dark:text-white">{item.cantidad}</span>
+                    <button onClick={() => updateQuantity(item.id_variante, 1)} className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-700 rounded-md transition-colors"><Plus size={14} /></button>
+                  </div>
+
+                  {/* --- MEJORA: PRECIO EDITABLE UNITARIO --- */}
+                  <div className="flex flex-col items-end">
+                    <span className="text-[9px] text-gray-400 uppercase font-bold tracking-wider mb-0.5">Precio Subtotal</span>
+                    {editingItemId === item.id_variante ? (
+                      <input
+                        type="number"
+                        autoFocus
+                        className="w-24 text-right font-black text-sm border-b-2 border-blue-500 outline-none bg-blue-50 dark:bg-blue-900/30 dark:text-white text-blue-700 px-1 rounded-t transition-all"
+                        defaultValue={item.precio}
+                        onBlur={(e) => { updateItemPrice(item.id_variante, e.target.value); setEditingItemId(null); }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') { updateItemPrice(item.id_variante, e.target.value); setEditingItemId(null); } }}
+                      />
+                    ) : (
+                      <div onClick={() => setEditingItemId(item.id_variante)} className="flex items-center cursor-pointer group bg-gray-50 hover:bg-blue-50 dark:bg-slate-900 dark:hover:bg-blue-900/20 px-2 py-1 rounded-lg border border-transparent hover:border-blue-200 dark:hover:border-blue-800 transition-colors" title="Clic para editar precio unitario">
+                        <span className="font-black text-sm text-green-700 dark:text-green-400 font-mono">$ {item.subtotal.toLocaleString()}</span>
+                        <Edit3 size={12} className="ml-1.5 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           ))}
@@ -712,7 +738,7 @@ const POSPage = () => {
               </div>
             </div>
 
-            {/* DESCUENTO (NUEVO) */}
+            {/* DESCUENTO */}
             <div className="bg-emerald-50 dark:bg-emerald-900/10 p-2 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
               <div className="flex justify-between items-center mb-1">
                 <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase flex items-center">
@@ -734,7 +760,6 @@ const POSPage = () => {
               </div>
             </div>
           </div>
-          {/* ----------------------------- */}
 
           <div className="flex justify-between items-center mb-2">
             <p className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wide">Medio de Pago</p>
@@ -798,7 +823,7 @@ const POSPage = () => {
             </div>
           )}
 
-          <div className="flex justify-between items-end mb-4 border-b border-dashed border-gray-300 dark:border-slate-700 pb-3"><div><span className="text-gray-500 dark:text-gray-400 font-medium text-xs uppercase">Total a Cobrar</span>{descuentoVisual !== 0 && <div className={`text-xs font-bold px-1 rounded inline-block mt-1 ${descuentoVisual > 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}`}>{descuentoVisual > 0 ? 'Ahorro' : 'Recargo'}: ${Math.abs(descuentoVisual).toLocaleString()}</div>}</div><div onClick={() => setIsEditingPrice(true)} className="cursor-pointer group flex items-center relative" title="Editar precio final">{isEditingPrice ? (<input autoFocus type="number" className="text-3xl font-black text-right w-36 border-b-2 border-blue-500 outline-none bg-transparent dark:text-white" value={customTotal === null ? subtotalCalculado : customTotal} onChange={e => setCustomTotal(e.target.value)} onBlur={() => setIsEditingPrice(false)} onKeyDown={e => { if (e.key === 'Enter') setIsEditingPrice(false) }} />) : (<><span className={`text-3xl font-black tracking-tighter transition-colors ${descuentoVisual !== 0 ? 'text-blue-600 dark:text-blue-400' : 'text-slate-800 dark:text-white'}`}>$ {totalFinal.toLocaleString()}</span><div className="ml-2 p-1 rounded-full bg-gray-100 dark:bg-slate-700 text-gray-400 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/30 group-hover:text-blue-600 transition-colors"><Edit3 size={16} /></div></>)}</div></div>
+          <div className="flex justify-between items-end mb-4 border-b border-dashed border-gray-300 dark:border-slate-700 pb-3"><div><span className="text-gray-500 dark:text-gray-400 font-medium text-xs uppercase">Total a Cobrar</span>{descuentoVisual !== 0 && <div className={`text-xs font-bold px-1 rounded inline-block mt-1 ${descuentoVisual > 0 ? 'bg-emerald-50 text-emerald-600' : 'bg-orange-50 text-orange-600'}`}>{descuentoVisual > 0 ? 'Ahorro' : 'Recargo'}: ${Math.abs(descuentoVisual).toLocaleString()}</div>}</div><div onClick={() => setIsEditingPrice(true)} className="cursor-pointer group flex items-center relative" title="Editar precio final de la cuenta">{isEditingPrice ? (<input autoFocus type="number" className="text-3xl font-black text-right w-36 border-b-2 border-blue-500 outline-none bg-transparent dark:text-white" value={customTotal === null ? subtotalCalculado : customTotal} onChange={e => setCustomTotal(e.target.value)} onBlur={() => setIsEditingPrice(false)} onKeyDown={e => { if (e.key === 'Enter') setIsEditingPrice(false) }} />) : (<><span className={`text-3xl font-black tracking-tighter transition-colors ${descuentoVisual !== 0 ? 'text-blue-600 dark:text-blue-400' : 'text-slate-800 dark:text-white'}`}>$ {totalFinal.toLocaleString()}</span><div className="ml-2 p-1 rounded-full bg-gray-100 dark:bg-slate-700 text-gray-400 group-hover:bg-blue-100 dark:group-hover:bg-blue-900/30 group-hover:text-blue-600 transition-colors"><Edit3 size={16} /></div></>)}</div></div>
           <div className="grid grid-cols-2 gap-3"><button onClick={() => setIsReservationModalOpen(true)} disabled={cart.length === 0} className="bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 border border-purple-200 dark:border-purple-800 hover:bg-purple-100 dark:hover:bg-purple-900/40 py-3.5 rounded-xl font-bold flex items-center justify-center transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"><CalendarClock className="mr-2" size={18} /> Reservar</button>
 
             <button
@@ -838,7 +863,7 @@ const POSPage = () => {
         </div>
       )}
 
-      {/* --- MODAL ZOOM DE IMAGEN (ARREGLADO) --- */}
+      {/* --- MODAL ZOOM DE IMAGEN --- */}
       {zoomImage && (
         <div className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in cursor-zoom-out" onClick={() => setZoomImage(null)}>
           <img src={zoomImage} className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain animate-zoom-in" onClick={e => e.stopPropagation()} />

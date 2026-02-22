@@ -1,3 +1,4 @@
+# backend/app/webhooks/routes.py
 from flask import Blueprint, request, jsonify
 from app.extensions import db
 from app.products.models import ProductoVariante
