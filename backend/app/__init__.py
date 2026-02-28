@@ -55,6 +55,10 @@ def create_app(config_class=Config):
     from app.returns.routes import bp as returns_bp
     app.register_blueprint(returns_bp, url_prefix='/api/returns')
 
+    # Clientes
+    from app.clients.routes import bp as clients_bp
+    app.register_blueprint(clients_bp, url_prefix='/api/clients')
+
     # 4. Ruta de Salud
     @app.route('/api/health', methods=['GET'])
     def health_check():

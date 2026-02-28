@@ -6,7 +6,7 @@ import {
   LayoutDashboard, ChevronDown, LogOut, Menu, X,
   Store, Package, Users, ShoppingCart, Lock, ScrollText, History, FileText,
   Shirt, ArrowRightLeft, ClipboardCheck, Truck, QrCode, Tags,
-  CalendarClock, FileSpreadsheet, PieChart
+  CalendarClock, FileSpreadsheet, PieChart,
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle'; // <--- Asegúrate de que esté importado
 
@@ -36,6 +36,7 @@ const Topbar = () => {
         { path: '/cambios', name: 'Cambios', icon: ArrowRightLeft },
         { path: '/reservas', name: 'Reservas', icon: CalendarClock },
         { path: '/notas-credito', name: 'Notas Crédito', icon: QrCode },
+        { path: '/clientes', name: 'Clientes', icon: Users },
         { path: '/presupuestos', name: 'Presupuestos', icon: FileSpreadsheet },
       ]
     },

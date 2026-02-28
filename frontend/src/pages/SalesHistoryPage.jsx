@@ -15,7 +15,7 @@ const SalesHistoryPage = () => {
   const [paymentMethods, setPaymentMethods] = useState([]);
 
   // --- ESTADOS DE FILTROS ---
-  const [filterDate, setFilterDate] = useState('');
+  const [dateRange, setDateRange] = useState({ start: '', end: '' }); // <--- NUEVO: Rango de fechas
   const [filterMethod, setFilterMethod] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -53,25 +53,36 @@ const SalesHistoryPage = () => {
     if (token) fetchData();
   }, [token]);
 
-  // --- LÓGICA DE FILTRADO CORREGIDA ---
+  // --- LÓGICA DE FILTRADO ---
   const filteredSales = useMemo(() => {
     return sales.filter(venta => {
-      // 1. Filtro por Fecha
+      // 1. Filtro por Rango de Fechas (NUEVO)
       let dateMatch = true;
-      if (filterDate) {
-        const [y, m, d] = filterDate.split('-');
-        const searchStr = `${d}/${m}/${y}`;
-        dateMatch = venta.fecha.startsWith(searchStr);
+      if (dateRange.start || dateRange.end) {
+        // La fecha de la venta viene como "DD/MM/YYYY HH:MM", la separamos
+        const [datePart] = venta.fecha.split(' ');
+        const [d, m, y] = datePart.split('/');
+        const saleDate = new Date(y, m - 1, d); // Objeto Date local
+
+        if (dateRange.start) {
+          const [startY, startM, startD] = dateRange.start.split('-');
+          const startDate = new Date(startY, startM - 1, startD);
+          if (saleDate < startDate) dateMatch = false;
+        }
+
+        if (dateRange.end) {
+          const [endY, endM, endD] = dateRange.end.split('-');
+          const endDate = new Date(endY, endM - 1, endD);
+          if (saleDate > endDate) dateMatch = false;
+        }
       }
 
-      // 2. Filtro por Método de Pago (Arreglado para soportar mixtos)
+      // 2. Filtro por Método de Pago
       let methodMatch = true;
       if (filterMethod) {
         if (venta.pagos_detalle && venta.pagos_detalle.length > 0) {
-          // Busca si alguna parte del pago mixto coincide con el método
           methodMatch = venta.pagos_detalle.some(p => p.metodo.includes(filterMethod));
         } else {
-          // Fallback para ventas viejas
           methodMatch = (venta.metodo || '').includes(filterMethod);
         }
       }
@@ -85,18 +96,16 @@ const SalesHistoryPage = () => {
 
       return dateMatch && methodMatch && searchMatch;
     });
-  }, [sales, filterDate, filterMethod, searchTerm]);
+  }, [sales, dateRange, filterMethod, searchTerm]);
 
-  // --- CÁLCULO DE TOTALES (Inteligente para pagos mixtos) ---
+  // --- CÁLCULO DE TOTALES ---
   const summary = useMemo(() => {
     let total = 0;
     const count = filteredSales.length;
 
     if (!filterMethod) {
-      // Si no hay filtro de método, sumamos el total bruto de la venta
       total = filteredSales.reduce((sum, v) => sum + v.total, 0);
     } else {
-      // Si filtramos por un método específico, sumamos SOLO la parte de ese método
       total = filteredSales.reduce((sum, v) => {
         if (v.pagos_detalle && v.pagos_detalle.length > 0) {
           const matchingParts = v.pagos_detalle.filter(p => p.metodo.includes(filterMethod));
@@ -110,7 +119,11 @@ const SalesHistoryPage = () => {
     return { total, count };
   }, [filteredSales, filterMethod]);
 
-  const clearFilters = () => { setFilterDate(''); setFilterMethod(''); setSearchTerm(''); };
+  const clearFilters = () => {
+    setDateRange({ start: '', end: '' });
+    setFilterMethod('');
+    setSearchTerm('');
+  };
 
   if (loading) return <div className="p-8 text-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-950 h-screen">Cargando historial...</div>;
 
@@ -174,15 +187,15 @@ const SalesHistoryPage = () => {
       <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 p-4 shadow-sm z-20 shrink-0 transition-colors">
         <div className="max-w-[1600px] mx-auto">
           {/* Título y Buscadores Principales */}
-          <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-4">
-            <div className="flex-shrink-0 w-full md:w-auto">
+          <div className="flex flex-col xl:flex-row justify-between items-center gap-4 mb-4">
+            <div className="flex-shrink-0 w-full xl:w-auto">
               <h1 className="text-xl font-black text-gray-800 dark:text-white flex items-center">
                 <Calendar className="mr-2 text-blue-600 dark:text-blue-400" /> Historial de Ventas
               </h1>
             </div>
 
-            <div className="flex flex-1 w-full gap-2">
-              {/* Buscador */}
+            <div className="flex flex-col md:flex-row flex-1 w-full gap-3">
+              {/* Buscador de texto */}
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-3 text-gray-400" size={18} />
                 <input
@@ -193,21 +206,34 @@ const SalesHistoryPage = () => {
                   className="w-full pl-10 pr-4 py-2.5 bg-gray-100 dark:bg-slate-800 border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 rounded-xl outline-none transition-all font-bold text-gray-700 dark:text-white placeholder-gray-400"
                 />
               </div>
-              {/* Fecha */}
-              <div className="relative w-40 shrink-0">
-                <input
-                  type="date"
-                  value={filterDate}
-                  onChange={e => setFilterDate(e.target.value)}
-                  className="w-full p-2.5 bg-gray-100 dark:bg-slate-800 border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 rounded-xl outline-none transition-all font-bold text-gray-700 dark:text-white text-sm"
-                />
+
+              {/* Rango de Fechas (NUEVO) */}
+              <div className="flex gap-2 shrink-0">
+                <div className="relative w-36 md:w-40">
+                  <span className="absolute -top-2.5 left-3 bg-white dark:bg-slate-900 px-1 text-[10px] font-bold text-gray-500 uppercase tracking-wider rounded-md border border-gray-100 dark:border-slate-800">Desde</span>
+                  <input
+                    type="date"
+                    value={dateRange.start}
+                    onChange={e => setDateRange({ ...dateRange, start: e.target.value })}
+                    className="w-full p-2.5 bg-gray-100 dark:bg-slate-800 border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 rounded-xl outline-none transition-all font-bold text-gray-700 dark:text-white text-sm"
+                  />
+                </div>
+                <div className="relative w-36 md:w-40">
+                  <span className="absolute -top-2.5 left-3 bg-white dark:bg-slate-900 px-1 text-[10px] font-bold text-gray-500 uppercase tracking-wider rounded-md border border-gray-100 dark:border-slate-800">Hasta</span>
+                  <input
+                    type="date"
+                    value={dateRange.end}
+                    onChange={e => setDateRange({ ...dateRange, end: e.target.value })}
+                    className="w-full p-2.5 bg-gray-100 dark:bg-slate-800 border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 rounded-xl outline-none transition-all font-bold text-gray-700 dark:text-white text-sm"
+                  />
+                </div>
               </div>
             </div>
 
             {/* Botón Reset */}
-            {(searchTerm || filterDate || filterMethod) && (
-              <button onClick={clearFilters} className="shrink-0 bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 p-2.5 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors" title="Limpiar Filtros">
-                <FilterX size={20} />
+            {(searchTerm || dateRange.start || dateRange.end || filterMethod) && (
+              <button onClick={clearFilters} className="shrink-0 w-full md:w-auto bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 p-2.5 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors flex items-center justify-center" title="Limpiar Filtros">
+                <FilterX size={20} className="mr-2 md:mr-0" /> <span className="md:hidden font-bold">Limpiar Filtros</span>
               </button>
             )}
           </div>

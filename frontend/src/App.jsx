@@ -24,6 +24,7 @@ import RegisterPage from './pages/RegisterPage';
 import CreditNotesPage from './pages/CreditNotesPage';
 import StockReportPage from './pages/StockReportPage';
 import NotesPage from './pages/NotesPage';
+import ClientsPage from './pages/ClientsPage';
 import { ThemeProvider } from './context/ThemeContext';
 
 function App() {
@@ -57,6 +58,7 @@ function App() {
                   <Route path="/notas-credito" element={<CreditNotesPage />} />
                   <Route path="/reporte-stock" element={<StockReportPage />} />
                   <Route path="/notas" element={<NotesPage />} />
+                  <Route path="/clientes" element={<ClientsPage />} />
                 </Route>
               </Route>
               <Route path="*" element={<Navigate to="/" replace />} />

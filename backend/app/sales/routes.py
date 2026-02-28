@@ -1,8 +1,9 @@
 #backend/app/sales/routes.py
 import csv
 import io
+import threading
 from io import StringIO
-from flask import Blueprint, jsonify, request, Response, send_file
+from flask import Blueprint, jsonify, request, Response, send_file, current_app
 from app.extensions import db
 # IMPORTAMOS DESDE TUS ARCHIVOS SEPARADOS
 from app.sales.models import Venta, DetalleVenta, MetodoPago, SesionCaja, MovimientoCaja, Reserva, DetalleReserva, Presupuesto, DetallePresupuesto, NotaCredito, Gasto
@@ -1055,54 +1056,59 @@ def validar_nota(code):
         "msg": "Nota válida"
     }), 200
 
-# 3. CHECKOUT (Para "quemar" la nota)
+
+def sync_tn_background(app, items_to_sync):
+    """Sincroniza el stock con Tienda Nube en segundo plano para evitar demoras/timeouts"""
+    with app.app_context():
+        for item in items_to_sync:
+            try:
+                from app.services.tiendanube_service import tn_service
+                tn_service.update_variant_stock(
+                    tn_product_id=item['tn_product_id'],
+                    tn_variant_id=item['tn_variant_id'],
+                    new_stock=item['new_stock']
+                )
+                print(f"✅ TN Sync (Background): {item['nombre']} -> {item['new_stock']}")
+            except Exception as e:
+                print(f"⚠️ Error Sync TN (Background) para {item['nombre']}: {e}")
+
 @bp.route('/checkout', methods=['POST'])
 @jwt_required()
 def checkout():
     try:
         data = request.get_json()
-        print(f"📦 INICIO CHECKOUT. Items: {len(data.get('items', []))}") 
         items = data.get('items', [])
         cliente_id = data.get('cliente_id')
         codigo_nota = data.get('codigo_nota_credito')
-
-        # Nuevos campos para pago mixto
-        pagos_multiples = data.get('pagos', []) # Lista de {id_metodo: 1, monto: 500}
-        metodo_pago_id_simple = data.get('metodo_pago_id') # Fallback simple
+        pagos_multiples = data.get('pagos', [])
+        metodo_pago_id_simple = data.get('metodo_pago_id')
         
-        # Validaciones básicas
         if not items: return jsonify({"msg": "Carrito vacío"}), 400
-        # Permitimos venta sin metodo si es mixto (se valida en frontend), pero por seguridad backend:
-        # if not metodo_pago_id: return jsonify({"msg": "Falta método de pago"}), 400
 
-        # --- 1. LÓGICA DE NOTA DE CRÉDITO ---
+        # Lógica de Nota de Crédito
         nota_usada = None
         observaciones_venta = ""
-        
         if codigo_nota:
             nota_usada = NotaCredito.query.filter_by(codigo=codigo_nota).first()
-            if not nota_usada:
-                return jsonify({"msg": "Código de nota no encontrado"}), 404
-            if nota_usada.estado != 'activa':
-                return jsonify({"msg": "La nota ya fue utilizada"}), 400
-            
+            if not nota_usada or nota_usada.estado != 'activa':
+                return jsonify({"msg": "Nota inválida"}), 400
             nota_usada.estado = 'usada'
             observaciones_venta = f"Pagado con Nota {codigo_nota}"
 
-        # --- 2. CREACIÓN DE VENTA (CABECERA) ---
+        # 1. Crear Venta
         nueva_venta = Venta(
             total=data.get('total_final'),
             subtotal=data.get('subtotal_calculado'),
             descuento=0, 
-            fecha_venta=ahora_argentina(), # Usar datetime.now() del servidor
+            fecha_venta=ahora_argentina(),
             id_cliente=cliente_id,
             id_metodo_pago=metodo_pago_id_simple,
             observaciones=observaciones_venta
         )
         db.session.add(nueva_venta)
-        db.session.flush() # Obtenemos el ID de venta
+        db.session.flush() # Obtenemos ID de venta rápidamente
 
-        # --- GUARDAR PAGOS ---
+        # 2. Guardar Pagos
         if pagos_multiples:
             for p in pagos_multiples:
                 nuevo_pago = VentaPago(
@@ -1112,7 +1118,6 @@ def checkout():
                 )
                 db.session.add(nuevo_pago)
         elif metodo_pago_id_simple:
-            # Si viene formato simple, creamos 1 registro de pago igual para mantener consistencia
             pago_unico = VentaPago(
                 id_venta=nueva_venta.id_venta,
                 id_metodo_pago=metodo_pago_id_simple,
@@ -1123,90 +1128,81 @@ def checkout():
         if nota_usada:
             nota_usada.id_venta_uso = nueva_venta.id_venta
 
-        # --- 3. PROCESAR ITEMS ---
+        # --- AQUÍ ESTÁ LA MAGIA DE LA OPTIMIZACIÓN ---
+        # Creamos una lista para guardar qué productos hay que avisarle a Tienda Nube
+        items_to_sync = []
+
+        # 3. Procesar Items y Stock Local
         for item in items:
             nombre_item = item.get('nombre', 'Item sin nombre')
-            es_custom = item.get('is_custom') # Bandera del Frontend
+            es_custom = item.get('is_custom')
 
-            # =======================================================
-            # CASO A: ÍTEM MANUAL (Sin stock, sin Tienda Nube)
-            # =======================================================
             if es_custom is True or str(es_custom).lower() == 'true':
-                print(f"   🔸 Ítem Manual detectado: {nombre_item}")
                 detalle = DetalleVenta(
                     id_venta=nueva_venta.id_venta,
-                    id_variante=None, # Permitimos NULL aquí
+                    id_variante=None,
                     producto_nombre=nombre_item,
                     cantidad=item['cantidad'],
                     precio_unitario=item['precio'],
                     subtotal=item['subtotal']
                 )
                 db.session.add(detalle)
-                continue # Saltamos al siguiente ítem (NO descontamos stock)
+                continue
 
-            # =======================================================
-            # CASO B: ÍTEM DE INVENTARIO (Con Stock y Sync TN)
-            # =======================================================
             id_variante = item.get('id_variante')
             variante = ProductoVariante.query.get(id_variante)
             
-            # Protección: Si el producto fue borrado mientras se vendía
             if not variante:
                 db.session.rollback()
-                return jsonify({"msg": f"El producto '{nombre_item}' ya no existe en base de datos."}), 400
+                return jsonify({"msg": f"El producto '{nombre_item}' ya no existe."}), 400
 
-            # Validar Stock Local
-            stock_actual = variante.inventario.stock_actual if variante.inventario else 0
             cantidad_solicitada = int(item['cantidad'])
-
-            if stock_actual < cantidad_solicitada:
+            
+            # Chequeo Stock
+            if variante.inventario and variante.inventario.stock_actual < cantidad_solicitada:
                 db.session.rollback()
                 return jsonify({"msg": f"Sin stock suficiente para: {variante.producto.nombre}"}), 400
             
             # Descontar Stock Local
             if variante.inventario:
                 variante.inventario.stock_actual -= cantidad_solicitada
-                nuevo_stock = variante.inventario.stock_actual
-            
-                # --- SYNC TIENDA NUBE (Tu código original + Protección) ---
-                # Usamos getattr para que NO explote si faltan columnas en la BD
-                tn_var_id = getattr(variante, 'tiendanube_variant_id', None)
-                tn_prod_id = getattr(variante.producto, 'tiendanube_id', None)
+                
+                # En lugar de pausar el código para avisar a Tienda Nube, lo agendamos:
+                if variante.producto.tiendanube_id and variante.tiendanube_variant_id:
+                    items_to_sync.append({
+                        'tn_product_id': variante.producto.tiendanube_id,
+                        'tn_variant_id': variante.tiendanube_variant_id,
+                        'new_stock': variante.inventario.stock_actual,
+                        'nombre': variante.producto.nombre
+                    })
 
-                if tn_var_id and tn_prod_id:
-                    try:
-                        # Usamos tu servicio original 'tn_service'
-                        tn_service.update_variant_stock(
-                            tn_product_id=tn_prod_id,
-                            tn_variant_id=tn_var_id,
-                            new_stock=nuevo_stock
-                        )
-                        print(f"   ☁️ TN Sync OK: {variante.producto.nombre} -> Stock {nuevo_stock}")
-                    except Exception as e:
-                        print(f"   ⚠️ Error sync TN para {variante.producto.nombre}: {e}")
-                # ---------------------------------------------------------
-
-            # Guardar Detalle
+            # Crear detalle de la venta
             detalle = DetalleVenta(
                 id_venta=nueva_venta.id_venta,
                 id_variante=variante.id_variante,
-                producto_nombre=variante.producto.nombre, # Guardamos nombre original
+                producto_nombre=variante.producto.nombre,
                 cantidad=cantidad_solicitada,
                 precio_unitario=item['precio'],
                 subtotal=item['subtotal']
             )
             db.session.add(detalle)
 
+        # 4. Confirmamos la venta en la Base de Datos Local de inmediato
         db.session.commit()
+
+        # 5. DISPARAMOS EL HILO EN SEGUNDO PLANO (La página no tiene que esperar a esto)
+        if items_to_sync:
+            app = current_app._get_current_object()
+            thread = threading.Thread(target=sync_tn_background, args=(app, items_to_sync))
+            thread.start()
+
+        # 6. Respondemos Éxito al Instante
         return jsonify({"msg": "Venta exitosa", "id": nueva_venta.id_venta}), 201
 
     except Exception as e:
         db.session.rollback()
-        print(f"🔥 Error Checkout: {e}")
-        import traceback
-        traceback.print_exc()
+        print(f"Error Checkout: {e}")
         return jsonify({"msg": "Error procesando venta", "error": str(e)}), 500
-
 
 
 @bp.route('/caja/<int:id>/pdf', methods=['GET'])

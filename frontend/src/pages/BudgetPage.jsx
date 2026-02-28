@@ -1,16 +1,18 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAuth, api } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom'; // <--- NUEVO: Para redirigir al POS
 import BudgetPrint from '../components/BudgetPrint';
 import toast, { Toaster } from 'react-hot-toast';
 import {
     ShoppingCart, Trash2, Plus, Minus, Search, Shirt,
     Calculator, User, FileText, Printer, Save, Layers, X,
     History, RotateCcw, Clock, CheckCircle2, ArrowRight,
-    ListPlus, AlertTriangle
+    ListPlus, AlertTriangle, Send // <--- NUEVO: Ícono Send
 } from 'lucide-react';
 
 const BudgetPage = () => {
     const { token } = useAuth();
+    const navigate = useNavigate(); // <--- NUEVO
 
     // --- ESTADOS CON PERSISTENCIA ---
     const [cart, setCart] = useState(() => {
@@ -25,6 +27,9 @@ const BudgetPage = () => {
     const [discountPercent, setDiscountPercent] = useState(() => {
         return parseInt(localStorage.getItem('budget_draft_discount')) || 0;
     });
+
+    // --- NUEVO: ESTADO MODO DE STOCK ---
+    const [useRealStock, setUseRealStock] = useState(true);
 
     const [manualTerm, setManualTerm] = useState('');
     const [manualResults, setManualResults] = useState([]);
@@ -56,7 +61,7 @@ const BudgetPage = () => {
         const delay = setTimeout(async () => {
             if (!manualTerm.trim() && !selectedCat) { setManualResults([]); return; }
             try {
-                const params = { search: manualTerm, limit: 10 };
+                const params = { search: manualTerm, limit: 100 };
                 if (selectedCat) params.category_id = selectedCat;
                 const res = await api.get('/products', { params });
                 setManualResults(res.data.products || []);
@@ -65,26 +70,54 @@ const BudgetPage = () => {
         return () => clearTimeout(delay);
     }, [manualTerm, selectedCat]);
 
+    // --- FUNCIÓN MEJORADA: OBTENER IMAGEN ---
+    const getImageUrl = (img) => {
+        if (!img) return null;
+        if (img.startsWith('http')) return img;
+        const base = api.defaults.baseURL || '';
+        return `${base}/static/uploads/${img}`;
+    };
+
+    // --- LÓGICA MEJORADA: AGREGAR CARRITO CON CONTROL DE STOCK ---
     const addToCart = (prod, v) => {
         const exists = cart.find(i => i.id_variante === v.id_variante);
+        const currentQty = exists ? exists.cantidad : 0;
+
+        // Validar Stock
+        if (useRealStock && currentQty + 1 > v.stock) {
+            toast.error(`Stock físico insuficiente. Solo quedan ${v.stock} u.`);
+            return;
+        }
+
         if (exists) {
             setCart(prev => prev.map(i => i.id_variante === v.id_variante ? { ...i, cantidad: i.cantidad + 1 } : i));
         } else {
             setCart(prev => [...prev, {
                 id_variante: v.id_variante,
+                sku: v.sku || 'GEN', // Clave para cuando pase al POS
                 nombre: prod.nombre,
                 talle: v.talle,
                 precio: prod.precio,
                 cantidad: 1,
+                stock_actual: v.stock, // Clave para validaciones futuras
                 imagen: prod.imagen
             }]);
         }
         toast.success(`+1 ${prod.nombre} (${v.talle})`);
     };
 
+    // --- LÓGICA MEJORADA: ACTUALIZAR CANTIDAD CON CONTROL DE STOCK ---
     const updateQty = (idx, delta) => {
         const newCart = [...cart];
-        newCart[idx].cantidad = Math.max(1, newCart[idx].cantidad + delta);
+        const item = newCart[idx];
+        const newQty = Math.max(1, item.cantidad + delta);
+
+        if (useRealStock && delta > 0 && newQty > item.stock_actual) {
+            toast.error(`Stock insuficiente. Disponible: ${item.stock_actual}`);
+            return;
+        }
+
+        newCart[idx].cantidad = newQty;
         setCart(newCart);
     };
 
@@ -96,17 +129,50 @@ const BudgetPage = () => {
     const discountAmount = subtotal * (discountPercent / 100);
     const total = subtotal - discountAmount;
 
-    // --- FUNCIÓN GUARDAR BLINDADA CON MEJOR MANEJO DE IMPRESIÓN ---
-    const handleSaveBudget = async () => {
-        if (!clientName.trim()) {
-            toast.error("Falta nombre del cliente");
+    // --- FUNCION NUEVA: MUDAR PRESUPUESTO A VENTAS (POS) ---
+    const moveToPOS = () => {
+        if (cart.length === 0) {
+            toast.error("El presupuesto está vacío");
             return;
         }
 
-        if (cart.length === 0) {
-            toast.error("El carrito está vacío");
-            return;
-        }
+        // 1. Convertir los items al formato exacto que espera POSPage
+        const posItems = cart.map(item => ({
+            id_variante: item.id_variante,
+            sku: item.sku || 'N/A',
+            nombre: item.nombre,
+            talle: item.talle,
+            precio: item.precio,
+            cantidad: item.cantidad,
+            stock_actual: item.stock_actual || 999, // Si no hay dato, asumimos que hay
+            subtotal: item.precio * item.cantidad
+        }));
+
+        // 2. Traer todos los carritos del POS
+        let allCarts = [[], [], [], []];
+        try {
+            const saved = localStorage.getItem('pos_multi_carts_backup');
+            if (saved) allCarts = JSON.parse(saved);
+        } catch (e) { console.error("Error leyendo carritos POS", e); }
+
+        // 3. Buscar una pestaña vacía (o sobreescribir la primera si están todas ocupadas)
+        let targetSlot = allCarts.findIndex(c => c.length === 0);
+        if (targetSlot === -1) targetSlot = 0;
+
+        // 4. Guardar
+        allCarts[targetSlot] = posItems;
+        localStorage.setItem('pos_multi_carts_backup', JSON.stringify(allCarts));
+
+        toast.success(`¡Presupuesto enviado a Ventas (Pestaña ${targetSlot + 1})!`);
+
+        // 5. Redirigir al usuario al punto de venta
+        navigate('/pos');
+    };
+
+    // --- FUNCIÓN GUARDAR BLINDADA CON MEJOR MANEJO DE IMPRESIÓN ---
+    const handleSaveBudget = async () => {
+        if (!clientName.trim()) { toast.error("Falta nombre del cliente"); return; }
+        if (cart.length === 0) { toast.error("El carrito está vacío"); return; }
 
         try {
             const res = await api.post('/sales/budgets/create', {
@@ -116,12 +182,9 @@ const BudgetPage = () => {
                 items: cart
             });
 
-            console.log("Respuesta del servidor:", res.data);
             toast.success("Presupuesto guardado");
 
-            // CONSTRUCCIÓN ROBUSTA DE DATOS PARA IMPRESIÓN
             const serverData = res.data.budget || {};
-
             const safeData = {
                 id: serverData.id || 0,
                 fecha: serverData.fecha || new Date().toLocaleDateString('es-AR'),
@@ -132,12 +195,10 @@ const BudgetPage = () => {
                 items: []
             };
 
-            // Procesamos items de forma ultra segura
             const itemsArray = serverData.items || cart || [];
             safeData.items = itemsArray.map(item => {
                 const cantidad = parseInt(item.cantidad) || 1;
                 const precio = parseFloat(item.precio || item.precio_unitario) || 0;
-
                 return {
                     nombre: item.nombre || item.descripcion || item.producto || "Item sin nombre",
                     talle: item.talle || "-",
@@ -148,15 +209,10 @@ const BudgetPage = () => {
                 };
             });
 
-            console.log("Datos sanitizados para impresión:", safeData);
-
-            // IMPORTANTE: Primero establecemos los datos
             setPrintData(safeData);
 
-            // Esperamos a que React actualice el DOM
             setTimeout(() => {
                 try {
-                    console.log("Intentando imprimir...");
                     window.print();
                 } catch (printError) {
                     console.error("Error al imprimir:", printError);
@@ -164,17 +220,14 @@ const BudgetPage = () => {
                 }
             }, 1000);
 
-            // Limpiamos después de un delay más largo para asegurar que la impresión se complete
             setTimeout(() => {
                 setCart([]);
                 setClientName('');
                 setDiscountPercent(0);
-                setPrintData(null); // Limpiamos también los datos de impresión
+                setPrintData(null);
             }, 2000);
 
         } catch (e) {
-            console.error("Error completo:", e);
-            console.error("Respuesta del error:", e.response);
             toast.error("Error al guardar: " + (e.response?.data?.msg || e.message));
         }
     };
@@ -186,7 +239,6 @@ const BudgetPage = () => {
             const res = await api.get('/sales/budgets/history');
             setHistoryList(res.data);
         } catch (e) {
-            console.error("Error cargando historial:", e);
             toast.error("Error cargando historial");
         }
         finally { setIsLoadingHistory(false); }
@@ -198,10 +250,12 @@ const BudgetPage = () => {
             setDiscountPercent(b.descuento);
             setCart(b.items.map(i => ({
                 id_variante: i.id_variante || `old-${Math.random()}`,
+                sku: 'GEN',
                 nombre: i.nombre,
                 talle: i.talle,
                 precio: i.precio_unitario || i.precio || 0,
                 cantidad: i.cantidad,
+                stock_actual: 999, // Los historiales viejos se cargan como infinito
                 imagen: null
             })));
             setIsHistoryOpen(false);
@@ -210,22 +264,33 @@ const BudgetPage = () => {
     };
 
     return (
-        <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] bg-gray-50 dark:bg-slate-950 overflow-hidden transition-colors duration-300">
+        // ARREGLO DE PDF: print:overflow-visible y print:h-auto evitan que la hoja 2 se corte
+        <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] bg-gray-50 dark:bg-slate-950 overflow-hidden transition-colors duration-300 print:overflow-visible print:h-auto print:block">
             <Toaster position="top-center" />
 
-            {/* Componente de impresión - Solo se renderiza si hay datos */}
+            {/* Componente de impresión */}
             {printData && (
                 <div className="hidden print:block">
                     <BudgetPrint ref={printRef} data={printData} />
                 </div>
             )}
 
-            {/* IZQUIERDA */}
-            <div className="w-full lg:w-5/12 xl:w-1/3 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 flex flex-col shadow-xl z-20 transition-colors">
+            {/* IZQUIERDA (Oculto en Impresión) */}
+            <div className="w-full lg:w-5/12 xl:w-1/3 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 flex flex-col shadow-xl z-20 transition-colors print:hidden">
                 <div className="p-5 border-b border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 z-10 shrink-0">
                     <div className="flex justify-between items-center mb-4">
                         <h1 className="text-xl font-black text-gray-800 dark:text-white flex items-center"><Calculator className="mr-2 text-yellow-500" /> Presupuestador</h1>
-                        <button onClick={loadHistory} className="text-gray-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400"><History size={20} /></button>
+                        <div className="flex items-center gap-3">
+                            {/* BOTÓN TOGGLE STOCK */}
+                            <button
+                                onClick={() => setUseRealStock(!useRealStock)}
+                                className={`flex items-center text-[10px] font-bold px-2 py-1.5 rounded-lg transition-all border ${useRealStock ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:border-green-800 dark:text-green-400' : 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:border-orange-800 dark:text-orange-400'}`}
+                            >
+                                {useRealStock ? <CheckCircle2 size={12} className="mr-1" /> : <AlertTriangle size={12} className="mr-1" />}
+                                {useRealStock ? "STOCK REAL" : "STOCK LIBRE"}
+                            </button>
+                            <button onClick={loadHistory} className="text-gray-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 bg-gray-50 dark:bg-slate-800 p-1.5 rounded-lg border dark:border-slate-700" title="Ver Historial"><History size={18} /></button>
+                        </div>
                     </div>
                     <div className="flex gap-2 mb-2">
                         <select className="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs font-bold text-gray-600 dark:text-slate-300 outline-none" value={selectedCat} onChange={e => setSelectedCat(e.target.value)}>
@@ -243,10 +308,14 @@ const BudgetPage = () => {
                     {manualResults.length === 0 && !manualTerm ? <div className="h-full flex flex-col items-center justify-center text-gray-300 dark:text-slate-700"><Search size={48} className="mb-2 opacity-50" /><p className="text-xs font-medium">Usa el buscador para agregar ítems</p></div> : manualResults.map(p => (
                         <div key={p.id} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-gray-200 dark:border-slate-700 mb-2 shadow-sm hover:border-yellow-400 dark:hover:border-yellow-600 transition-all group">
                             <div className="flex gap-3">
-                                <div className="w-12 h-12 bg-gray-100 dark:bg-slate-700 rounded-lg shrink-0 overflow-hidden border dark:border-slate-600">{p.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${p.imagen}`} className="w-full h-full object-cover" alt={p.nombre} /> : <Shirt className="text-gray-300 dark:text-slate-500 w-full h-full p-2" />}</div>
+                                <div className="w-12 h-12 bg-gray-100 dark:bg-slate-700 rounded-lg shrink-0 overflow-hidden border dark:border-slate-600 flex items-center justify-center">
+                                    {/* ARREGLO IMÁGENES */}
+                                    {p.imagen ? <img src={getImageUrl(p.imagen)} className="w-full h-full object-cover" alt={p.nombre} onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} /> : null}
+                                    <Shirt className={`text-gray-300 dark:text-slate-500 w-full h-full p-2 ${p.imagen ? 'hidden' : 'block'}`} />
+                                </div>
                                 <div className="flex-1 min-w-0">
                                     <div className="flex justify-between items-start mb-1"><h4 className="font-bold text-gray-800 dark:text-white text-sm truncate">{p.nombre}</h4><span className="text-green-600 dark:text-green-400 font-black text-xs bg-green-50 dark:bg-green-900/30 px-1.5 py-0.5 rounded">${p.precio}</span></div>
-                                    <div className="flex flex-wrap gap-1">{p.variantes.map(v => (<button key={v.id_variante} onClick={() => addToCart(p, v)} className="text-[10px] bg-white dark:bg-slate-700 border dark:border-slate-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/30 hover:border-yellow-400 dark:hover:border-yellow-600 text-gray-600 dark:text-gray-300 px-2 py-1 rounded transition-colors font-bold">{v.talle}</button>))}</div>
+                                    <div className="flex flex-wrap gap-1">{p.variantes.map(v => (<button key={v.id_variante} onClick={() => addToCart(p, v)} className="text-[10px] bg-white dark:bg-slate-700 border dark:border-slate-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/30 hover:border-yellow-400 dark:hover:border-yellow-600 text-gray-600 dark:text-gray-300 px-2 py-1 rounded transition-colors font-bold flex items-center gap-1">{v.talle} <span className="opacity-50 text-[9px] border-l pl-1">{v.stock}</span></button>))}</div>
                                 </div>
                             </div>
                         </div>
@@ -254,22 +323,38 @@ const BudgetPage = () => {
                 </div>
             </div>
 
-            {/* DERECHA */}
-            <div className="flex-1 flex flex-col h-full bg-gray-100 dark:bg-slate-950 transition-colors">
-                <div className="flex-1 overflow-y-auto p-4 md:p-6">
+            {/* DERECHA (Oculto en Impresión) */}
+            <div className="flex-1 flex flex-col h-full bg-gray-100 dark:bg-slate-950 transition-colors print:hidden">
+                <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar">
                     {cart.length === 0 ? <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-slate-600 border-2 border-dashed border-gray-300 dark:border-slate-800 rounded-3xl m-4"><FileText size={64} className="mb-4 opacity-50" /><h3 className="text-lg font-bold">Presupuesto Vacío</h3></div> : <div className="space-y-3">{cart.map((item, idx) => (
                         <div key={idx} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm flex items-center gap-4 animate-fade-in-up">
-                            <div className="w-12 h-12 bg-gray-100 dark:bg-slate-700 rounded-lg shrink-0 overflow-hidden flex items-center justify-center border dark:border-slate-600">{item.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${item.imagen}`} className="w-full h-full object-cover" alt={item.nombre} /> : <Shirt size={20} className="text-gray-300 dark:text-slate-500" />}</div>
+                            <div className="w-12 h-12 bg-gray-100 dark:bg-slate-700 rounded-lg shrink-0 overflow-hidden flex items-center justify-center border dark:border-slate-600">
+                                {/* ARREGLO IMÁGENES CARRITO */}
+                                {item.imagen ? <img src={getImageUrl(item.imagen)} className="w-full h-full object-cover" alt={item.nombre} onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} /> : null}
+                                <Shirt className={`text-gray-300 dark:text-slate-500 w-full h-full p-2 ${item.imagen ? 'hidden' : 'block'}`} />
+                            </div>
                             <div className="flex-1"><div className="flex justify-between"><h4 className="font-bold text-gray-800 dark:text-white text-sm">{item.nombre}</h4><span className="font-bold text-gray-900 dark:text-white">$ {(item.precio * item.cantidad).toLocaleString()}</span></div><div className="flex justify-between items-end mt-1"><span className="text-xs bg-gray-100 dark:bg-slate-700 px-2 py-0.5 rounded text-gray-500 dark:text-gray-400 font-mono">Talle: {item.talle}</span><div className="flex items-center bg-gray-50 dark:bg-slate-900 rounded-lg border dark:border-slate-700"><button onClick={() => updateQty(idx, -1)} className="p-1 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-l-lg text-gray-500 dark:text-gray-400"><Minus size={14} /></button><span className="px-2 text-sm font-bold text-gray-800 dark:text-white w-8 text-center">{item.cantidad}</span><button onClick={() => updateQty(idx, 1)} className="p-1 hover:bg-gray-200 dark:hover:bg-slate-700 rounded-r-lg text-gray-500 dark:text-gray-400"><Plus size={14} /></button></div></div></div>
                             <button onClick={() => remove(idx)} className="text-red-300 hover:text-red-500 dark:text-red-900 dark:hover:text-red-400 p-2"><Trash2 size={18} /></button>
                         </div>
                     ))}</div>}
                 </div>
+
                 <div className="bg-white dark:bg-slate-900 border-t border-gray-200 dark:border-slate-800 p-6 shadow-2xl z-30 transition-colors">
-                    <div className="flex gap-4 mb-6"><div className="flex-1 relative"><User className="absolute left-3 top-3 text-gray-400" size={18} /><input placeholder="Nombre del Cliente..." className="w-full pl-10 p-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-gray-800 dark:text-white" value={clientName} onChange={e => setClientName(e.target.value)} /></div><button onClick={clear} className="bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-slate-400 p-3 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-500 dark:hover:text-red-400 transition-colors"><RotateCcw size={20} /></button></div>
+                    <div className="flex gap-4 mb-6"><div className="flex-1 relative"><User className="absolute left-3 top-3 text-gray-400" size={18} /><input placeholder="Nombre del Cliente..." className="w-full pl-10 p-3 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold text-gray-800 dark:text-white" value={clientName} onChange={e => setClientName(e.target.value)} /></div><button onClick={clear} className="bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-slate-400 p-3 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Borrar todo"><RotateCcw size={20} /></button></div>
                     <div className="mb-4"><div className="flex justify-between text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2"><span>Descuento Global</span><span>{discountPercent}%</span></div><input type="range" min="0" max="100" step="5" value={discountPercent} onChange={e => setDiscountPercent(parseInt(e.target.value))} className="w-full accent-blue-600 h-2 bg-gray-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer" /></div>
                     <div className="space-y-3 bg-gray-50 dark:bg-slate-800 p-4 rounded-lg border border-gray-100 dark:border-slate-700"><div className="flex justify-between text-gray-600 dark:text-gray-300 text-sm"><span>Subtotal</span><span>$ {subtotal.toLocaleString()}</span></div>{discountPercent > 0 && <div className="flex justify-between text-green-600 dark:text-green-400 font-bold text-sm"><span>Descuento ({discountPercent}%)</span><span>- $ {discountAmount.toLocaleString()}</span></div>}<div className="flex justify-between text-3xl font-black text-slate-800 dark:text-white pt-2 border-t border-gray-200 dark:border-slate-600"><span>Total</span><span>$ {total.toLocaleString()}</span></div></div>
-                    <button onClick={handleSaveBudget} disabled={cart.length === 0 || !clientName} className="w-full mt-4 bg-slate-900 dark:bg-blue-600 text-white py-4 rounded-xl font-bold text-lg shadow-lg hover:bg-black dark:hover:bg-blue-700 transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed group">{cart.length > 0 && clientName ? <><Printer className="mr-2 group-hover:scale-110 transition-transform" /> Guardar e Imprimir</> : "Completa los datos"}</button>
+
+                    {/* BOTONES DE ACCIÓN */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                        <button onClick={handleSaveBudget} disabled={cart.length === 0 || !clientName} className="w-full bg-slate-900 dark:bg-blue-600 text-white py-4 rounded-xl font-bold text-sm shadow-lg hover:bg-black dark:hover:bg-blue-700 transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed group">
+                            {cart.length > 0 && clientName ? <><Printer className="mr-2 group-hover:scale-110 transition-transform" /> Guardar e Imprimir</> : "Completa los datos"}
+                        </button>
+
+                        {/* BOTÓN MUDAR A VENTAS */}
+                        <button onClick={moveToPOS} disabled={cart.length === 0} className="w-full bg-emerald-500 text-white py-4 rounded-xl font-bold text-sm shadow-md hover:bg-emerald-600 transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed group">
+                            <Send className="mr-2 group-hover:translate-x-1 transition-transform" size={18} /> Llevar a Ventas (POS)
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -277,13 +362,12 @@ const BudgetPage = () => {
             {isHistoryOpen && (
                 <div
                     className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex justify-end animate-fade-in"
-                    onClick={() => setIsHistoryOpen(false)} // <--- 1. CERRAR AL CLICKEAR AFUERA
+                    onClick={() => setIsHistoryOpen(false)}
                 >
                     <div
                         className="w-full max-w-md bg-white dark:bg-slate-900 h-full shadow-2xl flex flex-col transition-colors"
-                        onClick={(e) => e.stopPropagation()} // <--- 2. EVITAR QUE SE CIERRE AL CLICKEAR ADENTRO
+                        onClick={(e) => e.stopPropagation()}
                     >
-                        {/* Header del Modal */}
                         <div className="p-5 border-b border-gray-200 dark:border-slate-800 flex justify-between items-center bg-gray-50 dark:bg-slate-950 transition-colors">
                             <h3 className="font-bold text-lg text-gray-800 dark:text-white flex items-center">
                                 <History className="mr-2" /> Historial
@@ -296,15 +380,14 @@ const BudgetPage = () => {
                             </button>
                         </div>
 
-                        {/* Lista de Presupuestos */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-100 dark:bg-slate-950 transition-colors">
+                        <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-100 dark:bg-slate-950 transition-colors custom-scrollbar">
                             {isLoadingHistory ? (
                                 <p className="text-center text-gray-400 mt-10 animate-pulse">Cargando...</p>
                             ) : (
                                 historyList.map(b => (
                                     <div
                                         key={b.id}
-                                        className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700 hover:shadow-md transition-all cursor-pointer group"
+                                        className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700 hover:shadow-md hover:border-blue-400 transition-all cursor-pointer group"
                                         onClick={() => loadFromHistory(b)}
                                     >
                                         <div className="flex justify-between items-start mb-2">
@@ -314,7 +397,6 @@ const BudgetPage = () => {
                                                     <Clock size={10} className="mr-1" /> {b.fecha}
                                                 </p>
                                             </div>
-                                            {/* Protección contra undefined */}
                                             <span className="text-lg font-black text-blue-600 dark:text-blue-400">
                                                 $ {(b.total || 0).toLocaleString()}
                                             </span>
@@ -337,6 +419,5 @@ const BudgetPage = () => {
         </div>
     );
 };
-
 
 export default BudgetPage;
