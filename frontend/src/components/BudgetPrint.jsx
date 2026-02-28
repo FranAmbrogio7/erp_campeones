@@ -24,27 +24,7 @@ const BudgetPrint = forwardRef(({ data }, ref) => {
     const montoDescuento = subtotal - total;
 
     return (
-        <div ref={ref} className="print-only p-8 bg-white text-black">
-            <style>{`
-                @media print {
-                    body * {
-                        visibility: hidden;
-                    }
-                    .print-only, .print-only * {
-                        visibility: visible;
-                    }
-                    .print-only {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
-                    }
-                    @page {
-                        margin: 1cm;
-                    }
-                }
-            `}</style>
-
+        <div ref={ref} className="p-8 bg-white text-black w-full">
             {/* ENCABEZADO */}
             <div className="border-b-4 border-gray-800 pb-4 mb-6">
                 <h1 className="text-3xl font-black text-gray-900">PRESUPUESTO</h1>
@@ -102,7 +82,7 @@ const BudgetPrint = forwardRef(({ data }, ref) => {
             </table>
 
             {/* TOTALES */}
-            <div className="border-t-2 border-gray-800 pt-4 mt-6">
+            <div className="border-t-2 border-gray-800 pt-4 mt-6 page-break-inside-avoid">
                 <div className="flex justify-end">
                     <div className="w-64">
                         <div className="flex justify-between py-2 text-sm">
@@ -126,7 +106,7 @@ const BudgetPrint = forwardRef(({ data }, ref) => {
             </div>
 
             {/* PIE DE PÁGINA */}
-            <div className="mt-12 pt-6 border-t border-gray-300 text-xs text-gray-600">
+            <div className="mt-12 pt-6 border-t border-gray-300 text-xs text-gray-600 page-break-inside-avoid">
                 <p className="mb-2">Este presupuesto tiene una validez de 10 días desde la fecha de emisión.</p>
                 <p>Gracias por su preferencia.</p>
             </div>

@@ -1,18 +1,19 @@
 import { useState, useRef, useEffect } from 'react';
 import { useAuth, api } from '../context/AuthContext';
-import { useNavigate } from 'react-router-dom'; // <--- NUEVO: Para redirigir al POS
+import { useNavigate } from 'react-router-dom';
 import BudgetPrint from '../components/BudgetPrint';
+import { useReactToPrint } from 'react-to-print'; // <--- IMPORTANTE: Agregado para impresión multi-página
 import toast, { Toaster } from 'react-hot-toast';
 import {
     ShoppingCart, Trash2, Plus, Minus, Search, Shirt,
     Calculator, User, FileText, Printer, Save, Layers, X,
     History, RotateCcw, Clock, CheckCircle2, ArrowRight,
-    ListPlus, AlertTriangle, Send // <--- NUEVO: Ícono Send
+    ListPlus, AlertTriangle, Send
 } from 'lucide-react';
 
 const BudgetPage = () => {
     const { token } = useAuth();
-    const navigate = useNavigate(); // <--- NUEVO
+    const navigate = useNavigate();
 
     // --- ESTADOS CON PERSISTENCIA ---
     const [cart, setCart] = useState(() => {
@@ -28,7 +29,7 @@ const BudgetPage = () => {
         return parseInt(localStorage.getItem('budget_draft_discount')) || 0;
     });
 
-    // --- NUEVO: ESTADO MODO DE STOCK ---
+    // --- ESTADOS DE MODO DE STOCK ---
     const [useRealStock, setUseRealStock] = useState(true);
 
     const [manualTerm, setManualTerm] = useState('');
@@ -38,8 +39,16 @@ const BudgetPage = () => {
     const [isLoadingHistory, setIsLoadingHistory] = useState(false);
     const [categories, setCategories] = useState([]);
     const [selectedCat, setSelectedCat] = useState('');
+
+    // --- ESTADOS DE IMPRESIÓN ---
     const [printData, setPrintData] = useState(null);
-    const printRef = useRef();
+    const printRef = useRef(null);
+
+    // Función de impresión aislada (Arregla el corte de múltiples páginas)
+    const reactToPrintFn = useReactToPrint({
+        contentRef: printRef,
+        documentTitle: `Presupuesto_${new Date().toLocaleDateString().replace(/\//g, '-')}`
+    });
 
     useEffect(() => {
         localStorage.setItem('budget_draft_cart', JSON.stringify(cart));
@@ -74,11 +83,10 @@ const BudgetPage = () => {
     const getImageUrl = (img) => {
         if (!img) return null;
         if (img.startsWith('http')) return img;
-        const base = api.defaults.baseURL || '';
-        return `${base}/static/uploads/${img}`;
+        return `/api/static/uploads/${img}`; // <--- Ruta absoluta para asegurar que cargue en el carrito
     };
 
-    // --- LÓGICA MEJORADA: AGREGAR CARRITO CON CONTROL DE STOCK ---
+    // --- LÓGICA: AGREGAR CARRITO CON CONTROL DE STOCK ---
     const addToCart = (prod, v) => {
         const exists = cart.find(i => i.id_variante === v.id_variante);
         const currentQty = exists ? exists.cantidad : 0;
@@ -94,19 +102,19 @@ const BudgetPage = () => {
         } else {
             setCart(prev => [...prev, {
                 id_variante: v.id_variante,
-                sku: v.sku || 'GEN', // Clave para cuando pase al POS
+                sku: v.sku || 'GEN',
                 nombre: prod.nombre,
                 talle: v.talle,
                 precio: prod.precio,
                 cantidad: 1,
-                stock_actual: v.stock, // Clave para validaciones futuras
+                stock_actual: v.stock,
                 imagen: prod.imagen
             }]);
         }
-        toast.success(`+1 ${prod.nombre} (${v.talle})`);
+        toast.success(`+1 ${prod.nombre} (${v.talle})`, { duration: 1000 });
     };
 
-    // --- LÓGICA MEJORADA: ACTUALIZAR CANTIDAD CON CONTROL DE STOCK ---
+    // --- LÓGICA: ACTUALIZAR CANTIDAD CON CONTROL DE STOCK ---
     const updateQty = (idx, delta) => {
         const newCart = [...cart];
         const item = newCart[idx];
@@ -129,14 +137,13 @@ const BudgetPage = () => {
     const discountAmount = subtotal * (discountPercent / 100);
     const total = subtotal - discountAmount;
 
-    // --- FUNCION NUEVA: MUDAR PRESUPUESTO A VENTAS (POS) ---
+    // --- FUNCION: MUDAR PRESUPUESTO A VENTAS (POS) ---
     const moveToPOS = () => {
         if (cart.length === 0) {
             toast.error("El presupuesto está vacío");
             return;
         }
 
-        // 1. Convertir los items al formato exacto que espera POSPage
         const posItems = cart.map(item => ({
             id_variante: item.id_variante,
             sku: item.sku || 'N/A',
@@ -144,35 +151,33 @@ const BudgetPage = () => {
             talle: item.talle,
             precio: item.precio,
             cantidad: item.cantidad,
-            stock_actual: item.stock_actual || 999, // Si no hay dato, asumimos que hay
-            subtotal: item.precio * item.cantidad
+            stock_actual: item.stock_actual || 999,
+            subtotal: item.precio * item.cantidad,
+            imagen: item.imagen
         }));
 
-        // 2. Traer todos los carritos del POS
         let allCarts = [[], [], [], []];
         try {
             const saved = localStorage.getItem('pos_multi_carts_backup');
             if (saved) allCarts = JSON.parse(saved);
         } catch (e) { console.error("Error leyendo carritos POS", e); }
 
-        // 3. Buscar una pestaña vacía (o sobreescribir la primera si están todas ocupadas)
         let targetSlot = allCarts.findIndex(c => c.length === 0);
         if (targetSlot === -1) targetSlot = 0;
 
-        // 4. Guardar
         allCarts[targetSlot] = posItems;
         localStorage.setItem('pos_multi_carts_backup', JSON.stringify(allCarts));
 
         toast.success(`¡Presupuesto enviado a Ventas (Pestaña ${targetSlot + 1})!`);
-
-        // 5. Redirigir al usuario al punto de venta
         navigate('/pos');
     };
 
-    // --- FUNCIÓN GUARDAR BLINDADA CON MEJOR MANEJO DE IMPRESIÓN ---
+    // --- FUNCIÓN GUARDAR BLINDADA CON IMPRESIÓN REACT-TO-PRINT ---
     const handleSaveBudget = async () => {
         if (!clientName.trim()) { toast.error("Falta nombre del cliente"); return; }
         if (cart.length === 0) { toast.error("El carrito está vacío"); return; }
+
+        const toastId = toast.loading("Guardando presupuesto...");
 
         try {
             const res = await api.post('/sales/budgets/create', {
@@ -182,7 +187,7 @@ const BudgetPage = () => {
                 items: cart
             });
 
-            toast.success("Presupuesto guardado");
+            toast.success("Presupuesto guardado", { id: toastId });
 
             const serverData = res.data.budget || {};
             const safeData = {
@@ -192,46 +197,42 @@ const BudgetPage = () => {
                 subtotal: parseFloat(serverData.subtotal || subtotal) || 0,
                 total: parseFloat(serverData.total || total) || 0,
                 descuento: parseFloat(serverData.descuento || discountPercent) || 0,
-                items: []
+                items: cart.map(item => ({
+                    nombre: item.nombre || "Item sin nombre",
+                    talle: item.talle || "-",
+                    cantidad: item.cantidad || 1,
+                    precio: item.precio || 0,
+                    precio_unitario: item.precio || 0,
+                    subtotal: (item.precio || 0) * (item.cantidad || 1)
+                }))
             };
 
-            const itemsArray = serverData.items || cart || [];
-            safeData.items = itemsArray.map(item => {
-                const cantidad = parseInt(item.cantidad) || 1;
-                const precio = parseFloat(item.precio || item.precio_unitario) || 0;
-                return {
-                    nombre: item.nombre || item.descripcion || item.producto || "Item sin nombre",
-                    talle: item.talle || "-",
-                    cantidad: cantidad,
-                    precio: precio,
-                    precio_unitario: precio,
-                    subtotal: parseFloat(item.subtotal) || (precio * cantidad)
-                };
-            });
-
+            // Seteamos los datos para el componente de impresión oculto
             setPrintData(safeData);
 
+            // Damos un pequeño margen para que React renderice el PDF oculto antes de invocar la impresora
             setTimeout(() => {
                 try {
-                    window.print();
+                    if (reactToPrintFn) reactToPrintFn();
                 } catch (printError) {
                     console.error("Error al imprimir:", printError);
                     toast.error("Error al abrir la vista de impresión");
                 }
-            }, 1000);
+            }, 500);
 
+            // Limpiamos la pantalla
             setTimeout(() => {
                 setCart([]);
                 setClientName('');
                 setDiscountPercent(0);
-                setPrintData(null);
-            }, 2000);
+            }, 1500);
 
         } catch (e) {
-            toast.error("Error al guardar: " + (e.response?.data?.msg || e.message));
+            toast.error("Error al guardar: " + (e.response?.data?.msg || e.message), { id: toastId });
         }
     };
 
+    // --- FUNCIONES DEL HISTORIAL ---
     const loadHistory = async () => {
         setIsHistoryOpen(true);
         setIsLoadingHistory(true);
@@ -255,33 +256,46 @@ const BudgetPage = () => {
                 talle: i.talle,
                 precio: i.precio_unitario || i.precio || 0,
                 cantidad: i.cantidad,
-                stock_actual: 999, // Los historiales viejos se cargan como infinito
-                imagen: null
+                stock_actual: 999,
+                imagen: i.imagen || null // Por si el backend lo devuelve
             })));
             setIsHistoryOpen(false);
             toast.success("Cargado");
         }
     };
 
+    // --- NUEVO: BORRAR DEL HISTORIAL ---
+    const deleteFromHistory = async (id, e) => {
+        e.stopPropagation(); // Evita que se cargue el presupuesto al hacer clic en el basurero
+        if (!window.confirm("¿Estás seguro de eliminar permanentemente este presupuesto del historial?")) return;
+
+        try {
+            await api.delete(`/sales/budgets/${id}`);
+            setHistoryList(prev => prev.filter(b => b.id !== id));
+            toast.success("Presupuesto eliminado");
+        } catch (error) {
+            console.error(error);
+            toast.error("Error al eliminar el presupuesto");
+        }
+    };
+
     return (
-        // ARREGLO DE PDF: print:overflow-visible y print:h-auto evitan que la hoja 2 se corte
-        <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] bg-gray-50 dark:bg-slate-950 overflow-hidden transition-colors duration-300 print:overflow-visible print:h-auto print:block">
+        <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] bg-gray-50 dark:bg-slate-950 overflow-hidden transition-colors duration-300">
             <Toaster position="top-center" />
 
-            {/* Componente de impresión */}
-            {printData && (
-                <div className="hidden print:block">
-                    <BudgetPrint ref={printRef} data={printData} />
+            {/* COMPONENTE DE IMPRESIÓN OCULTO Y AISLADO */}
+            <div style={{ display: 'none' }}>
+                <div ref={printRef}>
+                    {printData && <BudgetPrint data={printData} />}
                 </div>
-            )}
+            </div>
 
-            {/* IZQUIERDA (Oculto en Impresión) */}
-            <div className="w-full lg:w-5/12 xl:w-1/3 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 flex flex-col shadow-xl z-20 transition-colors print:hidden">
+            {/* IZQUIERDA (Buscador) */}
+            <div className="w-full lg:w-5/12 xl:w-1/3 bg-white dark:bg-slate-900 border-r border-gray-200 dark:border-slate-800 flex flex-col shadow-xl z-20 transition-colors">
                 <div className="p-5 border-b border-gray-100 dark:border-slate-800 bg-white dark:bg-slate-900 z-10 shrink-0">
                     <div className="flex justify-between items-center mb-4">
                         <h1 className="text-xl font-black text-gray-800 dark:text-white flex items-center"><Calculator className="mr-2 text-yellow-500" /> Presupuestador</h1>
                         <div className="flex items-center gap-3">
-                            {/* BOTÓN TOGGLE STOCK */}
                             <button
                                 onClick={() => setUseRealStock(!useRealStock)}
                                 className={`flex items-center text-[10px] font-bold px-2 py-1.5 rounded-lg transition-all border ${useRealStock ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/30 dark:border-green-800 dark:text-green-400' : 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-900/30 dark:border-orange-800 dark:text-orange-400'}`}
@@ -293,7 +307,7 @@ const BudgetPage = () => {
                         </div>
                     </div>
                     <div className="flex gap-2 mb-2">
-                        <select className="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs font-bold text-gray-600 dark:text-slate-300 outline-none" value={selectedCat} onChange={e => setSelectedCat(e.target.value)}>
+                        <select className="bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-lg text-xs font-bold text-gray-600 dark:text-slate-300 outline-none focus:ring-2 focus:ring-yellow-400" value={selectedCat} onChange={e => setSelectedCat(e.target.value)}>
                             <option value="">Todas</option>
                             {categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
                         </select>
@@ -308,8 +322,7 @@ const BudgetPage = () => {
                     {manualResults.length === 0 && !manualTerm ? <div className="h-full flex flex-col items-center justify-center text-gray-300 dark:text-slate-700"><Search size={48} className="mb-2 opacity-50" /><p className="text-xs font-medium">Usa el buscador para agregar ítems</p></div> : manualResults.map(p => (
                         <div key={p.id} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-gray-200 dark:border-slate-700 mb-2 shadow-sm hover:border-yellow-400 dark:hover:border-yellow-600 transition-all group">
                             <div className="flex gap-3">
-                                <div className="w-12 h-12 bg-gray-100 dark:bg-slate-700 rounded-lg shrink-0 overflow-hidden border dark:border-slate-600 flex items-center justify-center">
-                                    {/* ARREGLO IMÁGENES */}
+                                <div className="w-12 h-12 bg-gray-100 dark:bg-slate-700 rounded-lg shrink-0 overflow-hidden border dark:border-slate-600 flex items-center justify-center relative">
                                     {p.imagen ? <img src={getImageUrl(p.imagen)} className="w-full h-full object-cover" alt={p.nombre} onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} /> : null}
                                     <Shirt className={`text-gray-300 dark:text-slate-500 w-full h-full p-2 ${p.imagen ? 'hidden' : 'block'}`} />
                                 </div>
@@ -323,8 +336,8 @@ const BudgetPage = () => {
                 </div>
             </div>
 
-            {/* DERECHA (Oculto en Impresión) */}
-            <div className="flex-1 flex flex-col h-full bg-gray-100 dark:bg-slate-950 transition-colors print:hidden">
+            {/* DERECHA (Carrito) */}
+            <div className="flex-1 flex flex-col h-full bg-gray-100 dark:bg-slate-950 transition-colors">
                 <div className="flex-1 overflow-y-auto p-4 md:p-6 custom-scrollbar">
                     {cart.length === 0 ? <div className="h-full flex flex-col items-center justify-center text-gray-400 dark:text-slate-600 border-2 border-dashed border-gray-300 dark:border-slate-800 rounded-3xl m-4"><FileText size={64} className="mb-4 opacity-50" /><h3 className="text-lg font-bold">Presupuesto Vacío</h3></div> : <div className="space-y-3">{cart.map((item, idx) => (
                         <div key={idx} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-gray-200 dark:border-slate-700 shadow-sm flex items-center gap-4 animate-fade-in-up">
@@ -350,7 +363,6 @@ const BudgetPage = () => {
                             {cart.length > 0 && clientName ? <><Printer className="mr-2 group-hover:scale-110 transition-transform" /> Guardar e Imprimir</> : "Completa los datos"}
                         </button>
 
-                        {/* BOTÓN MUDAR A VENTAS */}
                         <button onClick={moveToPOS} disabled={cart.length === 0} className="w-full bg-emerald-500 text-white py-4 rounded-xl font-bold text-sm shadow-md hover:bg-emerald-600 transition-all flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed group">
                             <Send className="mr-2 group-hover:translate-x-1 transition-transform" size={18} /> Llevar a Ventas (POS)
                         </button>
@@ -358,7 +370,7 @@ const BudgetPage = () => {
                 </div>
             </div>
 
-            {/* MODAL HISTORIAL */}
+            {/* MODAL HISTORIAL (Mejorado con botón de borrar) */}
             {isHistoryOpen && (
                 <div
                     className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex justify-end animate-fade-in"
@@ -383,17 +395,19 @@ const BudgetPage = () => {
                         <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-gray-100 dark:bg-slate-950 transition-colors custom-scrollbar">
                             {isLoadingHistory ? (
                                 <p className="text-center text-gray-400 mt-10 animate-pulse">Cargando...</p>
+                            ) : historyList.length === 0 ? (
+                                <p className="text-center text-gray-400 mt-10 italic">No hay presupuestos guardados.</p>
                             ) : (
                                 historyList.map(b => (
                                     <div
                                         key={b.id}
-                                        className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700 hover:shadow-md hover:border-blue-400 transition-all cursor-pointer group"
+                                        className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700 hover:shadow-md hover:border-blue-400 transition-all cursor-pointer group flex flex-col"
                                         onClick={() => loadFromHistory(b)}
                                     >
                                         <div className="flex justify-between items-start mb-2">
                                             <div>
                                                 <p className="font-bold text-gray-800 dark:text-white">{b.cliente}</p>
-                                                <p className="text-xs text-gray-400 flex items-center">
+                                                <p className="text-xs text-gray-400 flex items-center mt-0.5">
                                                     <Clock size={10} className="mr-1" /> {b.fecha}
                                                 </p>
                                             </div>
@@ -401,13 +415,26 @@ const BudgetPage = () => {
                                                 $ {(b.total || 0).toLocaleString()}
                                             </span>
                                         </div>
-                                        <div className="flex justify-between items-center mt-3">
+
+                                        <div className="flex justify-between items-center mt-2 border-t border-gray-100 dark:border-slate-700 pt-3">
                                             <span className="text-xs bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-gray-300 px-2 py-1 rounded">
                                                 {b.items ? b.items.length : 0} ítems
                                             </span>
-                                            <button className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                Cargar <ArrowRight size={12} className="ml-1" />
-                                            </button>
+
+                                            <div className="flex items-center gap-2">
+                                                {/* BOTÓN ELIMINAR */}
+                                                <button
+                                                    onClick={(e) => deleteFromHistory(b.id, e)}
+                                                    className="text-red-300 hover:text-red-500 p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                                                    title="Eliminar presupuesto"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+
+                                                <button className="text-xs font-bold text-blue-600 dark:text-blue-400 flex items-center bg-blue-50 dark:bg-blue-900/30 px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    Cargar <ArrowRight size={12} className="ml-1" />
+                                                </button>
+                                            </div>
                                         </div>
                                     </div>
                                 ))

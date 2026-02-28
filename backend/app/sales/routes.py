@@ -1761,3 +1761,24 @@ def delete_expense(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"msg": str(e)}), 500
+
+
+@bp.route('/budgets/<int:id>', methods=['DELETE'])
+@jwt_required()
+def delete_budget(id):
+    try:
+        # Busca el presupuesto (verifica el nombre de tu modelo, puede ser Presupuesto)
+        presupuesto = Presupuesto.query.get_or_404(id)
+        
+        # Primero borramos los detalles asociados a este presupuesto
+        DetallePresupuesto.query.filter_by(id_presupuesto=id).delete()
+        
+        # Luego borramos el presupuesto en sí
+        db.session.delete(presupuesto)
+        db.session.commit()
+        
+        return jsonify({"msg": "Presupuesto eliminado exitosamente"}), 200
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error al eliminar presupuesto: {e}")
+        return jsonify({"msg": "Error al eliminar presupuesto", "error": str(e)}), 500
