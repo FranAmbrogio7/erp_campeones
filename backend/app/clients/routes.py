@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from app.extensions import db
-from app.clients.models import Cliente
+from app.sales.models import Cliente
 from flask_jwt_extended import jwt_required
 
 bp = Blueprint('clients', __name__)
