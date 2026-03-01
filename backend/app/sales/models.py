@@ -206,3 +206,10 @@ class Gasto(db.Model):
     monto = db.Column(db.Numeric(10, 2), nullable=False)
     categoria = db.Column(db.String(50)) # Alquiler, Sueldos, Mercadería, Servicios, Varios
     descripcion = db.Column(db.String(255))
+
+class DetalleNotaCredito(db.Model):
+    __tablename__ = 'detalle_nota_credito'
+    id_detalle = db.Column(db.Integer, primary_key=True)
+    id_nota = db.Column(db.Integer, db.ForeignKey('notas_credito.id_nota'), nullable=False)
+    id_venta = db.Column(db.Integer, db.ForeignKey('ventas.id_venta'), nullable=False)
+    monto_aplicado = db.Column(db.Numeric(10, 2), nullable=False)

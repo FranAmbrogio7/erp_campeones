@@ -6,7 +6,7 @@ from io import StringIO
 from flask import Blueprint, jsonify, request, Response, send_file, current_app
 from app.extensions import db
 # IMPORTAMOS DESDE TUS ARCHIVOS SEPARADOS
-from app.sales.models import Venta, DetalleVenta, MetodoPago, SesionCaja, MovimientoCaja, Reserva, DetalleReserva, Presupuesto, DetallePresupuesto, NotaCredito, Gasto
+from app.sales.models import Venta, DetalleVenta, MetodoPago, SesionCaja, MovimientoCaja, Reserva, DetalleReserva, Presupuesto, DetallePresupuesto, NotaCredito, Gasto, DetalleNotaCredito
 from app.products.models import Producto, ProductoVariante, Inventario, Categoria
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from sqlalchemy import desc, func, extract
@@ -817,6 +817,7 @@ def cancelar_reserva(id):
 
 
 
+
 @bp.route('/presupuestos', methods=['GET', 'POST'])
 @jwt_required()
 def presupuestos():
@@ -1071,6 +1072,29 @@ def sync_tn_background(app, items_to_sync):
                 print(f"✅ TN Sync (Background): {item['nombre']} -> {item['new_stock']}")
             except Exception as e:
                 print(f"⚠️ Error Sync TN (Background) para {item['nombre']}: {e}")
+
+@bp.route('/notas-credito/<int:id>', methods=['DELETE'])
+@jwt_required()
+def eliminar_nota_credito(id):
+    nota = NotaCredito.query.get_or_404(id)
+    
+    # Validación: Solo se pueden eliminar notas que no se han usado
+    if nota.estado != 'activa':
+        return jsonify({"msg": "No se puede eliminar una nota que ya fue utilizada"}), 400
+        
+    try:
+        # 1. Eliminar los detalles asociados
+        DetalleNotaCredito.query.filter_by(id_nota=id).delete()
+        
+        # 2. Eliminar la cabecera
+        db.session.delete(nota)
+        db.session.commit()
+        
+        return jsonify({"msg": "Nota de crédito eliminada correctamente"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"msg": f"Error al eliminar: {str(e)}"}), 500
+
 
 @bp.route('/checkout', methods=['POST'])
 @jwt_required()

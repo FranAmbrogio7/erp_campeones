@@ -5,7 +5,8 @@ import Ticket from '../components/Ticket';
 import toast, { Toaster } from 'react-hot-toast';
 import {
   Calendar, DollarSign, CreditCard, ShoppingBag,
-  Printer, Eye, X, Package, Search, FilterX
+  Printer, Eye, X, Package, Search, FilterX,
+  ChevronLeft, ChevronRight // <--- Agregados para la paginación
 } from 'lucide-react';
 
 const SalesHistoryPage = () => {
@@ -15,9 +16,13 @@ const SalesHistoryPage = () => {
   const [paymentMethods, setPaymentMethods] = useState([]);
 
   // --- ESTADOS DE FILTROS ---
-  const [dateRange, setDateRange] = useState({ start: '', end: '' }); // <--- NUEVO: Rango de fechas
+  const [dateRange, setDateRange] = useState({ start: '', end: '' });
   const [filterMethod, setFilterMethod] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+
+  // --- ESTADOS DE PAGINACIÓN (NUEVO) ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 50; // Cantidad de ventas por página
 
   // --- ESTADOS PARA MODALES ---
   const [viewingSale, setViewingSale] = useState(null);
@@ -43,7 +48,8 @@ const SalesHistoryPage = () => {
     const fetchData = async () => {
       try {
         const [resSales, resMethods] = await Promise.all([
-          api.get('/sales/history'),
+          // Aumentamos el límite drásticamente para poder filtrar historial viejo
+          api.get('/sales/history', { params: { limit: 5000 } }),
           api.get('/sales/payment-methods')
         ]);
         setSales(resSales.data.history);
@@ -53,16 +59,20 @@ const SalesHistoryPage = () => {
     if (token) fetchData();
   }, [token]);
 
+  // Resetear a la página 1 cuando el usuario cambia algún filtro
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [dateRange, filterMethod, searchTerm]);
+
   // --- LÓGICA DE FILTRADO ---
   const filteredSales = useMemo(() => {
     return sales.filter(venta => {
-      // 1. Filtro por Rango de Fechas (NUEVO)
+      // 1. Filtro por Rango de Fechas
       let dateMatch = true;
       if (dateRange.start || dateRange.end) {
-        // La fecha de la venta viene como "DD/MM/YYYY HH:MM", la separamos
         const [datePart] = venta.fecha.split(' ');
         const [d, m, y] = datePart.split('/');
-        const saleDate = new Date(y, m - 1, d); // Objeto Date local
+        const saleDate = new Date(y, m - 1, d);
 
         if (dateRange.start) {
           const [startY, startM, startD] = dateRange.start.split('-');
@@ -98,7 +108,12 @@ const SalesHistoryPage = () => {
     });
   }, [sales, dateRange, filterMethod, searchTerm]);
 
+  // --- LÓGICA DE PAGINACIÓN ---
+  const totalPages = Math.ceil(filteredSales.length / itemsPerPage) || 1;
+  const paginatedSales = filteredSales.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
   // --- CÁLCULO DE TOTALES ---
+  // Los totales se calculan sobre "filteredSales" (TODO el período) y no sobre "paginatedSales"
   const summary = useMemo(() => {
     let total = 0;
     const count = filteredSales.length;
@@ -207,7 +222,7 @@ const SalesHistoryPage = () => {
                 />
               </div>
 
-              {/* Rango de Fechas (NUEVO) */}
+              {/* Rango de Fechas */}
               <div className="flex gap-2 shrink-0">
                 <div className="relative w-36 md:w-40">
                   <span className="absolute -top-2.5 left-3 bg-white dark:bg-slate-900 px-1 text-[10px] font-bold text-gray-500 uppercase tracking-wider rounded-md border border-gray-100 dark:border-slate-800">Desde</span>
@@ -289,7 +304,7 @@ const SalesHistoryPage = () => {
           </div>
         </div>
 
-        {/* TABLA PRINCIPAL */}
+        {/* TABLA PRINCIPAL CON PAGINACIÓN APLICADA */}
         <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 flex-1 flex flex-col overflow-hidden transition-colors">
           <div className="overflow-auto flex-1 custom-scrollbar">
             <table className="min-w-full divide-y divide-gray-200 dark:divide-slate-700">
@@ -305,10 +320,10 @@ const SalesHistoryPage = () => {
               </thead>
 
               <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
-                {filteredSales.length === 0 ? (
+                {paginatedSales.length === 0 ? (
                   <tr><td colSpan="6" className="p-16 text-center text-gray-400 dark:text-gray-500 font-medium text-lg">No hay ventas que coincidan con los filtros.</td></tr>
                 ) : (
-                  filteredSales.map(venta => (
+                  paginatedSales.map(venta => (
                     <tr key={venta.id} className="hover:bg-blue-50/30 dark:hover:bg-slate-700/50 transition-colors group">
                       <td className="px-6 py-4 font-bold text-gray-900 dark:text-white font-mono">#{venta.id}</td>
                       <td className="px-6 py-4 text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">{venta.fecha}</td>
@@ -342,8 +357,27 @@ const SalesHistoryPage = () => {
             </table>
           </div>
 
-          <div className="bg-gray-50 dark:bg-slate-900 p-3 border-t border-gray-200 dark:border-slate-700 text-center text-xs font-bold text-gray-500 uppercase tracking-wide transition-colors">
-            Mostrando {filteredSales.length} registros en pantalla
+          {/* --- FOOTER DE PAGINACIÓN --- */}
+          <div className="bg-gray-50 dark:bg-slate-900 p-3 border-t border-gray-200 dark:border-slate-700 flex items-center justify-between shrink-0 transition-colors">
+            <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
+              Mostrando {paginatedSales.length} de {filteredSales.length} resultados | Pág <span className="text-gray-800 dark:text-white font-bold">{currentPage}</span> de {totalPages}
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="p-2 border rounded-lg hover:bg-gray-200 dark:hover:bg-slate-800 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 transition-colors"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <button
+                onClick={() => currentPage < totalPages && setCurrentPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="p-2 border rounded-lg hover:bg-gray-200 dark:hover:bg-slate-800 disabled:opacity-50 dark:border-slate-700 dark:text-slate-300 transition-colors"
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
           </div>
         </div>
       </div>

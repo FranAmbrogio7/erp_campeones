@@ -302,16 +302,44 @@ const InventoryPage = () => {
         } catch (error) { toast.error("Error", { id: toastId }); }
     };
 
+    // --- FUNCIÓN ARREGLADA PARA SELECCIONADOS ---
     const handlePrintLabelsSelected = async () => {
         if (selectedItems.size === 0) return toast.error("Selecciona productos");
         const t = toast.loading("Generando...");
+
         try {
-            const items = products.filter(p => selectedItems.has(p.id)).flatMap(p => p.variantes.map(v => ({ nombre: p.nombre, sku: v.sku, talle: v.talle, cantidad: 1 })));
-            if (items.length === 0) throw new Error("Sin variantes");
+            // Filtramos solo los productos seleccionados y luego SUS variantes que tengan stock > 0
+            const items = products
+                .filter(p => selectedItems.has(p.id))
+                .flatMap(p => p.variantes
+                    .filter(v => v.stock > 0)
+                    .map(v => ({
+                        nombre: p.nombre,
+                        sku: v.sku || `GEN-${v.id_variante}`,
+                        talle: v.talle,
+                        cantidad: v.stock // <-- Se usa el stock real
+                    }))
+                );
+
+            if (items.length === 0) {
+                toast.error("Los productos seleccionados no tienen stock", { id: t });
+                return;
+            }
+
+            // Calculamos cuántas etiquetas en total se van a imprimir
+            const totalLabels = items.reduce((sum, item) => sum + item.cantidad, 0);
+
+            if (totalLabels > 500 && !window.confirm(`⚠️ Se van a generar ${totalLabels} etiquetas en total. ¿Continuar?`)) {
+                toast.dismiss(t);
+                return;
+            }
+
             await generatePdf(items);
             toast.success("PDF Listo", { id: t });
             setSelectedItems(new Set());
-        } catch (e) { toast.error("Error", { id: t }); }
+        } catch (e) {
+            toast.error("Error al generar etiquetas", { id: t });
+        }
     };
 
     const handlePrintLabelsByFilter = async () => {

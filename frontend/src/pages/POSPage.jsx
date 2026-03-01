@@ -59,6 +59,9 @@ const POSPage = () => {
   const [manualTerm, setManualTerm] = useState('');
   const [manualResults, setManualResults] = useState([]);
 
+  // --- NUEVO: ESTADO PARA CONTROLAR EL DROPDOWN ---
+  const [showDropdown, setShowDropdown] = useState(false);
+
   const [categories, setCategories] = useState([]);
   const [specificCats, setSpecificCats] = useState([]);
   const [selectedCat, setSelectedCat] = useState('');
@@ -72,7 +75,7 @@ const POSPage = () => {
   // Estados de Precio, Recargo y Descuento
   const [customTotal, setCustomTotal] = useState(null);
   const [isEditingPrice, setIsEditingPrice] = useState(false);
-  const [editingItemId, setEditingItemId] = useState(null); // <--- NUEVO: Item en edición
+  const [editingItemId, setEditingItemId] = useState(null);
   const [surchargePercent, setSurchargePercent] = useState(0);
   const [discountPercent, setDiscountPercent] = useState(0);
 
@@ -94,6 +97,7 @@ const POSPage = () => {
   const inputRef = useRef(null);
   const searchInputRef = useRef(null);
   const creditNoteInputRef = useRef(null);
+  const searchContainerRef = useRef(null); // <--- NUEVO: Ref para el contenedor de búsqueda
 
   useScanDetection(inputRef);
 
@@ -101,7 +105,7 @@ const POSPage = () => {
     localStorage.setItem('pos_multi_carts_backup', JSON.stringify(allCarts));
   }, [allCarts]);
 
-  // --- CÁLCULOS MATEMÁTICOS ACTUALIZADOS ---
+  // --- CÁLCULOS MATEMÁTICOS ---
   const subtotalCalculado = cart.reduce((sum, item) => sum + item.subtotal, 0);
   const surchargeAmount = subtotalCalculado * (surchargePercent / 100);
   const discountAmount = subtotalCalculado * (discountPercent / 100);
@@ -164,27 +168,45 @@ const POSPage = () => {
     else if (document.activeElement !== creditNoteInputRef.current) inputRef.current?.focus();
   }, [cart, isRegisterOpen, isEditingPrice, editingItemId, isConfirmModalOpen, isReservationModalOpen, isSearchMode, zoomImage, isCustomModalOpen]);
 
+  // --- NUEVO: CERRAR DROPDOWN AL HACER CLIC AFUERA ---
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
+        setShowDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // --- BÚSQUEDA ORDENADA POR MAS VENDIDOS ---
   useEffect(() => {
     if (!manualTerm.trim() && !selectedCat && !selectedSpec) {
       setManualResults([]);
+      setShowDropdown(false); // Ocultar si no hay búsqueda
       return;
     }
     const delaySearch = setTimeout(async () => {
       try {
-        const params = {
-          limit: 100,
-          sort_by: 'mas_vendidos' // <--- MEJORA: Orden por defecto
-        };
+        const params = { limit: 100, sort_by: 'mas_vendidos' };
         if (manualTerm.trim()) params.search = manualTerm;
         if (selectedCat) params.category_id = selectedCat;
         if (selectedSpec) params.specific_id = selectedSpec;
         const res = await api.get('/products', { params });
         setManualResults(res.data.products || []);
+        setShowDropdown(true); // Mostrar cuando lleguen los resultados
       } catch (error) { console.error(error); }
     }, 300);
     return () => clearTimeout(delaySearch);
   }, [manualTerm, isSearchMode, selectedCat, selectedSpec]);
+
+  // --- NUEVO: CERRAR DROPDOWN CON ESCAPE ---
+  const handleSearchKeyDown = (e) => {
+    if (e.key === 'Escape') {
+      setShowDropdown(false);
+      searchInputRef.current?.blur();
+    }
+  };
 
   const handleManualAdd = (product, variant) => {
     const itemFormatted = {
@@ -198,6 +220,7 @@ const POSPage = () => {
     addToCart(itemFormatted);
     toast.success(`${product.nombre} (${variant.talle}) agregado`);
     playSound('beep');
+    // Mantenemos el foco por si quieren cargar otra variante de la misma remera
     setTimeout(() => searchInputRef.current?.focus(), 100);
   };
 
@@ -247,9 +270,8 @@ const POSPage = () => {
     }));
   };
 
-  // --- NUEVA FUNCIÓN: EDITAR PRECIO UNITARIO ---
   const updateItemPrice = (id, newPrice) => {
-    setCustomTotal(null); // Resetea total custom si editan items sueltos
+    setCustomTotal(null);
     setCart(prev => prev.map(item => {
       if (item.id_variante === id) {
         const parsedPrice = parseFloat(newPrice);
@@ -411,11 +433,11 @@ const POSPage = () => {
       <ConfirmModal isOpen={isConfirmModalOpen} onClose={() => setIsConfirmModalOpen(false)} onConfirm={processSale} title="Cobrar" message={`Total: $${totalFinal.toLocaleString()}`} confirmText="Confirmar" />
       <ReservationModal isOpen={isReservationModalOpen} onClose={() => setIsReservationModalOpen(false)} onConfirm={processReservation} total={totalFinal} paymentMethods={paymentMethods} />
 
-      {/* --- COLUMNA IZQUIERDA (Redimensionada para dar más espacio al carrito) --- */}
+      {/* --- COLUMNA IZQUIERDA --- */}
       <div className="w-full md:w-[55%] xl:w-[60%] flex flex-col gap-4 h-full">
 
         {/* Panel Escáner */}
-        <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 relative z-50 transition-all duration-300">
+        <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 relative z-[60] transition-all duration-300">
           <div className="flex justify-between items-center mb-3">
             <h2 className="text-lg font-bold text-gray-700 dark:text-white flex items-center gap-2">
               {isSearchMode ? <Search className="text-purple-600 dark:text-purple-400" /> : <ScanBarcode className="text-blue-600 dark:text-blue-400" />}
@@ -473,20 +495,28 @@ const POSPage = () => {
                 )}
               </div>
 
-              <div className="relative">
+              {/* CONTENEDOR CON REF PARA DETECTAR CLICS AFUERA */}
+              <div className="relative" ref={searchContainerRef}>
                 <input
                   ref={searchInputRef}
                   value={manualTerm}
-                  onChange={e => setManualTerm(e.target.value)}
-                  placeholder="Escribe para refinar (ej: Boca, XL)..."
+                  onChange={e => {
+                    setManualTerm(e.target.value);
+                    setShowDropdown(true);
+                  }}
+                  onFocus={() => {
+                    if (manualTerm.trim() || selectedCat || selectedSpec) setShowDropdown(true);
+                  }}
+                  onKeyDown={handleSearchKeyDown}
+                  placeholder="Escribe para refinar (ej: Boca, XL)... (ESC para cerrar)"
                   className="w-full p-4 border-2 border-purple-200 dark:border-purple-800 bg-white dark:bg-slate-900 text-gray-800 dark:text-white rounded-xl outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-50 dark:focus:ring-purple-900/20 transition-all text-lg placeholder-gray-400 dark:placeholder-slate-600"
                   autoFocus
                 />
 
-                {(manualResults.length > 0 || (isSearchMode && (selectedCat || selectedSpec))) && (
-                  <div className="absolute top-full left-0 right-0 bg-white dark:bg-slate-800 border dark:border-slate-700 shadow-2xl rounded-b-xl mt-1 max-h-[60vh] overflow-y-auto z-50">
+                {showDropdown && (manualResults.length > 0 || (isSearchMode && (selectedCat || selectedSpec))) && (
+                  <div className="absolute top-full left-0 right-0 bg-white dark:bg-slate-800 border dark:border-slate-700 shadow-2xl rounded-b-xl mt-1 max-h-[60vh] overflow-y-auto z-[100] custom-scrollbar">
                     {manualResults.length === 0 ? (
-                      <div className="p-8 text-center text-gray-400 italic">No se encontraron productos con estos filtros.</div>
+                      <div className="p-8 text-center text-gray-400 italic font-medium">No se encontraron productos con estos filtros.</div>
                     ) : (
                       manualResults.map(p => (
                         <div key={p.id} className="p-3 border-b dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 flex gap-3 cursor-pointer group">
@@ -619,7 +649,7 @@ const POSPage = () => {
         </div>
       </div>
 
-      {/* --- COLUMNA DERECHA (Carrito y Cobro - Rediseñado y más espacioso) --- */}
+      {/* --- COLUMNA DERECHA (Carrito y Cobro) --- */}
       <div className="w-full md:w-[45%] xl:w-[40%] bg-white dark:bg-slate-800 flex flex-col rounded-2xl shadow-lg border border-gray-200 dark:border-slate-700 overflow-hidden h-full relative z-10 transition-colors">
 
         {/* --- PESTAÑAS MULTI-CLIENTE --- */}
@@ -650,7 +680,7 @@ const POSPage = () => {
           </div>
         </div>
 
-        {/* --- LISTA DE ITEMS (MEJORA UX) --- */}
+        {/* --- LISTA DE ITEMS --- */}
         <div className="flex-1 overflow-y-auto p-3 space-y-1.5 bg-slate-50 dark:bg-slate-900/50 custom-scrollbar">
           {cart.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-gray-300 dark:text-slate-600 opacity-50">
@@ -660,31 +690,26 @@ const POSPage = () => {
           ) : cart.map(item => (
             <div key={item.id_variante} className="bg-white dark:bg-slate-800 p-2.5 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 animate-fade-in-down transition-colors relative">
 
-              {/* Botón Borrar (Absoluto arriba derecha) */}
               <button onClick={() => removeFromCart(item.id_variante)} className="absolute right-2 top-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 p-1.5 rounded-lg transition-colors">
                 <X size={16} />
               </button>
 
               <div className="flex flex-col justify-between h-full">
-                {/* Fila Superior: Info del Producto */}
                 <div className="pr-8 mb-2">
                   <p className="font-bold text-sm text-gray-800 dark:text-white truncate leading-tight" title={item.nombre}>{item.nombre}</p>
-                  <div className="text-[11px] text-gray-500 dark:text-slate-400 mt-1 flex gap-2">
+                  <div className="text-[10px] text-gray-500 dark:text-slate-400 mt-1 flex gap-2">
                     <span className="bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 rounded font-medium">Talle: {item.talle}</span>
                     <span className="truncate py-0.5">SKU: {item.sku}</span>
                   </div>
                 </div>
 
-                {/* Fila Inferior: Controles y Precio Editables */}
                 <div className="flex justify-between items-end pt-2 border-t border-gray-50 dark:border-slate-700/50">
-                  {/* Controles de Cantidad Compactos */}
                   <div className="flex items-center bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-200 dark:border-slate-700 p-0.5 shadow-inner">
                     <button onClick={() => updateQuantity(item.id_variante, -1)} className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-700 rounded-md transition-colors"><Minus size={14} /></button>
                     <span className="font-bold text-xs w-8 text-center text-gray-800 dark:text-white">{item.cantidad}</span>
                     <button onClick={() => updateQuantity(item.id_variante, 1)} className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-700 rounded-md transition-colors"><Plus size={14} /></button>
                   </div>
 
-                  {/* --- MEJORA: PRECIO EDITABLE UNITARIO --- */}
                   <div className="flex flex-col items-end">
                     <span className="text-[9px] text-gray-400 uppercase font-bold tracking-wider mb-0.5">Precio Subtotal</span>
                     {editingItemId === item.id_variante ? (

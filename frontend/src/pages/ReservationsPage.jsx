@@ -3,7 +3,8 @@ import axios from 'axios';
 import { useAuth, api } from '../context/AuthContext';
 import {
     CalendarClock, Search, CheckCircle, XCircle, DollarSign,
-    Phone, Eye, Printer, AlertTriangle, X, CreditCard, Banknote
+    Phone, Eye, Printer, AlertTriangle, X, CreditCard, Banknote,
+    Trash2 // <--- IMPORTADO EL ÍCONO DE BORRAR
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import { useReactToPrint } from 'react-to-print';
@@ -87,6 +88,19 @@ const ReservationsPage = () => {
             await axios.post(`/api/sales/reservas/${id}/cancelar`, {}, { headers: { Authorization: `Bearer ${token}` } });
             toast.success("Reserva cancelada"); fetchReservas();
         } catch (e) { toast.error("Error cancelando"); }
+    };
+
+    // --- NUEVA FUNCIÓN PARA ELIMINAR RESERVA ---
+    const handleDelete = async (id) => {
+        if (!window.confirm("⚠️ ¿Estás seguro de eliminar esta reserva permanentemente? Esta acción no se puede deshacer.")) return;
+        const toastId = toast.loading("Eliminando...");
+        try {
+            await axios.delete(`/api/sales/reservas/${id}`, { headers: { Authorization: `Bearer ${token}` } });
+            toast.success("Reserva eliminada exitosamente", { id: toastId });
+            fetchReservas(); // Recarga la lista
+        } catch (e) {
+            toast.error(e.response?.data?.msg || "Error al eliminar la reserva", { id: toastId });
+        }
     };
 
     const handleViewDetail = (reserva) => {
@@ -193,16 +207,25 @@ const ReservationsPage = () => {
                                     <td className="p-4 text-right">{r.saldo > 0 ? <span className="font-black text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">$ {r.saldo.toLocaleString()}</span> : <span className="text-gray-400 font-medium">-</span>}</td>
                                     <td className="p-4 text-center"><button onClick={() => handleViewDetail(r)} className="text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-full transition-all" title="Ver artículos"><Eye size={20} /></button></td>
                                     <td className="p-4 text-right">
-                                        <div className="flex justify-end gap-2">
+                                        <div className="flex justify-end items-center gap-1.5">
                                             <button onClick={() => handleReprint(r)} className="p-2 text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors border border-transparent hover:border-blue-100" title="Reimprimir"><Printer size={18} /></button>
                                             {r.estado === 'pendiente' ? (
                                                 <>
-                                                    <button onClick={() => handleCancelar(r.id)} className="p-2 text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors border border-transparent hover:border-red-100" title="Cancelar"><XCircle size={18} /></button>
+                                                    <button onClick={() => handleCancelar(r.id)} className="p-2 text-gray-400 dark:text-gray-500 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors border border-transparent hover:border-orange-100" title="Cancelar"><XCircle size={18} /></button>
                                                     <button onClick={() => openPayModal(r)} className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-sm flex items-center gap-1.5 text-xs font-bold transition-transform active:scale-95" title="Cobrar"><DollarSign size={14} /> RETIRAR</button>
                                                 </>
                                             ) : (
-                                                <span className="text-gray-300 dark:text-gray-600 italic text-xs flex items-center justify-end"><CheckCircle size={14} className="mr-1" /> Completada</span>
+                                                <span className="text-gray-300 dark:text-gray-600 italic text-xs flex items-center justify-end mr-2"><CheckCircle size={14} className="mr-1" /> Completada</span>
                                             )}
+
+                                            {/* BOTÓN ELIMINAR AÑADIDO AL FINAL */}
+                                            <button
+                                                onClick={() => handleDelete(r.id)}
+                                                className="p-2 ml-1 text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors border border-transparent hover:border-red-100"
+                                                title="Eliminar permanentemente"
+                                            >
+                                                <Trash2 size={18} />
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>

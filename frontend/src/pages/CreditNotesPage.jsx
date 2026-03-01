@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../context/AuthContext';
-import { FileText, CheckCircle, XCircle, Search, Plus, Save, X, Printer } from 'lucide-react';
+import { FileText, CheckCircle, XCircle, Search, Plus, Save, X, Printer, Trash2 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import { useReactToPrint } from 'react-to-print';
 import CreditNoteTicket from '../components/CreditNoteTicket'; // Asegúrate de que este componente exista en la ruta
@@ -72,6 +72,20 @@ const CreditNotesPage = () => {
             toast.error(error.response?.data?.msg || "Error al crear nota");
         } finally {
             setLoading(false);
+        }
+    };
+
+    // --- NUEVA FUNCIÓN PARA ELIMINAR NOTA ---
+    const handleDelete = async (id) => {
+        if (!window.confirm("⚠️ ¿Estás seguro de eliminar esta nota de crédito permanentemente? Esta acción no se puede deshacer.")) return;
+
+        const toastId = toast.loading("Eliminando...");
+        try {
+            await api.delete(`/sales/notas-credito/${id}`);
+            toast.success("Nota de crédito eliminada exitosamente", { id: toastId });
+            fetchNotas(); // Recarga la lista
+        } catch (error) {
+            toast.error(error.response?.data?.msg || "Error al eliminar la nota", { id: toastId });
         }
     };
 
@@ -153,15 +167,24 @@ const CreditNotesPage = () => {
                                 <td className="p-4 text-gray-500">{n.fecha}</td>
                                 <td className="p-4 text-gray-500 italic max-w-xs truncate">{n.observaciones || '-'}</td>
 
-                                {/* BOTÓN DE REIMPRIMIR */}
+                                {/* BOTONES DE ACCIÓN */}
                                 <td className="p-4 text-center">
-                                    <button
-                                        onClick={() => handleReprint(n)}
-                                        className="text-gray-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-full transition-all"
-                                        title="Imprimir Comprobante"
-                                    >
-                                        <Printer size={20} />
-                                    </button>
+                                    <div className="flex justify-center gap-2">
+                                        <button
+                                            onClick={() => handleReprint(n)}
+                                            className="text-gray-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded-lg transition-all"
+                                            title="Imprimir Comprobante"
+                                        >
+                                            <Printer size={20} />
+                                        </button>
+                                        <button
+                                            onClick={() => handleDelete(n.id)}
+                                            className="text-gray-400 hover:text-red-600 p-2 hover:bg-red-50 rounded-lg transition-all"
+                                            title="Eliminar permanentemente"
+                                        >
+                                            <Trash2 size={20} />
+                                        </button>
+                                    </div>
                                 </td>
                             </tr>
                         ))}
