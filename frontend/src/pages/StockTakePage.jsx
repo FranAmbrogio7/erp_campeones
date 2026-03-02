@@ -14,6 +14,7 @@ const StockTakePage = () => {
     const [activeTab, setActiveTab] = useState('scan');
     const [updateMode, setUpdateMode] = useState('add'); // Por defecto 'add' (Sumar)
     const [showReplaceWarning, setShowReplaceWarning] = useState(false);
+    const [showSaveModal, setShowSaveModal] = useState(false); // <--- NUEVO: Modal antes de guardar
 
     // --- ESTADOS DE DATOS ---
     const [scannedItems, setScannedItems] = useState(() => {
@@ -26,31 +27,53 @@ const StockTakePage = () => {
     const [manualResults, setManualResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
 
-    // --- ESTADOS DE FILTROS, ZOOM Y DROPDOWN ---
+    // --- ESTADOS DE FILTROS Y CATEGORÍAS (NUEVOS) ---
+    const [categories, setCategories] = useState([]);
+    const [specificCats, setSpecificCats] = useState([]);
+    const [selectedCat, setSelectedCat] = useState('');
+    const [selectedSpec, setSelectedSpec] = useState('');
+
     const [sortBy, setSortBy] = useState('mas_vendidos');
     const [zoomImage, setZoomImage] = useState(null);
-    const [showDropdown, setShowDropdown] = useState(false); // <--- NUEVO: Controla si la lista está visible
+    const [showDropdown, setShowDropdown] = useState(false);
 
     // Refs
     const scanInputRef = useRef(null);
     const searchInputRef = useRef(null);
-    const searchContainerRef = useRef(null); // <--- NUEVO: Referencia al contenedor de búsqueda
+    const searchContainerRef = useRef(null);
 
+    // --- GUARDADO AUTOMÁTICO EN NAVEGADOR ---
     useEffect(() => {
         localStorage.setItem('stockTakeSession', JSON.stringify(scannedItems));
     }, [scannedItems]);
 
-    // Foco automático del escáner
+    // --- CARGAR CATEGORÍAS AL INICIAR ---
+    useEffect(() => {
+        const fetchDropdowns = async () => {
+            if (!token) return;
+            try {
+                const [resCat, resSpec] = await Promise.all([
+                    api.get('/products/categories'),
+                    api.get('/products/specific-categories')
+                ]);
+                setCategories(resCat.data);
+                setSpecificCats(resSpec.data);
+            } catch (e) { console.error("Error cargando categorías:", e); }
+        };
+        fetchDropdowns();
+    }, [token]);
+
+    // --- FOCO AUTOMÁTICO DEL ESCÁNER ---
     useEffect(() => {
         const focusInterval = setInterval(() => {
-            if (activeTab === 'scan' && document.activeElement !== scanInputRef.current && !zoomImage && !showReplaceWarning) {
+            if (activeTab === 'scan' && document.activeElement !== scanInputRef.current && !zoomImage && !showReplaceWarning && !showSaveModal) {
                 scanInputRef.current?.focus();
             }
         }, 2000);
         return () => clearInterval(focusInterval);
-    }, [activeTab, zoomImage, showReplaceWarning]);
+    }, [activeTab, zoomImage, showReplaceWarning, showSaveModal]);
 
-    // --- NUEVO: CERRAR AL HACER CLIC AFUERA ---
+    // --- CERRAR AL HACER CLIC AFUERA ---
     useEffect(() => {
         const handleClickOutside = (event) => {
             if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
@@ -61,9 +84,9 @@ const StockTakePage = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // Búsqueda Manual con Filtro
+    // --- BÚSQUEDA MANUAL MEJORADA (CON FILTROS) ---
     useEffect(() => {
-        if (!manualTerm.trim()) {
+        if (!manualTerm.trim() && !selectedCat && !selectedSpec) {
             setManualResults([]);
             setShowDropdown(false);
             return;
@@ -71,14 +94,19 @@ const StockTakePage = () => {
         const delay = setTimeout(async () => {
             setIsSearching(true);
             try {
-                const res = await api.get('/products', { params: { search: manualTerm, limit: 20, sort_by: sortBy } });
+                const params = { limit: 100, sort_by: sortBy };
+                if (manualTerm.trim()) params.search = manualTerm;
+                if (selectedCat) params.category_id = selectedCat;
+                if (selectedSpec) params.specific_id = selectedSpec;
+
+                const res = await api.get('/products', { params });
                 setManualResults(res.data.products || []);
                 setShowDropdown(true); // Mostrar resultados al llegar
             } catch (e) { console.error(e); }
             finally { setIsSearching(false); }
         }, 300);
         return () => clearTimeout(delay);
-    }, [manualTerm, sortBy]);
+    }, [manualTerm, sortBy, selectedCat, selectedSpec]);
 
     // --- FUNCIÓN DE IMAGEN ---
     const getImageUrl = (img) => {
@@ -138,14 +166,11 @@ const StockTakePage = () => {
             stock_sistema: variant.stock
         });
 
-        // Limpiar y esconder la lista al seleccionar
-        setShowDropdown(false);
-        setManualTerm('');
-        setManualResults([]);
+        // CORRECCIÓN: NO cerramos el dropdown ni borramos la búsqueda
+        // Para que el usuario pueda seguir haciendo clic en otras variantes
         searchInputRef.current?.focus();
     };
 
-    // --- CERRAR CON ESCAPE ---
     const handleSearchKeyDown = (e) => {
         if (e.key === 'Escape') {
             setShowDropdown(false);
@@ -168,7 +193,6 @@ const StockTakePage = () => {
         }
     };
 
-    // --- MANEJO DEL MODO DE GUARDADO ---
     const handleModeChange = (mode) => {
         if (mode === 'replace') {
             setShowReplaceWarning(true);
@@ -210,11 +234,25 @@ const StockTakePage = () => {
         await generatePdf(itemsToPrint);
     };
 
-    const handleSave = async () => {
+    // --- NUEVA LÓGICA DE GUARDADO (CON MODAL) ---
+    const handleSaveClick = () => {
         if (scannedItems.length === 0) return;
-        const modeLabel = updateMode === 'replace' ? 'REEMPLAZAR (Arqueo)' : 'SUMAR (Ajuste)';
-        if (!window.confirm(`⚠️ ¿Confirmar actualización de Stock?\n\nModo: ${modeLabel}\nItems: ${scannedItems.length}`)) return;
+        setShowSaveModal(true); // Abre el modal en lugar de guardar directo
+    };
 
+    const executeSave = async (printFirst = false) => {
+        // 1. Si el usuario pidió imprimir primero
+        if (printFirst) {
+            const itemsToPrint = scannedItems.map(i => ({
+                sku: i.sku,
+                nombre: i.nombre,
+                talle: i.talle,
+                cantidad: i.cantidad
+            }));
+            await generatePdf(itemsToPrint);
+        }
+
+        // 2. Proceso de guardado en Base de Datos
         const loadToast = toast.loading("Actualizando base de datos...");
         try {
             const itemsPayload = scannedItems.map(i => {
@@ -229,6 +267,7 @@ const StockTakePage = () => {
             toast.success("Inventario actualizado exitosamente", { id: loadToast });
             setScannedItems([]);
             localStorage.removeItem('stockTakeSession');
+            setShowSaveModal(false); // Cerramos el modal al finalizar
         } catch (e) {
             toast.error("Error al guardar", { id: loadToast });
         }
@@ -288,11 +327,30 @@ const StockTakePage = () => {
                         <ScanBarcode className="absolute left-4 top-1/2 -translate-y-1/2 text-blue-300 dark:text-blue-500" size={32} />
                     </form>
                 ) : (
-                    <div className="relative" ref={searchContainerRef}>
-                        {/* --- BÚSQUEDA MANUAL MEJORADA CON FILTRO Y BLINDAJE --- */}
-                        <div className="flex flex-col sm:flex-row gap-2">
+                    <div className="relative flex flex-col gap-3" ref={searchContainerRef}>
+                        {/* --- BÚSQUEDA MANUAL MEJORADA CON FILTROS --- */}
+                        <div className="flex flex-col lg:flex-row gap-2">
+                            {/* Filtros Dropdowns */}
                             <select
-                                className="sm:w-48 p-4 font-bold border-2 border-purple-200 dark:border-purple-700 bg-gray-50 dark:bg-slate-800 text-gray-700 dark:text-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-400 transition-colors"
+                                className="flex-1 lg:max-w-xs p-3 font-bold border-2 border-purple-200 dark:border-purple-700 bg-gray-50 dark:bg-slate-800 text-gray-700 dark:text-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-400 transition-colors text-sm"
+                                value={selectedCat}
+                                onChange={e => setSelectedCat(e.target.value)}
+                            >
+                                <option value="">Todas las Categorías</option>
+                                {categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                            </select>
+
+                            <select
+                                className="flex-1 lg:max-w-xs p-3 font-bold border-2 border-purple-200 dark:border-purple-700 bg-gray-50 dark:bg-slate-800 text-gray-700 dark:text-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-400 transition-colors text-sm"
+                                value={selectedSpec}
+                                onChange={e => setSelectedSpec(e.target.value)}
+                            >
+                                <option value="">Todas las Ligas</option>
+                                {specificCats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                            </select>
+
+                            <select
+                                className="flex-1 lg:max-w-[180px] p-3 font-bold border-2 border-purple-200 dark:border-purple-700 bg-gray-50 dark:bg-slate-800 text-gray-700 dark:text-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-400 transition-colors text-sm"
                                 value={sortBy}
                                 onChange={e => setSortBy(e.target.value)}
                             >
@@ -300,33 +358,44 @@ const StockTakePage = () => {
                                 <option value="recientes">Recientes</option>
                                 <option value="az">A - Z</option>
                             </select>
+                        </div>
 
-                            <div className="relative flex-1">
-                                <input
-                                    ref={searchInputRef}
-                                    value={manualTerm}
-                                    onChange={e => {
-                                        setManualTerm(e.target.value);
-                                        setShowDropdown(true); // Abrir al escribir
+                        {/* Barra de Búsqueda de Texto */}
+                        <div className="relative">
+                            <input
+                                ref={searchInputRef}
+                                value={manualTerm}
+                                onChange={e => {
+                                    setManualTerm(e.target.value);
+                                    setShowDropdown(true);
+                                }}
+                                onFocus={() => {
+                                    if (manualTerm.trim() || selectedCat || selectedSpec) setShowDropdown(true);
+                                }}
+                                onKeyDown={handleSearchKeyDown}
+                                className="w-full pl-12 pr-10 py-4 text-xl font-bold border-2 border-purple-200 dark:border-purple-700 bg-white dark:bg-slate-900 text-gray-800 dark:text-white rounded-xl outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-50 dark:focus:ring-purple-900/30 transition-all placeholder-purple-300 dark:placeholder-slate-600"
+                                placeholder="Escribe nombre (ej: Remera Boca)..."
+                                autoFocus
+                            />
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-purple-300 dark:text-purple-500" size={28} />
+
+                            {/* Botón para limpiar TODOS los filtros a la vez */}
+                            {(manualTerm || selectedCat || selectedSpec) && (
+                                <button
+                                    onClick={() => {
+                                        setManualTerm('');
+                                        setSelectedCat('');
+                                        setSelectedSpec('');
+                                        setManualResults([]);
+                                        setShowDropdown(false);
+                                        searchInputRef.current?.focus();
                                     }}
-                                    onFocus={() => {
-                                        if (manualTerm.trim().length > 0) setShowDropdown(true); // Abrir si ya hay texto
-                                    }}
-                                    onKeyDown={handleSearchKeyDown}
-                                    className="w-full pl-12 pr-10 py-4 text-xl font-bold border-2 border-purple-200 dark:border-purple-700 bg-white dark:bg-slate-900 text-gray-800 dark:text-white rounded-xl outline-none focus:border-purple-500 focus:ring-4 focus:ring-purple-50 dark:focus:ring-purple-900/30 transition-all placeholder-purple-300 dark:placeholder-slate-600"
-                                    placeholder="Escribe nombre (ej: Remera Boca)..."
-                                    autoFocus
-                                />
-                                <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-purple-300 dark:text-purple-500" size={28} />
-                                {manualTerm && (
-                                    <button
-                                        onClick={() => { setManualTerm(''); setManualResults([]); setShowDropdown(false); searchInputRef.current?.focus(); }}
-                                        className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors"
-                                    >
-                                        <X size={24} />
-                                    </button>
-                                )}
-                            </div>
+                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 dark:text-gray-500 dark:hover:text-red-400 transition-colors"
+                                    title="Limpiar búsqueda y filtros"
+                                >
+                                    <X size={24} />
+                                </button>
+                            )}
                         </div>
 
                         {/* RESULTADOS FLOTANTES (Solo se ven si showDropdown es true) */}
@@ -370,7 +439,7 @@ const StockTakePage = () => {
                                 ))}
                             </div>
                         )}
-                        {showDropdown && manualTerm && !isSearching && manualResults.length === 0 && (
+                        {showDropdown && (manualTerm || selectedCat || selectedSpec) && !isSearching && manualResults.length === 0 && (
                             <div className="absolute top-full left-0 right-0 bg-white dark:bg-slate-800 p-6 text-center text-gray-400 border dark:border-slate-700 rounded-b-xl shadow-lg mt-1 font-medium z-[100]">Sin resultados para esta búsqueda</div>
                         )}
                     </div>
@@ -406,7 +475,6 @@ const StockTakePage = () => {
                                     scannedItems.map(item => (
                                         <tr key={item.sku} className="hover:bg-blue-50/30 dark:hover:bg-blue-900/10 transition-colors group">
                                             <td className="p-2 text-center">
-                                                {/* ZOOM FOTO TABLA */}
                                                 <div
                                                     className="w-10 h-10 bg-gray-100 dark:bg-slate-700 rounded border dark:border-slate-600 mx-auto overflow-hidden flex items-center justify-center cursor-zoom-in relative group/img2"
                                                     onClick={(e) => { if (item.imagen) { e.stopPropagation(); setZoomImage(getImageUrl(item.imagen)); } }}
@@ -487,7 +555,7 @@ const StockTakePage = () => {
                         </button>
 
                         <button
-                            onClick={handleSave}
+                            onClick={handleSaveClick}
                             disabled={scannedItems.length === 0}
                             className={`w-full py-4 rounded-xl font-bold text-white shadow-lg flex items-center justify-center transition-all active:scale-95 ${scannedItems.length === 0 ? 'bg-gray-300 dark:bg-slate-700 cursor-not-allowed text-gray-500 dark:text-gray-500' : updateMode === 'add' ? 'bg-green-600 hover:bg-green-700 shadow-green-200 dark:shadow-none' : 'bg-orange-600 hover:bg-orange-700 shadow-orange-200 dark:shadow-none'}`}
                         >
@@ -497,6 +565,34 @@ const StockTakePage = () => {
                     </div>
                 </div>
             </div>
+
+            {/* --- MODAL DE CONFIRMACIÓN DE GUARDADO / IMPRESIÓN --- */}
+            {showSaveModal && (
+                <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-fade-in" onClick={() => setShowSaveModal(false)}>
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col text-center transition-colors" onClick={e => e.stopPropagation()}>
+                        <div className="w-16 h-16 bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <Save size={32} />
+                        </div>
+                        <h3 className="text-xl font-black text-gray-800 dark:text-white mb-2">Confirmar Actualización</h3>
+                        <p className="text-gray-600 dark:text-gray-300 text-sm mb-6 leading-relaxed">
+                            Modo: <b className={updateMode === 'add' ? 'text-green-600 dark:text-green-400' : 'text-orange-600 dark:text-orange-400'}>{updateMode === 'replace' ? 'REEMPLAZAR (Arqueo)' : 'SUMAR (Reposición)'}</b><br />
+                            Total a procesar: <b>{scannedItems.length} ítems</b><br /><br />
+                            ¿Deseas imprimir las etiquetas antes de guardar?
+                        </p>
+                        <div className="flex flex-col gap-3 w-full">
+                            <button onClick={() => executeSave(true)} className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-lg transition-all active:scale-95 flex items-center justify-center">
+                                <Printer size={18} className="mr-2" /> Imprimir Etiquetas y Guardar
+                            </button>
+                            <button onClick={() => executeSave(false)} className={`w-full py-3 text-white font-bold rounded-xl shadow-lg transition-all active:scale-95 flex items-center justify-center ${updateMode === 'add' ? 'bg-green-600 hover:bg-green-700 shadow-green-200' : 'bg-orange-600 hover:bg-orange-700 shadow-orange-200'}`}>
+                                <CheckCircle2 size={18} className="mr-2" /> Solo Guardar
+                            </button>
+                            <button onClick={() => setShowSaveModal(false)} className="w-full py-3 bg-gray-100 dark:bg-slate-700 text-gray-700 dark:text-gray-300 font-bold rounded-xl hover:bg-gray-200 dark:hover:bg-slate-600 transition-colors mt-2">
+                                Cancelar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* --- MODAL DE ADVERTENCIA PARA "REEMPLAZAR" --- */}
             {showReplaceWarning && (
