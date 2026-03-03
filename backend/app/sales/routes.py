@@ -46,12 +46,14 @@ def add_movement():
     except Exception as e:
         return jsonify({"msg": str(e)}), 500
 
-# --- NUEVO: OBTENER HISTORIAL Y TOTALES ---
+# --- OBTENER HISTORIAL Y TOTALES (CORREGIDO) ---
 @bp.route('/history', methods=['GET'])
 @jwt_required()
 def get_sales_history():
     try:
         solo_actual = request.args.get('current_session') == 'true'
+        # NUEVO: Leer el límite que manda el frontend (si no manda, usa 100 por defecto)
+        limite_solicitado = request.args.get('limit', 100, type=int)
         
         query = Venta.query.options(
             db.joinedload(Venta.metodo),
@@ -65,7 +67,8 @@ def get_sales_history():
             else:
                 return jsonify({"history": [], "today_summary": {"total": 0, "count": 0}}), 200
         else:
-            query = query.limit(100)
+            # APLICAMOS EL LÍMITE DINÁMICO EN LUGAR DEL 100 FIJO
+            query = query.limit(limite_solicitado)
 
         ventas = query.all()
         
@@ -98,7 +101,6 @@ def get_sales_history():
                 metodo_visual = v.metodo.nombre if v.metodo else "N/A"
 
             # --- LÓGICA DE DATOS (NÚMEROS PARA EL FRONTEND) ---
-            # Esto es lo nuevo: enviamos el array limpio para que el frontend pueda sumar bien
             pagos_data = []
             if v.pagos and len(v.pagos) > 0:
                 for p in v.pagos:
@@ -107,7 +109,6 @@ def get_sales_history():
                         "monto": float(p.monto)
                     })
             else:
-                # Si es venta vieja o simple, simulamos la estructura
                 nombre_m = v.metodo.nombre if v.metodo else "Otros"
                 pagos_data.append({"metodo": nombre_m, "monto": float(v.total)})
 
@@ -115,8 +116,8 @@ def get_sales_history():
                 "id": v.id_venta,
                 "fecha": v.fecha_venta.strftime('%d/%m/%Y %H:%M'),
                 "total": float(v.total),
-                "metodo": metodo_visual, # Texto para mostrar
-                "pagos_detalle": pagos_data, # Datos para calcular <--- CLAVE
+                "metodo": metodo_visual,
+                "pagos_detalle": pagos_data,
                 "items": ", ".join(items_summary),
                 "items_detail": items_detail,
                 "estado": v.estado
