@@ -6,7 +6,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import {
   Calendar, DollarSign, CreditCard, ShoppingBag,
   Printer, Eye, X, Package, Search, FilterX,
-  ChevronLeft, ChevronRight // <--- Agregados para la paginación
+  ChevronLeft, ChevronRight, Edit // <--- AGREGADO EL ÍCONO DE EDIT
 } from 'lucide-react';
 
 const SalesHistoryPage = () => {
@@ -20,13 +20,18 @@ const SalesHistoryPage = () => {
   const [filterMethod, setFilterMethod] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // --- ESTADOS DE PAGINACIÓN (NUEVO) ---
+  // --- ESTADOS DE PAGINACIÓN ---
   const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 50; // Cantidad de ventas por página
+  const itemsPerPage = 50;
 
   // --- ESTADOS PARA MODALES ---
   const [viewingSale, setViewingSale] = useState(null);
   const [ticketData, setTicketData] = useState(null);
+
+  // --- NUEVOS ESTADOS DE EDICIÓN ---
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [saleToEdit, setSaleToEdit] = useState(null);
+  const [editFormData, setEditFormData] = useState({ total: '', metodo_pago_id: '' });
 
   // --- IMPRESIÓN ---
   const ticketRef = useRef(null);
@@ -44,18 +49,24 @@ const SalesHistoryPage = () => {
     setTimeout(() => { if (reactToPrintFn) reactToPrintFn(); }, 150);
   };
 
+  // --- FUNCIÓN DE CARGA SEPARADA PARA PODER ACTUALIZAR AL EDITAR ---
+  const fetchData = async () => {
+    setLoading(true);
+    try {
+      const [resSales, resMethods] = await Promise.all([
+        api.get('/sales/history', { params: { limit: 5000 } }),
+        api.get('/sales/payment-methods')
+      ]);
+      setSales(resSales.data.history);
+      setPaymentMethods(resMethods.data);
+    } catch (error) {
+      toast.error('Error al cargar historial');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [resSales, resMethods] = await Promise.all([
-          // Aumentamos el límite drásticamente para poder filtrar historial viejo
-          api.get('/sales/history', { params: { limit: 5000 } }),
-          api.get('/sales/payment-methods')
-        ]);
-        setSales(resSales.data.history);
-        setPaymentMethods(resMethods.data);
-      } catch (error) { toast.error('Error al cargar historial'); } finally { setLoading(false); }
-    };
     if (token) fetchData();
   }, [token]);
 
@@ -64,10 +75,48 @@ const SalesHistoryPage = () => {
     setCurrentPage(1);
   }, [dateRange, filterMethod, searchTerm]);
 
+  // --- LÓGICA DE EDICIÓN ---
+  const openEditModal = (venta) => {
+    setSaleToEdit(venta);
+
+    // Intentamos buscar el ID del método de pago actual usando su nombre
+    let matchedMethodId = '';
+    if (venta.pagos_detalle && venta.pagos_detalle.length > 0) {
+      const methodObj = paymentMethods.find(m => m.nombre === venta.pagos_detalle[0].metodo);
+      if (methodObj) matchedMethodId = methodObj.id;
+    }
+
+    setEditFormData({
+      total: venta.total,
+      metodo_pago_id: matchedMethodId
+    });
+    setIsEditModalOpen(true);
+  };
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    if (!editFormData.metodo_pago_id) {
+      toast.error("Selecciona un método de pago válido");
+      return;
+    }
+
+    const toastId = toast.loading("Aplicando cambios...");
+    try {
+      await api.put(`/sales/${saleToEdit.id}`, {
+        total: parseFloat(editFormData.total),
+        metodo_pago_id: editFormData.metodo_pago_id
+      });
+      toast.success("Venta actualizada correctamente", { id: toastId });
+      setIsEditModalOpen(false);
+      fetchData(); // Recargamos para mostrar los nuevos valores
+    } catch (error) {
+      toast.error(error.response?.data?.msg || "Error al actualizar la venta", { id: toastId });
+    }
+  };
+
   // --- LÓGICA DE FILTRADO ---
   const filteredSales = useMemo(() => {
     return sales.filter(venta => {
-      // 1. Filtro por Rango de Fechas
       let dateMatch = true;
       if (dateRange.start || dateRange.end) {
         const [datePart] = venta.fecha.split(' ');
@@ -87,7 +136,6 @@ const SalesHistoryPage = () => {
         }
       }
 
-      // 2. Filtro por Método de Pago
       let methodMatch = true;
       if (filterMethod) {
         if (venta.pagos_detalle && venta.pagos_detalle.length > 0) {
@@ -97,7 +145,6 @@ const SalesHistoryPage = () => {
         }
       }
 
-      // 3. Filtro por Búsqueda (ID o Items)
       let searchMatch = true;
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
@@ -108,12 +155,9 @@ const SalesHistoryPage = () => {
     });
   }, [sales, dateRange, filterMethod, searchTerm]);
 
-  // --- LÓGICA DE PAGINACIÓN ---
   const totalPages = Math.ceil(filteredSales.length / itemsPerPage) || 1;
   const paginatedSales = filteredSales.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  // --- CÁLCULO DE TOTALES ---
-  // Los totales se calculan sobre "filteredSales" (TODO el período) y no sobre "paginatedSales"
   const summary = useMemo(() => {
     let total = 0;
     const count = filteredSales.length;
@@ -149,10 +193,62 @@ const SalesHistoryPage = () => {
         <div ref={ticketRef}><Ticket saleData={ticketData} /></div>
       </div>
 
+      {/* --- MODAL EDITAR VENTA --- */}
+      {isEditModalOpen && saleToEdit && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in" onClick={() => setIsEditModalOpen(false)}>
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col transition-colors" onClick={e => e.stopPropagation()}>
+            <div className="bg-yellow-500 p-4 flex justify-between items-center text-white">
+              <div>
+                <h3 className="font-bold text-lg flex items-center"><Edit className="mr-2" size={20} /> Corregir Venta #{saleToEdit.id}</h3>
+              </div>
+              <button onClick={() => setIsEditModalOpen(false)} className="hover:bg-yellow-600 p-1 rounded-full transition-colors"><X size={20} /></button>
+            </div>
+
+            <form onSubmit={handleEditSubmit} className="p-6 space-y-5">
+              <div>
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Importe Final ($)</label>
+                <div className="relative">
+                  <span className="absolute left-4 top-3.5 text-gray-400 font-bold">$</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    required
+                    autoFocus
+                    value={editFormData.total}
+                    onChange={e => setEditFormData({ ...editFormData, total: e.target.value })}
+                    className="w-full pl-8 p-3 border-2 border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 rounded-xl font-black text-2xl outline-none focus:border-yellow-500 focus:ring-4 focus:ring-yellow-500/20 dark:text-white transition-all"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Medio de Pago</label>
+                <select
+                  required
+                  value={editFormData.metodo_pago_id}
+                  onChange={e => setEditFormData({ ...editFormData, metodo_pago_id: e.target.value })}
+                  className="w-full p-3 border-2 border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 rounded-xl font-bold outline-none focus:border-yellow-500 focus:ring-4 focus:ring-yellow-500/20 dark:text-white appearance-none transition-all"
+                >
+                  <option value="">Seleccionar método...</option>
+                  {paymentMethods.map(m => (
+                    <option key={m.id} value={m.id}>{m.nombre}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="pt-2 flex gap-3">
+                <button type="button" onClick={() => setIsEditModalOpen(false)} className="flex-1 py-3 text-gray-600 dark:text-gray-300 font-bold bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 rounded-xl transition-colors">Cancelar</button>
+                <button type="submit" className="flex-1 py-3 bg-yellow-500 hover:bg-yellow-600 text-white font-bold rounded-xl shadow-lg transition-transform active:scale-95">Guardar Cambios</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {/* --- MODAL DETALLE --- */}
       {viewingSale && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
-          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] transition-colors">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[90] flex items-center justify-center p-4 animate-fade-in" onClick={() => setViewingSale(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] transition-colors" onClick={e => e.stopPropagation()}>
             <div className="bg-slate-50 dark:bg-slate-900 p-5 border-b border-gray-200 dark:border-slate-700 flex justify-between items-center">
               <div>
                 <h3 className="font-bold text-xl text-gray-800 dark:text-white">Venta #{viewingSale.id}</h3>
@@ -210,7 +306,6 @@ const SalesHistoryPage = () => {
             </div>
 
             <div className="flex flex-col md:flex-row flex-1 w-full gap-3">
-              {/* Buscador de texto */}
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-3 text-gray-400" size={18} />
                 <input
@@ -222,7 +317,6 @@ const SalesHistoryPage = () => {
                 />
               </div>
 
-              {/* Rango de Fechas */}
               <div className="flex gap-2 shrink-0">
                 <div className="relative w-36 md:w-40">
                   <span className="absolute -top-2.5 left-3 bg-white dark:bg-slate-900 px-1 text-[10px] font-bold text-gray-500 uppercase tracking-wider rounded-md border border-gray-100 dark:border-slate-800">Desde</span>
@@ -245,7 +339,6 @@ const SalesHistoryPage = () => {
               </div>
             </div>
 
-            {/* Botón Reset */}
             {(searchTerm || dateRange.start || dateRange.end || filterMethod) && (
               <button onClick={clearFilters} className="shrink-0 w-full md:w-auto bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 p-2.5 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors flex items-center justify-center" title="Limpiar Filtros">
                 <FilterX size={20} className="mr-2 md:mr-0" /> <span className="md:hidden font-bold">Limpiar Filtros</span>
@@ -253,7 +346,6 @@ const SalesHistoryPage = () => {
             )}
           </div>
 
-          {/* Chips de Métodos de Pago */}
           <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
             <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wide mr-1 shrink-0">Filtro Pago:</span>
             <button
@@ -342,7 +434,12 @@ const SalesHistoryPage = () => {
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap font-black text-gray-800 dark:text-white">$ {venta.total.toLocaleString()}</td>
+
+                      {/* --- BOTONES DE ACCIÓN (CON EDICIÓN) --- */}
                       <td className="px-6 py-4 text-right whitespace-nowrap opacity-50 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => openEditModal(venta)} className="text-gray-400 hover:text-yellow-600 dark:hover:text-yellow-400 p-2 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 rounded-xl transition-all mr-1" title="Corregir Venta">
+                          <Edit size={18} />
+                        </button>
                         <button onClick={() => setViewingSale(venta)} className="text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-xl transition-all mr-1" title="Ver detalle">
                           <Eye size={18} />
                         </button>
@@ -350,6 +447,7 @@ const SalesHistoryPage = () => {
                           <Printer size={18} />
                         </button>
                       </td>
+
                     </tr>
                   ))
                 )}

@@ -1807,3 +1807,46 @@ def delete_budget(id):
         db.session.rollback()
         print(f"Error al eliminar presupuesto: {e}")
         return jsonify({"msg": "Error al eliminar presupuesto", "error": str(e)}), 500
+
+
+
+# --- NUEVA FUNCIÓN: MODIFICAR VENTA YA REALIZADA ---
+@bp.route('/<int:id_venta>', methods=['PUT'])
+@jwt_required()
+def modificar_venta(id_venta):
+    try:
+        data = request.get_json()
+        venta = Venta.query.get_or_404(id_venta)
+        
+        # Validar que no esté anulada
+        if getattr(venta, 'estado', None) == 'anulada': 
+            return jsonify({"msg": "No se puede editar una venta anulada"}), 400
+        
+        nuevo_total = data.get('total')
+        nuevo_metodo_id = data.get('metodo_pago_id')
+        
+        if nuevo_total is not None:
+            venta.total = float(nuevo_total)
+            venta.subtotal = float(nuevo_total) # Mantenemos la coherencia interna
+            
+        if nuevo_metodo_id is not None:
+            venta.id_metodo_pago = nuevo_metodo_id
+            
+            # Borramos los registros de pagos anteriores (ideal por si era un pago mixto)
+            VentaPago.query.filter_by(id_venta=id_venta).delete()
+            
+            # Creamos el nuevo registro de pago único con el monto total actualizado
+            nuevo_pago = VentaPago(
+                id_venta=id_venta,
+                id_metodo_pago=nuevo_metodo_id,
+                monto=venta.total
+            )
+            db.session.add(nuevo_pago)
+            
+        db.session.commit()
+        return jsonify({"msg": "Venta modificada exitosamente"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error al editar venta: {e}")
+        return jsonify({"msg": "Error al modificar la venta", "error": str(e)}), 500
