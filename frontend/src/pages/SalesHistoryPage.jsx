@@ -6,7 +6,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import {
   Calendar, DollarSign, CreditCard, ShoppingBag,
   Printer, Eye, X, Package, Search, FilterX,
-  ChevronLeft, ChevronRight, Edit
+  ChevronLeft, ChevronRight, Edit, Clock
 } from 'lucide-react';
 
 const SalesHistoryPage = () => {
@@ -28,7 +28,7 @@ const SalesHistoryPage = () => {
   const [viewingSale, setViewingSale] = useState(null);
   const [ticketData, setTicketData] = useState(null);
 
-  // --- NUEVOS ESTADOS DE EDICIÓN ---
+  // --- ESTADOS DE EDICIÓN ---
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [saleToEdit, setSaleToEdit] = useState(null);
   const [editFormData, setEditFormData] = useState({ total: '', metodo_pago_id: '' });
@@ -53,7 +53,6 @@ const SalesHistoryPage = () => {
   const fetchData = async () => {
     setLoading(true);
     try {
-      // Por defecto carga los últimos 100. Si pones fecha, carga hasta 5000 de ese período.
       const params = { limit: (dateRange.start || dateRange.end) ? 5000 : 100 };
 
       if (dateRange.start) params.start_date = dateRange.start;
@@ -72,39 +71,53 @@ const SalesHistoryPage = () => {
     }
   };
 
-  // Efecto que reacciona a cambios de fechas
   useEffect(() => {
     if (token) fetchData();
   }, [token, dateRange.start, dateRange.end]);
 
-  // Resetear a la página 1 cuando cambian los filtros locales
   useEffect(() => {
     setCurrentPage(1);
   }, [filterMethod, searchTerm, sales]);
 
+  // --- LÓGICA DE FECHAS RÁPIDAS ---
+  const setQuickDate = (type) => {
+    const today = new Date();
+    // Ajuste de zona horaria local simple para evitar desfasajes
+    const tzOffset = today.getTimezoneOffset() * 60000;
+    const localISOTime = (new Date(today - tzOffset)).toISOString().split('T')[0];
+
+    let start = '';
+    let end = localISOTime;
+
+    if (type === 'hoy') {
+      start = localISOTime;
+    } else if (type === '7dias') {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      start = (new Date(d - tzOffset)).toISOString().split('T')[0];
+    } else if (type === 'mes') {
+      const d = new Date(today.getFullYear(), today.getMonth(), 1);
+      start = (new Date(d - tzOffset)).toISOString().split('T')[0];
+    }
+
+    setDateRange({ start, end });
+  };
+
   // --- LÓGICA DE EDICIÓN ---
   const openEditModal = (venta) => {
     setSaleToEdit(venta);
-
     let matchedMethodId = '';
     if (venta.pagos_detalle && venta.pagos_detalle.length > 0) {
       const methodObj = paymentMethods.find(m => m.nombre === venta.pagos_detalle[0].metodo);
       if (methodObj) matchedMethodId = methodObj.id;
     }
-
-    setEditFormData({
-      total: venta.total,
-      metodo_pago_id: matchedMethodId
-    });
+    setEditFormData({ total: venta.total, metodo_pago_id: matchedMethodId });
     setIsEditModalOpen(true);
   };
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
-    if (!editFormData.metodo_pago_id) {
-      toast.error("Selecciona un método de pago válido");
-      return;
-    }
+    if (!editFormData.metodo_pago_id) return toast.error("Selecciona un método de pago válido");
 
     const toastId = toast.loading("Aplicando cambios...");
     try {
@@ -114,16 +127,15 @@ const SalesHistoryPage = () => {
       });
       toast.success("Venta actualizada correctamente", { id: toastId });
       setIsEditModalOpen(false);
-      fetchData(); // Recargamos para mostrar los nuevos valores
+      fetchData();
     } catch (error) {
       toast.error(error.response?.data?.msg || "Error al actualizar la venta", { id: toastId });
     }
   };
 
-  // --- LÓGICA DE FILTRADO LOCAL (Solo Texto y Método) ---
+  // --- LÓGICA DE FILTRADO LOCAL ---
   const filteredSales = useMemo(() => {
     return sales.filter(venta => {
-      // Nota: El filtro de fechas ya lo hace el Backend. Aquí solo filtramos rápido en pantalla.
       let methodMatch = true;
       if (filterMethod) {
         if (venta.pagos_detalle && venta.pagos_detalle.length > 0) {
@@ -162,7 +174,6 @@ const SalesHistoryPage = () => {
         return sum;
       }, 0);
     }
-
     return { total, count };
   }, [filteredSales, filterMethod]);
 
@@ -198,10 +209,7 @@ const SalesHistoryPage = () => {
                 <div className="relative">
                   <span className="absolute left-4 top-3.5 text-gray-400 font-bold">$</span>
                   <input
-                    type="number"
-                    step="0.01"
-                    required
-                    autoFocus
+                    type="number" step="0.01" required autoFocus
                     value={editFormData.total}
                     onChange={e => setEditFormData({ ...editFormData, total: e.target.value })}
                     className="w-full pl-8 p-3 border-2 border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 rounded-xl font-black text-2xl outline-none focus:border-yellow-500 focus:ring-4 focus:ring-yellow-500/20 dark:text-white transition-all"
@@ -282,36 +290,52 @@ const SalesHistoryPage = () => {
         </div>
       )}
 
-      {/* --- TOPBAR FILTROS --- */}
+      {/* --- TOPBAR FILTROS RENOVADA --- */}
       <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 p-4 shadow-sm z-20 shrink-0 transition-colors">
-        <div className="max-w-[1600px] mx-auto">
-          <div className="flex flex-col xl:flex-row justify-between items-center gap-4 mb-4">
-            <div className="flex-shrink-0 w-full xl:w-auto">
-              <h1 className="text-xl font-black text-gray-800 dark:text-white flex items-center">
-                <Calendar className="mr-2 text-blue-600 dark:text-blue-400" /> Historial de Ventas
-              </h1>
-            </div>
+        <div className="max-w-[1600px] mx-auto flex flex-col gap-4">
 
-            <div className="flex flex-col md:flex-row flex-1 w-full gap-3">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-3 text-gray-400" size={18} />
-                <input
-                  type="text"
-                  placeholder="Buscar ticket o producto..."
-                  value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)}
-                  className="w-full pl-10 pr-4 py-2.5 bg-gray-100 dark:bg-slate-800 border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 rounded-xl outline-none transition-all font-bold text-gray-700 dark:text-white placeholder-gray-400"
-                />
+          {/* Fila 1: Título y Buscador */}
+          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <h1 className="text-xl font-black text-gray-800 dark:text-white flex items-center shrink-0">
+              <Calendar className="mr-2 text-blue-600 dark:text-blue-400" /> Historial de Ventas
+            </h1>
+
+            <div className="relative flex-1 w-full md:max-w-md">
+              <Search className="absolute left-3 top-3 text-gray-400" size={18} />
+              <input
+                type="text"
+                placeholder="Buscar ticket o producto..."
+                value={searchTerm}
+                onChange={e => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-2.5 bg-gray-100 dark:bg-slate-800 border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 rounded-xl outline-none transition-all font-bold text-gray-700 dark:text-white placeholder-gray-400"
+              />
+            </div>
+          </div>
+
+          {/* Fila 2: Selector de Fechas Original (Flotante) y Filtros Rápidos */}
+          <div className="flex flex-col lg:flex-row justify-between items-center gap-4 border-t border-gray-100 dark:border-slate-800 pt-4 mt-2">
+
+            {/* Controles de Fecha */}
+            <div className="flex flex-wrap md:flex-nowrap items-center gap-4 w-full lg:w-auto">
+
+              {/* Botones Rápidos */}
+              <div className="flex items-center bg-gray-100 dark:bg-slate-800 p-1 rounded-xl shrink-0">
+                <button onClick={() => setQuickDate('hoy')} className="px-3 py-1.5 rounded-lg text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-slate-700 transition-colors flex items-center"><Clock size={14} className="mr-1" /> Hoy</button>
+                <button onClick={() => setQuickDate('7dias')} className="px-3 py-1.5 rounded-lg text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-slate-700 transition-colors">7 Días</button>
+                <button onClick={() => setQuickDate('mes')} className="px-3 py-1.5 rounded-lg text-xs font-bold text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-slate-700 transition-colors">Este Mes</button>
               </div>
 
-              <div className="flex gap-2 shrink-0">
+              <div className="hidden md:block w-px h-6 bg-gray-300 dark:bg-slate-700 mx-1"></div>
+
+              {/* Selector de Rango (Diseño Original Restaurado) */}
+              <div className="flex gap-3 shrink-0">
                 <div className="relative w-36 md:w-40">
                   <span className="absolute -top-2.5 left-3 bg-white dark:bg-slate-900 px-1 text-[10px] font-bold text-gray-500 uppercase tracking-wider rounded-md border border-gray-100 dark:border-slate-800">Desde</span>
                   <input
                     type="date"
                     value={dateRange.start}
                     onChange={e => setDateRange({ ...dateRange, start: e.target.value })}
-                    className="w-full p-2.5 bg-gray-100 dark:bg-slate-800 border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 rounded-xl outline-none transition-all font-bold text-gray-700 dark:text-white text-sm"
+                    className="w-full p-2.5 bg-gray-100 dark:bg-slate-800 border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 rounded-xl outline-none transition-all font-bold text-gray-700 dark:text-white text-sm shadow-sm"
                   />
                 </div>
                 <div className="relative w-36 md:w-40">
@@ -320,21 +344,23 @@ const SalesHistoryPage = () => {
                     type="date"
                     value={dateRange.end}
                     onChange={e => setDateRange({ ...dateRange, end: e.target.value })}
-                    className="w-full p-2.5 bg-gray-100 dark:bg-slate-800 border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 rounded-xl outline-none transition-all font-bold text-gray-700 dark:text-white text-sm"
+                    className="w-full p-2.5 bg-gray-100 dark:bg-slate-800 border border-transparent focus:border-blue-500 focus:bg-white dark:focus:bg-slate-900 rounded-xl outline-none transition-all font-bold text-gray-700 dark:text-white text-sm shadow-sm"
                   />
                 </div>
               </div>
             </div>
 
+            {/* Limpiar Filtros */}
             {(searchTerm || dateRange.start || dateRange.end || filterMethod) && (
-              <button onClick={clearFilters} className="shrink-0 w-full md:w-auto bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 p-2.5 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors flex items-center justify-center" title="Limpiar Filtros">
-                <FilterX size={20} className="mr-2 md:mr-0" /> <span className="md:hidden font-bold">Limpiar Filtros</span>
+              <button onClick={clearFilters} className="shrink-0 w-full lg:w-auto bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 px-4 py-2 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors flex items-center justify-center font-bold text-sm border border-red-100 dark:border-red-800/30">
+                <FilterX size={16} className="mr-2" /> Limpiar Filtros
               </button>
             )}
           </div>
 
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-            <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wide mr-1 shrink-0">Filtro Pago:</span>
+          {/* Fila 3: Chips de Métodos de Pago */}
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar pt-1">
+            <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wide mr-1 shrink-0">Medio Pago:</span>
             <button
               onClick={() => setFilterMethod('')}
               className={`px-4 py-1.5 rounded-lg text-xs font-bold border transition-all whitespace-nowrap shrink-0 ${filterMethod === '' ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-gray-50 dark:bg-slate-800 text-gray-500 border-gray-200 dark:border-slate-700 hover:bg-gray-100 dark:hover:bg-slate-700'}`}
@@ -351,9 +377,11 @@ const SalesHistoryPage = () => {
               </button>
             ))}
           </div>
+
         </div>
       </div>
 
+      {/* --- CONTENIDO PRINCIPAL --- */}
       <div className="flex-1 overflow-hidden flex flex-col max-w-[1600px] mx-auto w-full p-4 gap-4">
         {/* TARJETAS KPI */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
