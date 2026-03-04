@@ -6,7 +6,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import {
   Calendar, DollarSign, CreditCard, ShoppingBag,
   Printer, Eye, X, Package, Search, FilterX,
-  ChevronLeft, ChevronRight, Edit // <--- AGREGADO EL ÍCONO DE EDIT
+  ChevronLeft, ChevronRight, Edit
 } from 'lucide-react';
 
 const SalesHistoryPage = () => {
@@ -49,12 +49,18 @@ const SalesHistoryPage = () => {
     setTimeout(() => { if (reactToPrintFn) reactToPrintFn(); }, 150);
   };
 
-  // --- FUNCIÓN DE CARGA SEPARADA PARA PODER ACTUALIZAR AL EDITAR ---
+  // --- FUNCIÓN DE CARGA INTELIGENTE ---
   const fetchData = async () => {
     setLoading(true);
     try {
+      // Por defecto carga los últimos 100. Si pones fecha, carga hasta 5000 de ese período.
+      const params = { limit: (dateRange.start || dateRange.end) ? 5000 : 100 };
+
+      if (dateRange.start) params.start_date = dateRange.start;
+      if (dateRange.end) params.end_date = dateRange.end;
+
       const [resSales, resMethods] = await Promise.all([
-        api.get('/sales/history', { params: { limit: 5000 } }),
+        api.get('/sales/history', { params }),
         api.get('/sales/payment-methods')
       ]);
       setSales(resSales.data.history);
@@ -66,20 +72,20 @@ const SalesHistoryPage = () => {
     }
   };
 
+  // Efecto que reacciona a cambios de fechas
   useEffect(() => {
     if (token) fetchData();
-  }, [token]);
+  }, [token, dateRange.start, dateRange.end]);
 
-  // Resetear a la página 1 cuando el usuario cambia algún filtro
+  // Resetear a la página 1 cuando cambian los filtros locales
   useEffect(() => {
     setCurrentPage(1);
-  }, [dateRange, filterMethod, searchTerm]);
+  }, [filterMethod, searchTerm, sales]);
 
   // --- LÓGICA DE EDICIÓN ---
   const openEditModal = (venta) => {
     setSaleToEdit(venta);
 
-    // Intentamos buscar el ID del método de pago actual usando su nombre
     let matchedMethodId = '';
     if (venta.pagos_detalle && venta.pagos_detalle.length > 0) {
       const methodObj = paymentMethods.find(m => m.nombre === venta.pagos_detalle[0].metodo);
@@ -114,28 +120,10 @@ const SalesHistoryPage = () => {
     }
   };
 
-  // --- LÓGICA DE FILTRADO ---
+  // --- LÓGICA DE FILTRADO LOCAL (Solo Texto y Método) ---
   const filteredSales = useMemo(() => {
     return sales.filter(venta => {
-      let dateMatch = true;
-      if (dateRange.start || dateRange.end) {
-        const [datePart] = venta.fecha.split(' ');
-        const [d, m, y] = datePart.split('/');
-        const saleDate = new Date(y, m - 1, d);
-
-        if (dateRange.start) {
-          const [startY, startM, startD] = dateRange.start.split('-');
-          const startDate = new Date(startY, startM - 1, startD);
-          if (saleDate < startDate) dateMatch = false;
-        }
-
-        if (dateRange.end) {
-          const [endY, endM, endD] = dateRange.end.split('-');
-          const endDate = new Date(endY, endM - 1, endD);
-          if (saleDate > endDate) dateMatch = false;
-        }
-      }
-
+      // Nota: El filtro de fechas ya lo hace el Backend. Aquí solo filtramos rápido en pantalla.
       let methodMatch = true;
       if (filterMethod) {
         if (venta.pagos_detalle && venta.pagos_detalle.length > 0) {
@@ -151,9 +139,9 @@ const SalesHistoryPage = () => {
         searchMatch = venta.id.toString().includes(term) || (venta.items || '').toLowerCase().includes(term);
       }
 
-      return dateMatch && methodMatch && searchMatch;
+      return methodMatch && searchMatch;
     });
-  }, [sales, dateRange, filterMethod, searchTerm]);
+  }, [sales, filterMethod, searchTerm]);
 
   const totalPages = Math.ceil(filteredSales.length / itemsPerPage) || 1;
   const paginatedSales = filteredSales.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
@@ -184,7 +172,7 @@ const SalesHistoryPage = () => {
     setSearchTerm('');
   };
 
-  if (loading) return <div className="p-8 text-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-950 h-screen">Cargando historial...</div>;
+  if (loading) return <div className="p-8 text-center text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-slate-950 h-screen flex items-center justify-center font-bold">Cargando datos...</div>;
 
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-gray-50 dark:bg-slate-950 transition-colors duration-300 overflow-hidden">
@@ -297,7 +285,6 @@ const SalesHistoryPage = () => {
       {/* --- TOPBAR FILTROS --- */}
       <div className="bg-white dark:bg-slate-900 border-b border-gray-200 dark:border-slate-800 p-4 shadow-sm z-20 shrink-0 transition-colors">
         <div className="max-w-[1600px] mx-auto">
-          {/* Título y Buscadores Principales */}
           <div className="flex flex-col xl:flex-row justify-between items-center gap-4 mb-4">
             <div className="flex-shrink-0 w-full xl:w-auto">
               <h1 className="text-xl font-black text-gray-800 dark:text-white flex items-center">
@@ -435,7 +422,7 @@ const SalesHistoryPage = () => {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap font-black text-gray-800 dark:text-white">$ {venta.total.toLocaleString()}</td>
 
-                      {/* --- BOTONES DE ACCIÓN (CON EDICIÓN) --- */}
+                      {/* --- BOTONES DE ACCIÓN --- */}
                       <td className="px-6 py-4 text-right whitespace-nowrap opacity-50 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => openEditModal(venta)} className="text-gray-400 hover:text-yellow-600 dark:hover:text-yellow-400 p-2 hover:bg-yellow-50 dark:hover:bg-yellow-900/20 rounded-xl transition-all mr-1" title="Corregir Venta">
                           <Edit size={18} />

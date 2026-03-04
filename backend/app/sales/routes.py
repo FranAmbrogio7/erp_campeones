@@ -46,14 +46,17 @@ def add_movement():
     except Exception as e:
         return jsonify({"msg": str(e)}), 500
 
-# --- OBTENER HISTORIAL Y TOTALES (CORREGIDO) ---
+# --- OBTENER HISTORIAL Y TOTALES (OPTIMIZADO) ---
 @bp.route('/history', methods=['GET'])
 @jwt_required()
 def get_sales_history():
     try:
         solo_actual = request.args.get('current_session') == 'true'
-        # NUEVO: Leer el límite que manda el frontend (si no manda, usa 100 por defecto)
         limite_solicitado = request.args.get('limit', 100, type=int)
+        
+        # NUEVO: Atrapamos las fechas que nos envíe React
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
         
         query = Venta.query.options(
             db.joinedload(Venta.metodo),
@@ -67,7 +70,12 @@ def get_sales_history():
             else:
                 return jsonify({"history": [], "today_summary": {"total": 0, "count": 0}}), 200
         else:
-            # APLICAMOS EL LÍMITE DINÁMICO EN LUGAR DEL 100 FIJO
+            # NUEVO: Filtramos directamente en la Base de Datos (Súper Rápido)
+            if start_date:
+                query = query.filter(Venta.fecha_venta >= f"{start_date} 00:00:00")
+            if end_date:
+                query = query.filter(Venta.fecha_venta <= f"{end_date} 23:59:59")
+                
             query = query.limit(limite_solicitado)
 
         ventas = query.all()
