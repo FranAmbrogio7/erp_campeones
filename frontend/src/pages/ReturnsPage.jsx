@@ -4,7 +4,7 @@ import {
     ArrowRightLeft, Ticket, CheckCircle, RefreshCcw, Printer,
     ArrowLeft, Trash2, Calculator, Search, X, Plus, Shirt,
     PackagePlus, PackageMinus, ArrowRight, FileCheck,
-    Banknote, CreditCard, Smartphone, Maximize2 // <--- Agregado Maximize2
+    Banknote, CreditCard, Smartphone, Maximize2, FilterX
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import { useReactToPrint } from 'react-to-print';
@@ -31,7 +31,6 @@ const ReturnsPage = () => {
         return saved ? JSON.parse(saved) : [];
     });
 
-    // --- GUARDAR EN LOCALSTORAGE CUANDO CAMBIAN ---
     useEffect(() => {
         localStorage.setItem('returns_in', JSON.stringify(itemsIn));
     }, [itemsIn]);
@@ -40,19 +39,31 @@ const ReturnsPage = () => {
         localStorage.setItem('returns_out', JSON.stringify(itemsOut));
     }, [itemsOut]);
 
+    // --- ESTADOS DE FILTROS Y CATEGORÍAS ---
+    const [categories, setCategories] = useState([]);
+    const [selectedCat, setSelectedCat] = useState('');
+    const [sortBy, setSortBy] = useState('mas_vendidos');
+    const [activeSearchSide, setActiveSearchSide] = useState(null); // 'IN' o 'OUT'
+
     const [paymentMethods, setPaymentMethods] = useState([]);
     const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
 
+    // --- ESTADOS DE BÚSQUEDA Y DROPDOWNS ---
     const [termIn, setTermIn] = useState('');
     const [resultsIn, setResultsIn] = useState([]);
+    const [showDropdownIn, setShowDropdownIn] = useState(false);
+
     const [termOut, setTermOut] = useState('');
     const [resultsOut, setResultsOut] = useState([]);
+    const [showDropdownOut, setShowDropdownOut] = useState(false);
 
     const [transactionResult, setTransactionResult] = useState(null);
-    const [zoomImage, setZoomImage] = useState(null); // <--- Estado para Zoom
+    const [zoomImage, setZoomImage] = useState(null);
 
     const inputInRef = useRef(null);
     const inputOutRef = useRef(null);
+    const containerInRef = useRef(null);
+    const containerOutRef = useRef(null);
     const ticketRef = useRef(null);
 
     const reactToPrintFn = useReactToPrint({
@@ -70,38 +81,60 @@ const ReturnsPage = () => {
         } catch (e) { console.error(e); }
     };
 
+    // --- CARGA INICIAL DE MÉTODOS Y CATEGORÍAS ---
     useEffect(() => {
-        const fetchMethods = async () => {
+        const fetchInitialData = async () => {
             try {
-                const res = await api.get('/sales/payment-methods');
-                setPaymentMethods(res.data);
-            } catch (e) { console.error("Error cargando pagos", e); }
+                const [resMethods, resCats] = await Promise.all([
+                    api.get('/sales/payment-methods'),
+                    api.get('/products/categories')
+                ]);
+                setPaymentMethods(resMethods.data);
+                setCategories(resCats.data);
+            } catch (e) { console.error("Error cargando datos iniciales", e); }
         };
-        if (token) fetchMethods();
+        if (token) fetchInitialData();
     }, [token]);
 
-    // Búsquedas
+    // --- CLIC AFUERA PARA CERRAR LISTAS ---
     useEffect(() => {
-        const delay = setTimeout(async () => {
-            if (!termIn.trim()) { setResultsIn([]); return; }
-            try {
-                const res = await api.get('/products', { params: { search: termIn, limit: 20 } });
-                setResultsIn(res.data.products || []);
-            } catch (e) { console.error(e); }
-        }, 300);
-        return () => clearTimeout(delay);
-    }, [termIn]);
+        const handleClickOutside = (e) => {
+            if (containerInRef.current && !containerInRef.current.contains(e.target)) {
+                setShowDropdownIn(false);
+            }
+            if (containerOutRef.current && !containerOutRef.current.contains(e.target)) {
+                setShowDropdownOut(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
+    // --- BÚSQUEDA INTELIGENTE (Se dispara según de qué lado estés enfocado) ---
     useEffect(() => {
         const delay = setTimeout(async () => {
-            if (!termOut.trim()) { setResultsOut([]); return; }
-            try {
-                const res = await api.get('/products', { params: { search: termOut, limit: 20 } });
-                setResultsOut(res.data.products || []);
-            } catch (e) { console.error(e); }
+            if (activeSearchSide === 'IN') {
+                if (!termIn.trim() && !selectedCat) {
+                    setResultsIn([]); setShowDropdownIn(false); return;
+                }
+                try {
+                    const res = await api.get('/products', { params: { search: termIn, category_id: selectedCat, sort_by: sortBy, limit: 50 } });
+                    setResultsIn(res.data.products || []);
+                    setShowDropdownIn(true);
+                } catch (e) { console.error(e); }
+            } else if (activeSearchSide === 'OUT') {
+                if (!termOut.trim() && !selectedCat) {
+                    setResultsOut([]); setShowDropdownOut(false); return;
+                }
+                try {
+                    const res = await api.get('/products', { params: { search: termOut, category_id: selectedCat, sort_by: sortBy, limit: 50 } });
+                    setResultsOut(res.data.products || []);
+                    setShowDropdownOut(true);
+                } catch (e) { console.error(e); }
+            }
         }, 300);
         return () => clearTimeout(delay);
-    }, [termOut]);
+    }, [termIn, termOut, selectedCat, sortBy, activeSearchSide]);
 
     // --- ACCIONES ---
     const addManualItem = (product, variant, type) => {
@@ -112,7 +145,7 @@ const ReturnsPage = () => {
         };
 
         if (type === 'IN') {
-            setItemsIn(prev => [...prev, item]); setTermIn(''); setResultsIn([]);
+            setItemsIn(prev => [...prev, item]);
             inputInRef.current?.focus();
         } else {
             if (item.stock_actual <= 0) { playSound('error'); toast.error("Sin stock físico"); return; }
@@ -120,6 +153,7 @@ const ReturnsPage = () => {
             inputOutRef.current?.focus();
         }
         playSound('click');
+        // NO CERRAMOS EL DROPDOWN PARA QUE PUEDAN AGREGAR MÁS TALLES RÁPIDO
     };
 
     const handleScan = async (e, type) => {
@@ -134,11 +168,11 @@ const ReturnsPage = () => {
                 const item = { ...prod, uid: Date.now() };
 
                 if (type === 'IN') {
-                    setItemsIn(prev => [...prev, item]); setTermIn(''); setResultsIn([]);
+                    setItemsIn(prev => [...prev, item]); setTermIn(''); setResultsIn([]); setShowDropdownIn(false);
                     toast.success("Devolución escaneada");
                 } else {
                     if (prod.stock_actual <= 0) { playSound('error'); toast.error("¡Sin stock!"); return; }
-                    setItemsOut(prev => [...prev, item]); setTermOut(''); setResultsOut([]);
+                    setItemsOut(prev => [...prev, item]); setTermOut(''); setResultsOut([]); setShowDropdownOut(false);
                     toast.success("Entrega escaneada");
                 }
                 playSound('beep');
@@ -172,7 +206,6 @@ const ReturnsPage = () => {
                 items_out: itemsOut,
                 metodo_pago_id: balance > 0 ? selectedPaymentMethod.id : null,
                 diferencia_pago: balance > 0 ? balance : 0,
-                // --- ARREGLO DE HORA: Enviamos fecha local para evitar desfase ---
                 fecha_local: new Date().toISOString()
             });
 
@@ -182,40 +215,44 @@ const ReturnsPage = () => {
                 balance: balance
             });
 
-            // Limpiar estados y LocalStorage
-            setItemsIn([]); setItemsOut([]); setSelectedPaymentMethod(null);
-            localStorage.removeItem('returns_in');
-            localStorage.removeItem('returns_out');
+            // Limpiar estados
+            setItemsIn([]); setItemsOut([]); setSelectedPaymentMethod(null); setTermIn(''); setTermOut('');
+            localStorage.removeItem('returns_in'); localStorage.removeItem('returns_out');
 
             playSound('success'); toast.success("¡Movimiento registrado!", { id: toastId });
         } catch (e) { playSound('error'); toast.error(e.response?.data?.msg || "Error", { id: toastId }); }
     };
 
     // Componente Dropdown interno
-    const SearchResultsDropdown = ({ results, type }) => {
-        if (results.length === 0) return null;
+    const SearchResultsDropdown = ({ results, type, show }) => {
+        if (!show || results.length === 0) return null;
         return (
-            <div className={`absolute top-full left-0 right-0 bg-white dark:bg-slate-800 shadow-xl border rounded-b-xl mt-1 max-h-80 overflow-y-auto z-50 ${type === 'IN' ? 'border-red-200 dark:border-red-900' : 'border-green-200 dark:border-green-900'}`}>
+            <div className={`absolute top-full left-0 right-0 bg-white dark:bg-slate-800 shadow-2xl border rounded-b-xl mt-1 max-h-[50vh] overflow-y-auto z-[100] custom-scrollbar ${type === 'IN' ? 'border-red-200 dark:border-red-900/50' : 'border-green-200 dark:border-green-900/50'}`}>
                 {results.map(prod => (
-                    <div key={prod.id} className="p-3 border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 flex gap-3 items-start animate-fade-in cursor-pointer group">
+                    <div key={prod.id} className="p-3 border-b border-gray-100 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 flex gap-3 items-start animate-fade-in group">
                         <div
-                            className="w-10 h-10 bg-gray-100 dark:bg-slate-700 rounded shrink-0 overflow-hidden border dark:border-slate-600 relative"
+                            className="w-12 h-12 bg-gray-100 dark:bg-slate-700 rounded-lg shrink-0 overflow-hidden border dark:border-slate-600 relative cursor-zoom-in"
                             onClick={(e) => { e.stopPropagation(); if (prod.imagen) setZoomImage(`${api.defaults.baseURL}/static/uploads/${prod.imagen}`); }}
                         >
-                            {prod.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${prod.imagen}`} className="w-full h-full object-cover" /> : <Shirt className="text-gray-300 dark:text-slate-500 w-full h-full p-2" />}
-                            {prod.imagen && <div className="absolute inset-0 bg-black/20 hidden group-hover:flex items-center justify-center"><Maximize2 size={12} className="text-white" /></div>}
+                            {prod.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${prod.imagen}`} className="w-full h-full object-cover group-hover:scale-110 transition-transform" /> : <Shirt className="text-gray-300 dark:text-slate-500 w-full h-full p-2" />}
                         </div>
                         <div className="flex-1">
                             <div className="flex justify-between items-center">
-                                <span className="text-sm font-bold text-gray-700 dark:text-white leading-tight">{prod.nombre}</span>
-                                <span className={`text-xs font-bold px-1.5 py-0.5 rounded ${type === 'IN' ? 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400'}`}>${prod.precio}</span>
+                                <span className="text-sm font-bold text-gray-800 dark:text-white leading-tight">{prod.nombre}</span>
+                                <span className={`text-xs font-black px-2 py-0.5 rounded ${type === 'IN' ? 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-green-50 dark:bg-green-900/30 text-green-600 dark:text-green-400'}`}>${prod.precio}</span>
                             </div>
                             <div className="flex flex-wrap gap-1.5 mt-2">
                                 {prod.variantes.map(v => (
-                                    <button key={v.id_variante} onClick={(e) => { e.stopPropagation(); addManualItem(prod, v, type) }} className={`text-[10px] px-2 py-1 rounded border transition-colors flex items-center gap-1 ${type === 'IN' ? 'border-red-100 dark:border-red-800 hover:bg-red-500 hover:text-white text-gray-600 dark:text-gray-300' : (v.stock > 0 ? 'border-green-100 dark:border-green-800 hover:bg-green-500 hover:text-white text-gray-600 dark:text-gray-300' : 'border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-700 text-gray-300 dark:text-slate-500 cursor-not-allowed')}`} disabled={type === 'OUT' && v.stock <= 0}>
+                                    <button
+                                        key={v.id_variante}
+                                        onClick={(e) => { e.stopPropagation(); addManualItem(prod, v, type) }}
+                                        className={`text-[10px] px-2 py-1 rounded border transition-colors flex items-center gap-1 ${type === 'IN' ? 'border-red-100 dark:border-red-800 hover:bg-red-500 hover:text-white text-gray-700 dark:text-gray-300 bg-red-50 dark:bg-red-900/10' : (v.stock > 0 ? 'border-green-100 dark:border-green-800 hover:bg-green-500 hover:text-white text-gray-700 dark:text-gray-300 bg-green-50 dark:bg-green-900/10' : 'border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-700 text-gray-400 dark:text-slate-500 cursor-not-allowed')}`}
+                                        disabled={type === 'OUT' && v.stock <= 0}
+                                    >
                                         <span className="font-bold">{v.talle}</span>
-                                        {type === 'OUT' && v.stock <= 0 && <X size={8} />}
-                                        {type === 'IN' && <Plus size={8} />}
+                                        <span className="opacity-70 border-l pl-1 ml-0.5 border-current">{v.stock}</span>
+                                        {type === 'OUT' && v.stock <= 0 && <X size={10} className="ml-0.5" />}
+                                        {type === 'IN' && <Plus size={10} className="ml-0.5" />}
                                     </button>
                                 ))}
                             </div>
@@ -227,7 +264,6 @@ const ReturnsPage = () => {
     };
 
     return (
-        // LAYOUT FIX: Usamos h-[calc(100vh-4rem)] y overflow-hidden para ajustar a la pantalla
         <div className="p-4 h-[calc(100vh-4rem)] flex flex-col max-w-[1600px] mx-auto gap-4 bg-gray-50 dark:bg-slate-950 transition-colors duration-300 overflow-hidden">
             <Toaster position="top-center" />
 
@@ -235,7 +271,7 @@ const ReturnsPage = () => {
             {zoomImage && (
                 <div className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in cursor-zoom-out" onClick={() => setZoomImage(null)}>
                     <img src={zoomImage} className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain animate-zoom-in" onClick={e => e.stopPropagation()} />
-                    <button className="absolute top-5 right-5 text-white/50 hover:text-white"><X size={32} /></button>
+                    <button className="absolute top-5 right-5 text-white/50 hover:text-white p-2 rounded-full hover:bg-white/10 transition-colors"><X size={32} /></button>
                 </div>
             )}
 
@@ -284,13 +320,47 @@ const ReturnsPage = () => {
                 </div>
             )}
 
-            {/* HEADER */}
+            {/* HEADER SUPERIOR */}
             <div className="flex justify-between items-center mb-2 shrink-0">
-                <div><h1 className="text-2xl font-black text-gray-800 dark:text-white flex items-center"><RefreshCcw className="mr-3 text-blue-600 dark:text-blue-400" /> Centro de Cambios</h1><p className="text-sm text-gray-500 dark:text-gray-400">Gestión de devoluciones y garantías.</p></div>
-                {(itemsIn.length > 0 || itemsOut.length > 0) && <button onClick={() => { if (window.confirm("¿Borrar todo?")) { setItemsIn([]); setItemsOut([]); localStorage.removeItem('returns_in'); localStorage.removeItem('returns_out'); setSelectedPaymentMethod(null); } }} className="text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 font-bold text-sm bg-red-50 dark:bg-red-900/20 px-4 py-2 rounded-lg border border-red-100 dark:border-red-900 transition-colors">Reiniciar</button>}
+                <div>
+                    <h1 className="text-2xl font-black text-gray-800 dark:text-white flex items-center"><RefreshCcw className="mr-3 text-blue-600 dark:text-blue-400" /> Centro de Cambios</h1>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Gestión de devoluciones y garantías.</p>
+                </div>
+                {(itemsIn.length > 0 || itemsOut.length > 0) && (
+                    <button onClick={() => { if (window.confirm("¿Borrar todo?")) { setItemsIn([]); setItemsOut([]); localStorage.removeItem('returns_in'); localStorage.removeItem('returns_out'); setSelectedPaymentMethod(null); } }} className="text-red-500 dark:text-red-400 hover:text-red-700 dark:hover:text-red-300 font-bold text-sm bg-red-50 dark:bg-red-900/20 px-4 py-2 rounded-lg border border-red-100 dark:border-red-900 transition-colors">Reiniciar</button>
+                )}
             </div>
 
-            {/* WORKSPACE - LAYOUT MEJORADO (min-h-0 para que el flex interno scrollee) */}
+            {/* BARRA DE FILTROS GLOBAL */}
+            <div className="bg-white dark:bg-slate-800 p-3 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 shrink-0 flex flex-col md:flex-row items-center gap-3 transition-colors">
+                <select
+                    className="w-full md:w-auto p-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded-lg text-sm font-bold text-gray-700 dark:text-gray-200 outline-none focus:ring-2 focus:ring-blue-400 transition-colors"
+                    value={sortBy}
+                    onChange={e => setSortBy(e.target.value)}
+                >
+                    <option value="mas_vendidos">Más Vendidos</option>
+                    <option value="recientes">Más Recientes</option>
+                    <option value="az">A - Z</option>
+                </select>
+
+                <div className="flex items-center gap-2 overflow-x-auto w-full no-scrollbar pb-1">
+                    <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wide mr-1 shrink-0">Categoría:</span>
+                    <button onClick={() => setSelectedCat('')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all whitespace-nowrap shrink-0 ${selectedCat === '' ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-slate-600 hover:bg-gray-200 dark:hover:bg-slate-600'}`}>Todas</button>
+                    {categories.map(c => (
+                        <button key={c.id} onClick={() => setSelectedCat(selectedCat === c.id ? '' : c.id)} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all whitespace-nowrap shrink-0 ${selectedCat === c.id ? 'bg-blue-600 text-white border-blue-600 shadow-md transform scale-105' : 'bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-slate-600 hover:bg-gray-200 dark:hover:bg-slate-600'}`}>
+                            {c.nombre}
+                        </button>
+                    ))}
+                </div>
+
+                {selectedCat && (
+                    <button onClick={() => setSelectedCat('')} className="shrink-0 p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors" title="Limpiar Filtro">
+                        <FilterX size={18} />
+                    </button>
+                )}
+            </div>
+
+            {/* WORKSPACE - LAYOUT (Columnas In, Balance, Out) */}
             <div className="flex flex-col lg:flex-row gap-4 flex-1 overflow-hidden min-h-0">
 
                 {/* IZQUIERDA: ENTRA (ROJO) */}
@@ -298,12 +368,21 @@ const ReturnsPage = () => {
                     <div className="absolute top-0 left-0 w-full h-1 bg-red-500 rounded-t-2xl"></div>
                     <div className="p-4 bg-red-50/50 dark:bg-red-900/10 border-b border-red-100 dark:border-red-900/30">
                         <h3 className="font-bold text-red-800 dark:text-red-300 flex items-center mb-3 text-sm uppercase tracking-wide"><ArrowLeft className="mr-2" size={18} /> Cliente Entrega (Devolución)</h3>
-                        <div className="relative">
+                        <div className="relative" ref={containerInRef}>
                             <form onSubmit={(e) => handleScan(e, 'IN')}>
-                                <input ref={inputInRef} value={termIn} onChange={e => setTermIn(e.target.value)} className="w-full pl-9 pr-4 py-2.5 rounded-xl border-2 border-red-100 dark:border-red-900/50 bg-white dark:bg-slate-900 text-gray-700 dark:text-white focus:border-red-400 dark:focus:border-red-500 focus:ring-4 focus:ring-red-50 dark:focus:ring-red-900/20 outline-none transition-all font-bold placeholder-red-300 dark:placeholder-red-800 text-sm" placeholder="Escanear..." autoFocus />
-                                <Search className="absolute left-3 top-3 text-red-300 dark:text-red-700" size={16} />
+                                <input
+                                    ref={inputInRef}
+                                    value={termIn}
+                                    onChange={e => { setTermIn(e.target.value); setShowDropdownIn(true); setActiveSearchSide('IN'); }}
+                                    onFocus={() => { setActiveSearchSide('IN'); if (termIn || selectedCat) setShowDropdownIn(true); }}
+                                    onKeyDown={(e) => { if (e.key === 'Escape') { setShowDropdownIn(false); inputInRef.current?.blur(); } }}
+                                    className="w-full pl-9 pr-4 py-2.5 rounded-xl border-2 border-red-100 dark:border-red-900/50 bg-white dark:bg-slate-900 text-gray-700 dark:text-white focus:border-red-400 dark:focus:border-red-500 focus:ring-4 focus:ring-red-50 dark:focus:ring-red-900/20 outline-none transition-all font-bold placeholder-red-300 dark:placeholder-red-800 text-sm"
+                                    placeholder="Buscar o escanear devolución... (ESC para cerrar)"
+                                />
+                                <Search className="absolute left-3 top-3.5 text-red-300 dark:text-red-700" size={16} />
+                                {termIn && <button type="button" onClick={() => { setTermIn(''); setResultsIn([]); setShowDropdownIn(false); inputInRef.current?.focus(); }} className="absolute right-3 top-3.5 text-gray-400 hover:text-red-500"><X size={16} /></button>}
                             </form>
-                            <SearchResultsDropdown results={resultsIn} type="IN" />
+                            <SearchResultsDropdown results={resultsIn} type="IN" show={showDropdownIn} />
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50/30 dark:bg-slate-900/30 custom-scrollbar">
@@ -331,7 +410,6 @@ const ReturnsPage = () => {
                     <div className="bg-slate-900 dark:bg-black text-white p-5 rounded-2xl shadow-xl flex flex-col justify-between flex-1 relative overflow-hidden border border-slate-800 h-full">
                         <div className="absolute top-0 right-0 p-4 opacity-5"><Calculator size={100} /></div>
 
-                        {/* Contenido scrolleable del panel central */}
                         <div className="relative z-10 overflow-y-auto flex-1 custom-scrollbar pr-1">
                             <h3 className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mb-6 border-b border-slate-700 pb-2">Balance</h3>
                             <div className="flex justify-between items-end mb-2"><span className="text-sm text-slate-300">Nuevo</span><span className="font-mono font-bold text-green-400 text-lg">+ {totalOut.toLocaleString()}</span></div>
@@ -364,12 +442,21 @@ const ReturnsPage = () => {
                     <div className="absolute top-0 left-0 w-full h-1 bg-green-500 rounded-t-2xl"></div>
                     <div className="p-4 bg-green-50/50 dark:bg-green-900/10 border-b border-green-100 dark:border-green-900/30">
                         <h3 className="font-bold text-green-800 dark:text-green-300 flex items-center mb-3 text-sm uppercase tracking-wide"><ArrowRight className="mr-2" size={18} /> Cliente Lleva (Nuevo)</h3>
-                        <div className="relative">
+                        <div className="relative" ref={containerOutRef}>
                             <form onSubmit={(e) => handleScan(e, 'OUT')}>
-                                <input ref={inputOutRef} value={termOut} onChange={e => setTermOut(e.target.value)} className="w-full pl-9 pr-4 py-2.5 rounded-xl border-2 border-green-100 dark:border-green-900/50 bg-white dark:bg-slate-900 text-gray-700 dark:text-white focus:border-green-400 dark:focus:border-green-500 focus:ring-4 focus:ring-green-50 dark:focus:ring-green-900/20 outline-none transition-all font-bold text-gray-700 placeholder-green-300 dark:placeholder-green-800 text-sm" placeholder="Escanear..." />
-                                <Search className="absolute left-3 top-3 text-green-300 dark:text-green-700" size={16} />
+                                <input
+                                    ref={inputOutRef}
+                                    value={termOut}
+                                    onChange={e => { setTermOut(e.target.value); setShowDropdownOut(true); setActiveSearchSide('OUT'); }}
+                                    onFocus={() => { setActiveSearchSide('OUT'); if (termOut || selectedCat) setShowDropdownOut(true); }}
+                                    onKeyDown={(e) => { if (e.key === 'Escape') { setShowDropdownOut(false); inputOutRef.current?.blur(); } }}
+                                    className="w-full pl-9 pr-4 py-2.5 rounded-xl border-2 border-green-100 dark:border-green-900/50 bg-white dark:bg-slate-900 text-gray-700 dark:text-white focus:border-green-400 dark:focus:border-green-500 focus:ring-4 focus:ring-green-50 dark:focus:ring-green-900/20 outline-none transition-all font-bold placeholder-green-300 dark:placeholder-green-800 text-sm"
+                                    placeholder="Buscar o escanear nuevo... (ESC para cerrar)"
+                                />
+                                <Search className="absolute left-3 top-3.5 text-green-300 dark:text-green-700" size={16} />
+                                {termOut && <button type="button" onClick={() => { setTermOut(''); setResultsOut([]); setShowDropdownOut(false); inputOutRef.current?.focus(); }} className="absolute right-3 top-3.5 text-gray-400 hover:text-green-500"><X size={16} /></button>}
                             </form>
-                            <SearchResultsDropdown results={resultsOut} type="OUT" />
+                            <SearchResultsDropdown results={resultsOut} type="OUT" show={showDropdownOut} />
                         </div>
                     </div>
                     <div className="flex-1 overflow-y-auto p-4 space-y-2 bg-gray-50/30 dark:bg-slate-900/30 custom-scrollbar">
