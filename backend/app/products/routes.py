@@ -1040,3 +1040,35 @@ def toggle_product_status(id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"msg": "Error al actualizar estado"}), 500
+
+#cambiar precios masivamente
+@bp.route('/bulk-price-selected', methods=['PUT'])
+@jwt_required()
+def bulk_price_selected():
+    data = request.get_json()
+    ids = data.get('ids', [])
+    action_type = data.get('type') # 'percent_increase', 'percent_decrease', 'fixed'
+    value = float(data.get('value', 0))
+
+    if not ids: 
+        return jsonify({"msg": "No se enviaron productos"}), 400
+
+    try:
+        productos = Producto.query.filter(Producto.id_producto.in_(ids)).all()
+        for p in productos:
+            if action_type == 'percent_increase':
+                p.precio = p.precio * (1 + (value / 100))
+            elif action_type == 'percent_decrease':
+                p.precio = p.precio * (1 - (value / 100))
+            elif action_type == 'fixed':
+                p.precio = value
+                
+            # Redondeo opcional para que no queden centavos sueltos
+            p.precio = round(p.precio)
+
+        db.session.commit()
+        return jsonify({"msg": "Precios actualizados correctamente"}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"msg": f"Error al actualizar: {str(e)}"}), 500

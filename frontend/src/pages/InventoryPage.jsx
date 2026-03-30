@@ -79,6 +79,11 @@ const InventoryPage = () => {
     const [editingProduct, setEditingProduct] = useState(null);
     const [imageModalSrc, setImageModalSrc] = useState(null);
 
+    // --- NUEVO: MODAL PARA PRECIOS DE SELECCIONADOS ---
+    const [isSelectedPriceModalOpen, setIsSelectedPriceModalOpen] = useState(false);
+    const [selectedPriceType, setSelectedPriceType] = useState('percent_increase');
+    const [selectedPriceValue, setSelectedPriceValue] = useState('');
+
     // --- REF PARA AUTO-SCAN ---
     const searchInputRef = useRef(null);
     useScanDetection(searchInputRef);
@@ -203,6 +208,30 @@ const InventoryPage = () => {
         } catch (e) { toast.error("Error al borrar"); }
     };
 
+    // --- NUEVO: ACTUALIZAR PRECIOS SELECCIONADOS ---
+    const handleUpdateSelectedPrices = async (e) => {
+        e.preventDefault();
+        if (!selectedPriceValue) return;
+
+        const toastId = toast.loading("Actualizando precios de seleccionados...");
+        try {
+            await api.put('/products/bulk-price-selected', {
+                ids: Array.from(selectedItems),
+                type: selectedPriceType,
+                value: parseFloat(selectedPriceValue)
+            });
+
+            toast.success("Precios actualizados correctamente", { id: toastId });
+            playSound('success');
+            setIsSelectedPriceModalOpen(false);
+            setSelectedPriceValue('');
+            setSelectedItems(new Set());
+            fetchProducts(page);
+        } catch (error) {
+            toast.error("Error al actualizar precios", { id: toastId });
+        }
+    };
+
     // --- ACCIONES DE STOCK Y WEB ---
     const handleForceSync = async () => {
         if (!window.confirm("⚠️ ¿Sincronizar Stock Masivamente?")) return;
@@ -302,13 +331,11 @@ const InventoryPage = () => {
         } catch (error) { toast.error("Error", { id: toastId }); }
     };
 
-    // --- FUNCIÓN ARREGLADA PARA SELECCIONADOS ---
     const handlePrintLabelsSelected = async () => {
         if (selectedItems.size === 0) return toast.error("Selecciona productos");
         const t = toast.loading("Generando...");
 
         try {
-            // Filtramos solo los productos seleccionados y luego SUS variantes que tengan stock > 0
             const items = products
                 .filter(p => selectedItems.has(p.id))
                 .flatMap(p => p.variantes
@@ -317,7 +344,7 @@ const InventoryPage = () => {
                         nombre: p.nombre,
                         sku: v.sku || `GEN-${v.id_variante}`,
                         talle: v.talle,
-                        cantidad: v.stock // <-- Se usa el stock real
+                        cantidad: v.stock
                     }))
                 );
 
@@ -326,7 +353,6 @@ const InventoryPage = () => {
                 return;
             }
 
-            // Calculamos cuántas etiquetas en total se van a imprimir
             const totalLabels = items.reduce((sum, item) => sum + item.cantidad, 0);
 
             if (totalLabels > 500 && !window.confirm(`⚠️ Se van a generar ${totalLabels} etiquetas en total. ¿Continuar?`)) {
@@ -389,16 +415,25 @@ const InventoryPage = () => {
                         </button>
 
                         <button onClick={() => setHideOutOfStock(!hideOutOfStock)} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all ${hideOutOfStock ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300' : 'bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-500 dark:text-slate-300'}`}>{hideOutOfStock ? <EyeOff size={16} className="mr-2" /> : <Eye size={16} className="mr-2" />} {hideOutOfStock ? 'Sin Stock: Oculto' : 'Sin Stock: Visible'}</button>
+
+                        {/* --- BARRA DE ACCIONES PARA SELECCIONADOS --- */}
                         {selectedItems.size > 0 && (
                             <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg animate-fade-in mr-2">
                                 <span className="text-xs font-bold text-slate-600 dark:text-slate-300 px-2">{selectedItems.size} sel.</span>
+
+                                {/* NUEVO BOTÓN DE PRECIOS PARA SELECCIONADOS */}
+                                <button onClick={() => setIsSelectedPriceModalOpen(true)} className="bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 px-3 py-1.5 rounded-md text-xs font-bold flex items-center hover:bg-emerald-200 transition-colors">
+                                    <TrendingUp size={14} className="mr-2" /> Precios
+                                </button>
+
                                 <button onClick={handlePrintLabelsSelected} className="bg-slate-800 text-white px-3 py-1.5 rounded-md text-xs font-bold flex items-center hover:bg-black transition-colors"><Printer size={14} className="mr-2" /> Imprimir</button>
                                 <button onClick={handleBulkToggleStatus} className="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 px-3 py-1.5 rounded-md text-xs font-bold flex items-center hover:bg-red-200 transition-colors"><Archive size={14} className="mr-2" /> Archivar</button>
                             </div>
                         )}
+
                         <div className="h-8 w-px bg-gray-200 dark:bg-slate-700 mx-1 hidden md:block"></div>
                         <button onClick={handlePrintLabelsByFilter} className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-3 py-2 rounded-lg flex items-center hover:bg-indigo-100 font-bold text-xs"><Tags size={16} className="mr-2" /> Etiquetas (Filtro)</button>
-                        <button onClick={() => setIsBulkModalOpen(true)} className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-3 py-2 rounded-lg flex items-center hover:bg-emerald-100 font-bold text-xs"><TrendingUp size={16} className="mr-2" /> Precios</button>
+                        <button onClick={() => setIsBulkModalOpen(true)} className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-3 py-2 rounded-lg flex items-center hover:bg-emerald-100 font-bold text-xs"><TrendingUp size={16} className="mr-2" /> Aumentos Grales</button>
                         <button onClick={handleForceSync} disabled={isSyncing} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all ${isSyncing ? 'bg-gray-100 dark:bg-slate-800 text-gray-400' : 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/30'}`}><RefreshCw size={14} className={`mr-2 ${isSyncing ? "animate-spin" : ""}`} /> {isSyncing ? "Sync..." : "Sync Nube"}</button>
                         <button onClick={() => setShowForm(!showForm)} className={`flex items-center px-4 py-2 rounded-lg text-xs font-bold text-white shadow-lg transition-all active:scale-95 ${showForm ? 'bg-gray-500 hover:bg-gray-600' : 'bg-slate-900 hover:bg-black dark:bg-blue-600 dark:hover:bg-blue-700'}`}>{showForm ? <X size={16} className="mr-2" /> : <Plus size={16} className="mr-2" />} {showForm ? "Cancelar" : "Nuevo"}</button>
                     </div>
@@ -561,6 +596,51 @@ const InventoryPage = () => {
                     {loading && <Loader2 className="animate-spin text-blue-500 absolute left-1/2" size={16} />}
                 </div>
             </div>
+
+            {/* --- MODAL PARA PRECIOS DE SELECCIONADOS --- */}
+            {isSelectedPriceModalOpen && (
+                <div className="fixed inset-0 z-[150] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setIsSelectedPriceModalOpen(false)}>
+                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+                        <h3 className="font-black text-xl mb-4 text-gray-800 dark:text-white flex items-center">
+                            <TrendingUp className="mr-2 text-emerald-500" /> Precios ({selectedItems.size} ítems)
+                        </h3>
+                        <p className="text-sm text-gray-500 dark:text-slate-400 mb-6 leading-tight">Aplica una actualización rápida de precio a los {selectedItems.size} productos que seleccionaste.</p>
+
+                        <form onSubmit={handleUpdateSelectedPrices}>
+                            <div className="mb-4">
+                                <label className="block text-xs font-bold text-gray-500 dark:text-slate-400 uppercase mb-2">Tipo de Actualización</label>
+                                <select
+                                    value={selectedPriceType}
+                                    onChange={e => setSelectedPriceType(e.target.value)}
+                                    className="w-full p-3 border-2 border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 rounded-xl font-bold outline-none focus:border-emerald-500 dark:text-white"
+                                >
+                                    <option value="percent_increase">Aumento por Porcentaje (%)</option>
+                                    <option value="percent_decrease">Descuento por Porcentaje (%)</option>
+                                    <option value="fixed">Establecer Precio Fijo ($)</option>
+                                </select>
+                            </div>
+                            <div className="mb-6">
+                                <label className="block text-xs font-bold text-gray-500 dark:text-slate-400 uppercase mb-2">Valor ({selectedPriceType === 'fixed' ? '$' : '%'})</label>
+                                <input
+                                    type="number"
+                                    required
+                                    min="0"
+                                    step="0.01"
+                                    autoFocus
+                                    placeholder={selectedPriceType === 'fixed' ? 'Ej: 15000' : 'Ej: 10'}
+                                    value={selectedPriceValue}
+                                    onChange={e => setSelectedPriceValue(e.target.value)}
+                                    className="w-full p-3 border-2 border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 rounded-xl font-black text-xl outline-none focus:border-emerald-500 dark:text-white"
+                                />
+                            </div>
+                            <div className="flex gap-3">
+                                <button type="button" onClick={() => setIsSelectedPriceModalOpen(false)} className="flex-1 py-3 text-gray-600 dark:text-gray-300 font-bold bg-gray-100 dark:bg-slate-700 hover:bg-gray-200 dark:hover:bg-slate-600 rounded-xl transition-colors">Cancelar</button>
+                                <button type="submit" className="flex-1 py-3 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-xl shadow-lg shadow-emerald-200 dark:shadow-none transition-transform active:scale-95">Aplicar a {selectedItems.size}</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             <ModalBarcode isOpen={isBarcodeModalOpen} onClose={() => setIsBarcodeModalOpen(false)} productData={selectedVariantForBarcode} />
             <EditProductModal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} product={editingProduct} categories={categories} specificCategories={specificCategories} onUpdate={() => { fetchProducts(page); playSound('success'); }} />
