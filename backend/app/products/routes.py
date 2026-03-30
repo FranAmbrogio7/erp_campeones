@@ -1041,7 +1041,8 @@ def toggle_product_status(id):
         db.session.rollback()
         return jsonify({"msg": "Error al actualizar estado"}), 500
 
-#cambiar precios masivamente
+
+
 @bp.route('/bulk-price-selected', methods=['PUT'])
 @jwt_required()
 def bulk_price_selected():
@@ -1054,7 +1055,12 @@ def bulk_price_selected():
         return jsonify({"msg": "No se enviaron productos"}), 400
 
     try:
+        # 1. Actualizamos la Base de Datos Local
         productos = Producto.query.filter(Producto.id_producto.in_(ids)).all()
+        
+        # Lista simple para pasar al hilo en segundo plano (Evita errores de sesión cerrada)
+        variantes_a_sincronizar = []
+
         for p in productos:
             if action_type == 'percent_increase':
                 p.precio = p.precio * (1 + (value / 100))
@@ -1063,12 +1069,45 @@ def bulk_price_selected():
             elif action_type == 'fixed':
                 p.precio = value
                 
-            # Redondeo opcional para que no queden centavos sueltos
-            p.precio = round(p.precio)
+            p.precio = round(p.precio) # Redondeo
+            
+            # 2. Preparamos los datos para Tienda Nube
+            if getattr(p, 'tiendanube_id', None):
+                for v in p.variantes:
+                    if getattr(v, 'tiendanube_variant_id', None):
+                        variantes_a_sincronizar.append({
+                            'tn_product_id': p.tiendanube_id,
+                            'tn_variant_id': v.tiendanube_variant_id,
+                            'precio_local': p.precio # TiendaNubeService se encarga del recargo web
+                        })
 
         db.session.commit()
-        return jsonify({"msg": "Precios actualizados correctamente"}), 200
+
+        # 3. Sincronización con Tienda Nube (En Segundo Plano)
+        if variantes_a_sincronizar:
+            app = current_app._get_current_object()
+            
+            def sync_background(app_context, vars_data):
+                with app_context.app_context():
+                    from app.services.tiendanube_service import tn_service
+                    for v_data in vars_data:
+                        try:
+                            # Usamos la función exacta de tu archivo tiendanube_service.py
+                            tn_service.update_variant_price(
+                                tn_product_id=v_data['tn_product_id'], 
+                                tn_variant_id=v_data['tn_variant_id'], 
+                                precio_local=v_data['precio_local']
+                            )
+                        except Exception as e:
+                            print(f"⚠️ Error Background Sync TN (Precio): {e}")
+
+            # Lanzamos el proceso invisible
+            thread = threading.Thread(target=sync_background, args=(app, variantes_a_sincronizar))
+            thread.start()
+
+        return jsonify({"msg": "Precios actualizados (Sincronizando con Tienda Nube en segundo plano...)"}), 200
         
     except Exception as e:
         db.session.rollback()
+        print(f"Error bulk_price: {e}")
         return jsonify({"msg": f"Error al actualizar: {str(e)}"}), 500
