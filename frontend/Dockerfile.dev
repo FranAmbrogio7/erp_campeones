@@ -1,0 +1,16 @@
+# Usamos Node.js
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copiamos los archivos de dependencias
+COPY package*.json ./
+
+# Instalamos las dependencias
+RUN npm install
+
+# Exponemos el puerto (5173 para Vite, o 3000 si usas Create React App)
+EXPOSE 5173
+
+# Comando para iniciar el servidor de desarrollo (Ajusta si usas CRA: npm start)
+CMD ["npm", "run", "dev", "--", "--host"]
