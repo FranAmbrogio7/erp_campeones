@@ -55,4 +55,4 @@ services:
       - backend
 
 volumes:
-  db_data: # Esto guarda tu BD para que no se borre si apagas la PC
+  db_data: # Esto guarda tu BD para que no se borre si apagas la PC asasdas
