@@ -849,7 +849,7 @@ def publish_product_to_cloud(id):
 
 
 # ==========================================
-# 15. Forzar sincronización con Tienda Nube
+# 15. Forzar sincronización con Tienda Nube (STOCK Y PRECIOS)
 # ==========================================
 @bp.route('/sync/force-tiendanube', methods=['POST'])
 @jwt_required()
@@ -866,12 +866,13 @@ def force_sync_tiendanube():
                     # Obtenemos el stock actual de la DB
                     stock_db = var.inventario.stock_actual if var.inventario else 0
                     
-                    # Guardamos en una lista plana solo los datos puros
+                    # Guardamos en una lista plana los datos puros (AGREGAMOS EL PRECIO)
                     lista_para_sync.append({
                         'sku': var.codigo_sku,
                         'prod_id': prod.tiendanube_id,
                         'var_id': var.tiendanube_variant_id,
-                        'stock': stock_db
+                        'stock': stock_db,
+                        'precio': prod.precio  # <--- NUEVO: Capturamos el precio local
                     })
         
         if not lista_para_sync:
@@ -880,21 +881,18 @@ def force_sync_tiendanube():
         # 2. FASE DE LANZAMIENTO: Iniciar Hilo
         # Creamos el hilo pasándole la lista de datos
         hilo = threading.Thread(target=run_sync_background, args=(lista_para_sync,))
-        # Lo iniciamos como 'daemon' para que no bloquee el cierre del server si fuera necesario
         hilo.daemon = True 
         hilo.start()
 
         # 3. RESPUESTA INMEDIATA
-        # Le decimos al Frontend que ya arrancó, aunque no haya terminado.
         return jsonify({
             "msg": "Sincronización iniciada en segundo plano", 
-            "detalles": f"Se están procesando {len(lista_para_sync)} variantes. El proceso continuará en el servidor."
+            "detalles": f"Se están procesando {len(lista_para_sync)} variantes. Actualizando Stock y Precios."
         }), 202
 
     except Exception as e:
         print(f"Error iniciando sync: {e}")
         return jsonify({"msg": "Error general al iniciar sincronización", "error": str(e)}), 500
-
 
 
 # Función auxiliar que correrá "en las sombras"
@@ -907,16 +905,27 @@ def run_sync_background(items_list):
     actualizados = 0
     errores = 0
     
-    # Recorremos la lista PRE-CALCULADA (así no tocamos la DB en el hilo, que es más seguro)
+    # Importamos el servicio aquí adentro para evitar problemas con los hilos
+    from app.services.tiendanube_service import tn_service
+    
     for item in items_list:
         try:
+            # 1. Sincronizamos el Stock
             tn_service.update_variant_stock(
                 item['prod_id'], 
                 item['var_id'], 
                 item['stock']
             )
-            # Logueamos progreso en la consola del servidor
-            print(f"✅ TN Sync OK: {item['sku']} -> Stock {item['stock']}")
+            
+            # 2. Sincronizamos el Precio (NUEVO)
+            # Pasamos el precio local, y tn_service le aplicará el 1.18 automáticamente
+            tn_service.update_variant_price(
+                tn_product_id=item['prod_id'],
+                tn_variant_id=item['var_id'],
+                precio_local=item['precio']
+            )
+            
+            print(f"✅ TN Sync OK: {item['sku']} -> Stock {item['stock']} | Precio Local Base: ${item['precio']}")
             actualizados += 1
         except Exception as e:
             print(f"❌ TN Sync Error {item['sku']}: {e}")
