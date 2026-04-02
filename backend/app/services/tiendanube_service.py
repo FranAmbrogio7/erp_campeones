@@ -14,7 +14,7 @@ class TiendaNubeService:
         self.user_agent = "AppGestion (tu_email@ejemplo.com)"
         
         # 2. CONFIGURACIÓN DE PRECIOS
-        self.PORCENTAJE_WEB = 1.18  # 15% de aumento para la web
+        self.PORCENTAJE_WEB = 1.19  # 19% de aumento para la web
 
     def _get_headers(self):
         """Helper para headers comunes"""
