@@ -312,9 +312,9 @@ def close_caja():
 @bp.route('/caja/list', methods=['GET'])
 @jwt_required()
 def list_closed_sessions():
-    # Traemos las últimas 20 cajas cerradas
+    # Eliminamos el límite para traer absolutamente todo el historial
     sesiones = SesionCaja.query.filter_by(estado='cerrada')\
-        .order_by(desc(SesionCaja.fecha_cierre)).limit(20).all()
+        .order_by(desc(SesionCaja.fecha_cierre)).all()
     
     resultado = []
     for s in sesiones:
