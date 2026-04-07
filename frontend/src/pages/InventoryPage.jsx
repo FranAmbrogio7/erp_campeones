@@ -7,7 +7,7 @@ import {
     Plus, Save, Image as ImageIcon, Printer, RefreshCw,
     AlertTriangle, CheckCircle2, ArrowUpRight,
     Archive, ArchiveRestore, Eye, EyeOff, Tags, TrendingUp, CheckSquare, Square, Trash2,
-    Copy, ListFilter, ImageOff
+    Copy, ListFilter, ImageOff, DownloadCloud
 } from 'lucide-react';
 import ModalBarcode from '../components/ModalBarcode';
 import EditProductModal from '../components/EditProductModal';
@@ -254,6 +254,20 @@ const InventoryPage = () => {
             toast.success("¡Publicado!", { id: toastId });
             await fetchProducts(page);
         } catch (error) { playSound('error'); toast.error("Error al publicar", { id: toastId }); } finally { setProcessingId(null); }
+    };
+
+    const handleImportImage = async (product) => {
+        if (!product.tiendanube_id) return toast.error("El producto no está vinculado a Tienda Nube");
+        const toastId = toast.loading("Descargando foto desde Tienda Nube...");
+        try {
+            await api.post(`/products/${product.id}/import-image-from-cloud`);
+            playSound('success');
+            toast.success("Imagen importada correctamente", { id: toastId });
+            fetchProducts(page);
+        } catch (error) {
+            playSound('error');
+            toast.error(error.response?.data?.msg || "Error al descargar foto", { id: toastId });
+        }
     };
 
     // --- FUNCIÓN DUPLICAR ---
@@ -558,6 +572,9 @@ const InventoryPage = () => {
                                         <div className="flex justify-end gap-1">
                                             {viewMode === 'active' ? (
                                                 <>
+                                                    {p.tiendanube_id && (
+                                                        <button onClick={() => handleImportImage(p)} className="text-sky-500 dark:text-sky-400 hover:text-sky-700 dark:hover:text-sky-300 p-2 hover:bg-sky-50 dark:hover:bg-sky-900/30 rounded-lg" title="Importar Imagen de Tienda Nube"><DownloadCloud size={18} /></button>
+                                                    )}
                                                     <button onClick={() => handleDuplicate(p)} className="text-gray-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 p-2 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 rounded-lg" title="Duplicar"><Copy size={18} /></button>
                                                     <button onClick={() => handleToggleStatus(p)} className="text-gray-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 p-2 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg" title="Archivar"><Archive size={18} /></button>
                                                     <button onClick={() => { setEditingProduct(p); setIsEditModalOpen(true); }} className="text-gray-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 p-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg" title="Editar"><Edit size={18} /></button>

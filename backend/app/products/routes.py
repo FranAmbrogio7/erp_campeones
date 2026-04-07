@@ -391,7 +391,7 @@ def get_barcode_image(sku):
 
 
 # ==========================================
-# 8. Editar producto (datos generales + imagen + PRECIO WEB)
+# 8. Editar producto (datos generales + imagen + PRECIO WEB en Segundo Plano)
 # ==========================================
 @bp.route('/<int:id>', methods=['PUT'])
 @jwt_required()
@@ -401,7 +401,6 @@ def update_product(id):
     
     try:
         # A. ACTUALIZACIÓN LOCAL -------------------------
-        # (Esta parte queda igual que tu código original)
         if 'nombre' in request.form: prod.nombre = request.form['nombre']
         if 'precio' in request.form: prod.precio = float(request.form['precio'])
         if 'categoria_id' in request.form: 
@@ -409,7 +408,7 @@ def update_product(id):
         if 'categoria_especifica_id' in request.form:
             prod.id_categoria_especifica = request.form['categoria_especifica_id'] or None
 
-        # Imagen
+        # Imagen Local
         if 'imagen' in request.files:
             file = request.files['imagen']
             if file.filename != '':
@@ -422,59 +421,52 @@ def update_product(id):
                 file.save(os.path.join(current_app.config['UPLOAD_FOLDER'], filename))
                 prod.imagen = filename
 
-        # Guardamos cambios locales primero
+        # Guardamos cambios locales al instante
         db.session.commit()
 
-        # B. SINCRONIZACIÓN CON TIENDA NUBE ------------
+        # B. SINCRONIZACIÓN CON TIENDA NUBE (EN SEGUNDO PLANO) ------------
         if prod.tiendanube_id:
-            print(f"🔄 Sincronizando '{prod.nombre}' con Tienda Nube...")
-
-            # 1. Datos básicos (Nombre, Descripción)
-            tn_service.update_product_data(
-                tn_product_id=prod.tiendanube_id,
-                nombre=prod.nombre,
-                descripcion=prod.descripcion
-            )
+            app = current_app._get_current_object()
             
-            # 2. Actualizar variantes YA VINCULADAS (Precio y Stock)
-            # Nota: Asegúrate de que tu modelo use 'tiendanube_id' o 'tiendanube_variant_id' consistentemente.
-            # En el servicio usamos 'tiendanube_id' para la variante.
-            for var in prod.variantes:
-                # Usamos getattr para soportar ambos nombres por si acaso
-                tn_var_id = getattr(var, 'tiendanube_id', None) or getattr(var, 'tiendanube_variant_id', None)
-                
-                if tn_var_id:
-                    # Sync Stock
-                    if var.inventario:
-                        tn_service.update_variant_stock(
-                            tn_product_id=prod.tiendanube_id,
-                            tn_variant_id=tn_var_id,
-                            new_stock=var.inventario.stock_actual
-                        )
+            def background_sync_product(app_context, product_id):
+                with app_context.app_context():
+                    from app.services.tiendanube_service import tn_service
+                    # Volvemos a consultar el producto en este nuevo hilo para evitar errores de conexión
+                    p = Producto.query.get(product_id)
+                    if not p: return
                     
-                    # Sync PRECIO
-                    tn_service.update_variant_price(
-                        tn_product_id=prod.tiendanube_id,
-                        tn_variant_id=tn_var_id,
-                        precio_local=prod.precio
-                    )
+                    print(f"🔄 [BACKGROUND] Sincronizando '{p.nombre}' con Tienda Nube...")
+                    
+                    try:
+                        # 1. Datos básicos
+                        tn_service.update_product_data(
+                            tn_product_id=p.tiendanube_id,
+                            nombre=p.nombre,
+                            descripcion=p.descripcion
+                        )
+                        
+                        # 2. Actualizar variantes existentes
+                        for var in p.variantes:
+                            tn_var_id = getattr(var, 'tiendanube_id', None) or getattr(var, 'tiendanube_variant_id', None)
+                            if tn_var_id:
+                                if var.inventario:
+                                    tn_service.update_variant_stock(p.tiendanube_id, tn_var_id, var.inventario.stock_actual)
+                                tn_service.update_variant_price(p.tiendanube_id, tn_var_id, p.precio)
 
-            # ============================================================
-            # 3. NUEVO: SUBIR VARIANTES FALTANTES (La magia nueva ✨)
-            # ============================================================
-            try:
-                # Esta función recorre las variantes, encuentra las que no tienen ID y las crea
-                nuevas_creadas = tn_service.sync_missing_variants(prod)
-                
-                if nuevas_creadas:
-                    db.session.commit() # Guardamos los IDs nuevos que nos devolvió Tienda Nube
-                    print("💾 Nuevas variantes vinculadas correctamente.")
-            
-            except Exception as e_sync:
-                print(f"⚠️ Error al crear variantes nuevas en TN: {e_sync}")
-            # ============================================================
+                        # 3. Sincronizar Variantes Faltantes
+                        nuevas_creadas = tn_service.sync_missing_variants(p)
+                        if nuevas_creadas:
+                            db.session.commit() # Guarda IDs nuevos
+                            print("💾 [BACKGROUND] Nuevas variantes vinculadas correctamente.")
+                            
+                    except Exception as e_bg:
+                        print(f"⚠️ Error en Background Sync de Producto: {e_bg}")
+
+            # Lanzamos el proceso invisible y el código sigue de largo
+            thread = threading.Thread(target=background_sync_product, args=(app, prod.id_producto))
+            thread.start()
         
-        return jsonify({"msg": "Producto actualizado y sincronizado"}), 200
+        return jsonify({"msg": "Producto actualizado (Sincronizando en segundo plano...)"}), 200
 
     except Exception as e:
         db.session.rollback()
@@ -483,7 +475,7 @@ def update_product(id):
 
 
 # ==========================================
-# 9. Editar stock y SKU de una variante (Sincronizado)
+# 9. Editar stock y SKU de una variante (Sincronizado en Segundo Plano)
 # ==========================================
 @bp.route('/variants/<int:id>', methods=['PUT'])
 @jwt_required()
@@ -493,10 +485,10 @@ def update_variant(id):
     
     data = request.get_json()
     try:
-        # Actualizar SKU
+        # Actualizar SKU local
         if 'sku' in data: var.codigo_sku = data['sku']
         
-        # Actualizar STOCK
+        # Actualizar STOCK local
         stock_cambio = False
         if 'stock' in data:
             if not var.inventario:
@@ -508,17 +500,36 @@ def update_variant(id):
         
         db.session.commit()
 
-        # --- SYNC TIENDA NUBE ---
+        # --- SYNC TIENDA NUBE EN SEGUNDO PLANO ---
         if stock_cambio and var.tiendanube_variant_id and var.producto.tiendanube_id:
-            print(f"🔄 Sincronizando variante {var.codigo_sku}...")
-            tn_service.update_variant_stock(
-                tn_product_id=var.producto.tiendanube_id,
-                tn_variant_id=var.tiendanube_variant_id,
-                new_stock=int(data['stock'])
-            )
-        # ------------------------
+            app = current_app._get_current_object()
+            
+            # Pasamos diccionarios simples al hilo para máxima velocidad
+            sync_data = {
+                'tn_product_id': var.producto.tiendanube_id,
+                'tn_variant_id': var.tiendanube_variant_id,
+                'new_stock': int(data['stock'])
+            }
+            
+            def background_sync_variant(app_context, s_data):
+                with app_context.app_context():
+                    from app.services.tiendanube_service import tn_service
+                    print(f"🔄 [BACKGROUND] Sincronizando stock de variante...")
+                    try:
+                        tn_service.update_variant_stock(
+                            s_data['tn_product_id'],
+                            s_data['tn_variant_id'],
+                            s_data['new_stock']
+                        )
+                    except Exception as e_bg:
+                        print(f"⚠️ Error en Background Sync de Variante: {e_bg}")
 
-        return jsonify({"msg": "Variante actualizada"}), 200
+            thread = threading.Thread(target=background_sync_variant, args=(app, sync_data))
+            thread.start()
+        # -----------------------------------------
+
+        return jsonify({"msg": "Variante actualizada localmente"}), 200
+        
     except Exception as e:
         db.session.rollback()
         return jsonify({"msg": str(e)}), 500
