@@ -7,7 +7,7 @@ load_dotenv()
 
 class TiendaNubeService:
     def __init__(self):
-        # 1. CARGA DE CREDENCIALES (Aquí estaba el error, faltaba esto)
+        # 1. CARGA DE CREDENCIALES
         self.access_token = os.getenv('TIENDANUBE_ACCESS_TOKEN')
         self.store_id = os.getenv('TIENDANUBE_STORE_ID')
         self.api_url = f"https://api.tiendanube.com/v1/{self.store_id}" if self.store_id else None
@@ -15,6 +15,92 @@ class TiendaNubeService:
         
         # 2. CONFIGURACIÓN DE PRECIOS
         self.PORCENTAJE_WEB = 1.19  # 19% de aumento para la web
+        
+        # 3. CONFIGURACIONES ESTÁNDAR DE ENVÍO
+        self.PESO_ESTANDAR = 0.150  # 150 gramos (en kg)
+        self.MEDIDAS_ESTANDAR = {
+            "width": 15,  # 15 cm
+            "height": 10, # 10 cm
+            "depth": 15   # 15 cm
+        }
+
+        # 4. MOTOR DE PLANTILLAS DE DESCRIPCIÓN
+        self.PLANTILLAS = {
+            "Camisetas Nacionales": """
+                <p><strong>Camiseta Calidad Nacional - Version Hincha</strong></p>
+                <ul>
+                    <li>Tela deportiva cómoda, resistente y respirable.</li>
+                    <li>Escudo y marca bordados para mayor durabilidad y mejor terminación.</li>
+                    <li>Estampas en vinilo de alta calidad con excelente definición.</li>
+                    <li>Corte cómodo ideal para uso diario, entrenar o alentar a tu equipo.</li>
+                </ul>
+                <p><em>Viví la pasión del fútbol con la mejor calidad en Campeones Indumentaria.</em></p>
+            """,
+            "Camisetas Retro": """
+                <p><strong>Camiseta Retro - Clásicos que Hicieron Historia</strong></p>
+                <p>Revive los momentos más icónicos del fútbol con esta camiseta retro inspirada en épocas inolvidables.</p>
+                <ul>
+                    <li>Diseño fiel a los modelos históricos originales.</li>
+                    <li>Telas modernas que brindan mayor comodidad y durabilidad.</li>
+                    <li>Detalles y escudos cuidadosamente confeccionados.</li>
+                    <li>Ideal para coleccionistas y verdaderos fanáticos del fútbol.</li>
+                </ul>
+                <p><em>Llevá la historia de tu club o selección en cada detalle.</em></p>
+            """,
+            "Camisetas G5 Importadas": """
+                <p><strong>Camiseta G5 Importada - Calidad Premium Profesional</strong></p>
+                <ul>
+                    <li>Calidad importada G5 con terminaciones premium.</li>
+                    <li>Escudo y marca termosellados.</li>
+                    <li>Escudos, logos y detalles idénticos a los modelos utilizados por los jugadores.</li>
+                    <li>Tela tecnológica liviana y respirable con excelente ajuste.</li>
+                    <li>Máximo confort y calidad superior en cada detalle.</li>
+                </ul>
+                <p><strong>La mejor calidad disponible para verdaderos fanáticos del fútbol.</strong></p>
+            """,
+            "Conjuntos": """
+                <p><strong>Conjunto Deportivo Completo (Campera + Pantalón)</strong></p>
+                <p>Diseñado para brindar comodidad, estilo y rendimiento tanto para entrenar como para uso urbano.</p>
+                <ul>
+                    <li>Confeccionado con materiales cómodos y resistentes.</li>
+                    <li>Campera y pantalón con ajuste moderno y confortable.</li>
+                    <li>Bolsillos funcionales con cierre según modelo.</li>
+                    <li>Ideal para entrenamiento, viajes o uso diario.</li>
+                </ul>
+                <p><em>Comodidad y estilo deportivo en un solo conjunto.</em></p>
+            """,
+            "Buzos": """
+                <p><strong>Buzo Deportivo Clubes</strong></p>
+                <ul>
+                    <li>Interior suave y cálido para mayor comodidad.</li>
+                    <li>Diseño moderno ideal para uso deportivo o urbano.</li>
+                    <li>Material resistente y de excelente calidad.</li>
+                    <li>Ajuste cómodo pensado para el día a día.</li>
+                </ul>
+                <p><em>Perfecto para los días frescos sin perder el estilo futbolero.</em></p>
+            """,
+            "Camperas": """
+                <p><strong>Campera Deportiva Clubes</strong></p>
+                <ul>
+                    <li>Diseño moderno inspirado en la indumentaria profesional.</li>
+                    <li>Material liviano, cómodo y resistente.</li>
+                    <li>Cierre frontal y bolsillos funcionales según modelo.</li>
+                    <li>Ideal para entrenamientos, viajes o uso diario.</li>
+                </ul>
+                <p><em>Estilo y comodidad para cualquier ocasión.</em></p>
+            """,
+            "Shorts": """
+                <p><strong>Short Deportivo de Alto Rendimiento</strong></p>
+                <ul>
+                    <li>Tela liviana y respirable para máxima comodidad.</li>
+                    <li>Ajuste cómodo ideal para entrenar o uso casual.</li>
+                    <li>Cintura elastizada para mejor adaptación.</li>
+                    <li>Diseño inspirado en el fútbol profesional.</li>
+                </ul>
+                <p><em>Movete con libertad y representá tu pasión por el fútbol.</em></p>
+            """
+        }
+        self.DESCRIPCION_DEFAULT = "<p>Producto de alta calidad de <strong>Campeones Indumentaria</strong>. Consultanos por talles y stock disponible.</p>"
 
     def _get_headers(self):
         """Helper para headers comunes"""
@@ -60,7 +146,7 @@ class TiendaNubeService:
         url = f"{self.api_url}/products/{tn_product_id}/variants/{tn_variant_id}"
         data = {
             "price": precio_web,
-            "promotional_price": None # Opcional: podrías ponerlo en null para limpiar ofertas viejas
+            "promotional_price": None 
         }
         
         try:
@@ -113,62 +199,65 @@ class TiendaNubeService:
 
     def create_product_in_cloud(self, local_prod):
         """Sube un producto nuevo completo a Tienda Nube"""
-        # 1. EL TRY DEBE CUBRIR TODO EL METODO
         try:
             if not self.access_token or not self.api_url: 
                 return {"success": False, "error": "No hay credenciales configuradas"}
 
-            # Preparar Variantes
-            variants_data = []
-            
-            # --- VALIDACIÓN DE SEGURIDAD ---
-            # Si local_prod no tiene variantes o es None, esto fallaba antes
             if not local_prod:
                 raise ValueError("El producto local es None")
-                
+
+            # --- 1. LÓGICA DE DESCRIPCIÓN AUTOMÁTICA ---
+            cat_nombre = local_prod.categoria.nombre if local_prod.categoria else "General"
+            
+            # Si el producto NO tiene descripción manual, usamos la plantilla
+            if not local_prod.descripcion or str(local_prod.descripcion).strip() == "":
+                descripcion_final = self.PLANTILLAS.get(cat_nombre, self.DESCRIPCION_DEFAULT)
+            else:
+                # Si escribiste algo manualmente, lo respetamos
+                descripcion_final = local_prod.descripcion
+
+            # --- 2. PREPARAR VARIANTES CON PESO Y DIMENSIONES ---
+            variants_data = []
             for var in local_prod.variantes:
                 stock_val = var.inventario.stock_actual if var.inventario else 0
                 precio_web = self.calcular_precio_web(local_prod.precio)
                 
-                # --- OJO AQUÍ ---
-                # Verifica si en tu modelo de BD la propiedad es .talla, .talle o .size
-                # Si esto falla, ahora el try lo capturará.
                 nombre_talle = getattr(var, 'talla', None) or getattr(var, 'talle', "Único")
 
                 variants_data.append({
                     "price": precio_web,
                     "stock": int(stock_val),
                     "sku": var.codigo_sku,
-                    "values": [{"es": nombre_talle}] 
+                    "values": [{"es": nombre_talle}],
+                    # Medidas estándar inyectadas automáticamente
+                    "weight": self.PESO_ESTANDAR,
+                    "width": self.MEDIDAS_ESTANDAR["width"],
+                    "height": self.MEDIDAS_ESTANDAR["height"],
+                    "depth": self.MEDIDAS_ESTANDAR["depth"]
                 })
 
-            # Payload del Producto
+            # --- 3. PAYLOAD DEL PRODUCTO ---
             payload = {
                 "name": {"es": local_prod.nombre},
-                "description": {"es": local_prod.descripcion or ""},
-                # IMPORTANTE: TiendaNube pide definir qué son los valores (ej: "Talle")
+                "description": {"es": descripcion_final},
                 "attributes": [{"es": "Talle"}], 
                 "variants": variants_data,
                 "images": [] 
             }
 
-            # Request
             url = f"{self.api_url}/products"
             response = requests.post(url, json=payload, headers=self._get_headers())
             
             if response.status_code == 201:
                 return {"success": True, "tn_data": response.json()}
             else:
-                # Devuelve el error exacto que da TiendaNube
                 return {"success": False, "error": f"API Error {response.status_code}: {response.text}"}
 
         except Exception as e:
-            # AHORA SÍ verás el error real en tu consola gracias a esto:
             import traceback
             print("❌ ERROR CRÍTICO EN CREATE_PRODUCT:")
             traceback.print_exc()
             return {"success": False, "error": str(e)}
-
 
     def get_order_details(self, order_id):
         if not self.access_token or not self.api_url: return None
@@ -195,37 +284,30 @@ class TiendaNubeService:
     def create_variant_in_cloud(self, tn_product_id, local_variant):
         """
         Crea una variante específica en un producto existente de Tienda Nube.
-        Se usa cuando agregas un talle nuevo en el ERP y quieres que aparezca en la web.
         """
         try:
             if not self.access_token or not self.api_url:
                 return {"success": False, "error": "No credenciales"}
 
-            # --- CORRECCIÓN AQUÍ ---
-            # El precio vive en el producto padre, no en la variante.
-            # Accedemos al padre a través de la relación .producto
             prod_padre = local_variant.producto
             precio_base = prod_padre.precio if prod_padre else 0
-            
-            # Calculamos el precio web con el aumento
             precio_web = self.calcular_precio_web(precio_base)
-            # -----------------------
             
-            # Manejo seguro del stock (si no tiene inventario, va 0)
             stock_val = local_variant.inventario.stock_actual if local_variant.inventario else 0
-            
-            # Manejo del nombre del talle
             nombre_talle = getattr(local_variant, 'talla', None) or getattr(local_variant, 'talle', "Único")
 
-            # 2. Payload para Tienda Nube
+            # Payload con medidas para que los nuevos talles también tengan peso
             payload = {
                 "price": precio_web,
                 "stock": int(stock_val),
                 "sku": local_variant.codigo_sku or "",
-                "values": [{"es": nombre_talle}] 
+                "values": [{"es": nombre_talle}],
+                "weight": self.PESO_ESTANDAR,
+                "width": self.MEDIDAS_ESTANDAR["width"],
+                "height": self.MEDIDAS_ESTANDAR["height"],
+                "depth": self.MEDIDAS_ESTANDAR["depth"]
             }
 
-            # 3. Request POST
             url = f"{self.api_url}/products/{tn_product_id}/variants"
             response = requests.post(url, json=payload, headers=self._get_headers())
 
@@ -240,12 +322,12 @@ class TiendaNubeService:
         except Exception as e:
             print(f"🔥 Error excepción create_variant: {e}")
             return {"success": False, "error": str(e)}
+
     def sync_missing_variants(self, local_prod):
         """
         Recorre las variantes del producto local.
         Si alguna NO tiene tiendanube_variant_id, la crea en la nube.
         """
-        # Si el producto padre no está en la nube, no podemos agregarle hijos.
         if not local_prod.tiendanube_id:
             print("⚠️ El producto padre no está vinculado a TN. Primero vincúlalo completo.")
             return False 
@@ -255,16 +337,12 @@ class TiendaNubeService:
         print(f"🔄 Verificando variantes nuevas para: {local_prod.nombre}...")
 
         for var in local_prod.variantes:
-            # --- CORRECCIÓN AQUÍ (Antes decía var.tiendanube_id) ---
             if not var.tiendanube_variant_id:
                 print(f"   ✨ Variante nueva detectada en ERP (SKU: {var.codigo_sku}). Creando en TN...")
                 
-                # Llamamos a la API
                 resp = self.create_variant_in_cloud(local_prod.tiendanube_id, var)
                 
                 if resp['success']:
-                    # ÉXITO: Asignamos el nuevo ID al objeto
-                    # --- CORRECCIÓN AQUÍ TAMBIÉN ---
                     var.tiendanube_variant_id = str(resp['tn_data']['id'])
                     hubo_cambios = True
                 else:
@@ -285,7 +363,6 @@ class TiendaNubeService:
                 data = r.json()
                 images = data.get('images', [])
                 if images:
-                    # Ordenamos por posición para agarrar la principal (posición 1)
                     images.sort(key=lambda x: int(x.get('position', 99)))
                     return images[0].get('src')
             return None

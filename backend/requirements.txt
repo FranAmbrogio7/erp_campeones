@@ -39,13 +39,14 @@ flask-marshmallow==1.3.0
 Flask-Migrate==4.0.7
 flask-shell-ipython==0.5.3
 Flask-SQLAlchemy==3.1.1
+flask-sqlalchemy
 Flask-WTF==1.2.2
 frozenlist==1.4.1
 future==1.0.0
 gevent==24.11.1
 gevent-websocket==0.10.1
 greenlet==3.2.4
-gunicorn==22.0.3
+gunicorn
 h11==0.14.0
 httpcore==1.0.6
 httptools==0.6.2
