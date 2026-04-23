@@ -20,8 +20,8 @@ class TiendaNubeService:
         self.PESO_ESTANDAR = 0.150  # 150 gramos (en kg)
         self.MEDIDAS_ESTANDAR = {
             "width": 15,  # 15 cm
-            "height": 10, # 10 cm
-            "depth": 15   # 15 cm
+            "height": 15, # 10 cm
+            "depth": 10   # 15 cm
         }
 
         # 4. MOTOR DE PLANTILLAS DE DESCRIPCIÓN
@@ -171,19 +171,32 @@ class TiendaNubeService:
         except Exception as e:
             print(f"⚠️ Error actualizando stock en TN: {e}")
 
-    def update_product_data(self, tn_product_id, nombre=None, descripcion=None):
+    def update_product_data(self, local_prod):
+        """Actualiza nombre y descripción en TN usando el motor de plantillas"""
         if not self.access_token or not self.api_url: return
+        if not local_prod or not local_prod.tiendanube_id: return
         
-        url = f"{self.api_url}/products/{tn_product_id}"
-        data = {}
-        if nombre: data["name"] = {"es": nombre}
-        if descripcion: data["description"] = {"es": descripcion}
-        
-        if not data: return
+        # 1. LÓGICA DE PLANTILLA 
+        cat_nombre = local_prod.categoria.nombre if local_prod.categoria else "General"
+        descripcion_seleccionada = str(local_prod.descripcion or "").strip()
+
+        if descripcion_seleccionada in self.PLANTILLAS:
+            descripcion_final = self.PLANTILLAS[descripcion_seleccionada]
+        elif descripcion_seleccionada == "":
+            descripcion_final = self.DESCRIPCION_DEFAULT
+        else:
+            descripcion_final = descripcion_seleccionada
+
+        # 2. ENVIAR A TIENDA NUBE
+        url = f"{self.api_url}/products/{local_prod.tiendanube_id}"
+        data = {
+            "name": {"es": local_prod.nombre},
+            "description": {"es": descripcion_final}
+        }
 
         try:
             requests.put(url, json=data, headers=self._get_headers())
-            print(f"✅ TN Sync: Datos base actualizados (ID: {tn_product_id})")
+            print(f"✅ TN Sync: Base y plantilla actualizadas (ID: {local_prod.tiendanube_id})")
         except Exception as e:
             print(f"⚠️ Error actualizando producto en TN: {e}")
 
@@ -197,6 +210,7 @@ class TiendaNubeService:
         except Exception as e:
             print(f"⚠️ Error eliminando de TN: {e}")
 
+
     def create_product_in_cloud(self, local_prod):
         """Sube un producto nuevo completo a Tienda Nube"""
         try:
@@ -206,16 +220,15 @@ class TiendaNubeService:
             if not local_prod:
                 raise ValueError("El producto local es None")
 
-            # --- 1. LÓGICA DE DESCRIPCIÓN AUTOMÁTICA ---
-            cat_nombre = local_prod.categoria.nombre if local_prod.categoria else "General"
+            # --- 1. LÓGICA DE DESCRIPCIÓN POR DESPLEGABLE (ACTUALIZADA) ---
+            descripcion_seleccionada = str(local_prod.descripcion or "").strip()
             
-            # Si el producto NO tiene descripción manual, usamos la plantilla
-            if not local_prod.descripcion or str(local_prod.descripcion).strip() == "":
-                descripcion_final = self.PLANTILLAS.get(cat_nombre, self.DESCRIPCION_DEFAULT)
-            else:
-                # Si escribiste algo manualmente, lo respetamos
-                descripcion_final = local_prod.descripcion
-
+            # Si el valor del desplegable coincide exactamente con una llave de PLANTILLAS
+            if descripcion_seleccionada in self.PLANTILLAS:
+                descripcion_final = self.PLANTILLAS[descripcion_seleccionada]
+            elif descripcion_seleccionada == "":
+                # Si dejaste el desplegable en "(Genérica)"
+                descripcion_final = self.DESCRIPCION_DEFAULT
             # --- 2. PREPARAR VARIANTES CON PESO Y DIMENSIONES ---
             variants_data = []
             for var in local_prod.variantes:

@@ -12,7 +12,8 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
         nombre: '',
         precio: '',
         categoria_id: '',
-        categoria_especifica_id: ''
+        categoria_especifica_id: '',
+        descripcion: ''
     });
 
     // Estado para la NUEVA imagen seleccionada
@@ -34,7 +35,8 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                 nombre: product.nombre || '',
                 precio: product.precio || '',
                 categoria_id: product.categoria_id || '',
-                categoria_especifica_id: product.categoria_especifica_id || ''
+                categoria_especifica_id: product.categoria_especifica_id || '',
+                descripcion: product.descripcion || ''
             });
             setCurrentImage(product.imagen);
             setNewImageFile(null);
@@ -56,6 +58,7 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
             dataToSend.append('precio', formData.precio);
             dataToSend.append('categoria_id', formData.categoria_id);
             dataToSend.append('categoria_especifica_id', formData.categoria_especifica_id);
+            dataToSend.append('descripcion', formData.descripcion);
 
             if (newImageFile) {
                 dataToSend.append('imagen', newImageFile);
@@ -161,6 +164,21 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                                             <option value="">(Ninguna)</option>
                                             {specificCategories?.map(cat => (<option key={cat.id} value={cat.id}>{cat.nombre}</option>))}
                                         </select>
+
+                                        <div>
+                                            <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Plantilla Tienda Nube</label>
+                                            <select className="w-full border border-slate-300 p-2.5 rounded-lg outline-none bg-white text-slate-700"
+                                                value={formData.descripcion} onChange={e => setFormData({ ...formData, descripcion: e.target.value })} disabled={isSaving}>
+                                                <option value="">(Plantilla Genérica)</option>
+                                                <option value="Camisetas Nacionales">Camisetas Nacionales</option>
+                                                <option value="Camisetas Retro">Camisetas Retro</option>
+                                                <option value="Camisetas G5 Importadas">Camisetas G5 Importadas</option>
+                                                <option value="Conjuntos">Conjuntos</option>
+                                                <option value="Buzos">Buzos</option>
+                                                <option value="Camperas">Camperas</option>
+                                                <option value="Shorts">Shorts</option>
+                                            </select>
+                                        </div>
                                     </div>
                                 </div>
 
@@ -278,6 +296,7 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                                     {['S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL', '6', '8', '10', '12', '14', '16'].map(s => <option key={s}>{s}</option>)}
                                 </select>
                             </div>
+
                             <div>
                                 <label className="text-xs font-bold text-slate-400 block mb-1 uppercase">Stock Inicial</label>
                                 <input type="number" className="border border-slate-300 p-2 rounded-md text-sm w-24 font-bold text-slate-700 outline-none" value={newStock} onChange={e => setNewStock(e.target.value)} />

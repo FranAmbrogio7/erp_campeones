@@ -66,7 +66,7 @@ const InventoryPage = () => {
     const [showForm, setShowForm] = useState(false);
     const [newProduct, setNewProduct] = useState({
         nombre: '', precio: '', stock: '10', sku: '',
-        categoria_id: '', categoria_especifica_id: ''
+        categoria_id: '', categoria_especifica_id: '', descripcion: ''
     });
     const [selectedGridType, setSelectedGridType] = useState('ADULTO');
     const [selectedFile, setSelectedFile] = useState(null);
@@ -316,6 +316,7 @@ const InventoryPage = () => {
             fd.append('stock', newProduct.stock);
             fd.append('categoria_id', newProduct.categoria_id);
             if (newProduct.categoria_especifica_id) fd.append('categoria_especifica_id', newProduct.categoria_especifica_id);
+            fd.append('descripcion', newProduct.descripcion);
             if (selectedFile) fd.append('imagen', selectedFile);
 
             await api.post('/products', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
@@ -532,12 +533,34 @@ const InventoryPage = () => {
                     <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-500"></div>
                     <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white flex items-center"><Plus className="mr-2 text-blue-500" /> Alta Rápida de Producto</h3>
                     <form onSubmit={handleSubmitCreate} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                        <div className="md:col-span-4"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Nombre</label><input id="inputName" autoFocus required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" placeholder="Ej: Camiseta..." value={newProduct.nombre} onChange={e => setNewProduct({ ...newProduct, nombre: e.target.value })} /></div>
+                        <div className="md:col-span-3"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Nombre</label><input id="inputName" autoFocus required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" placeholder="Ej: Camiseta..." value={newProduct.nombre} onChange={e => setNewProduct({ ...newProduct, nombre: e.target.value })} /></div>
+
                         <div className="md:col-span-2"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Categoría</label><select required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" value={newProduct.categoria_id} onChange={e => setNewProduct({ ...newProduct, categoria_id: e.target.value })}><option value="">Seleccionar...</option>{categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
+
                         <div className="md:col-span-2"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Liga</label><select className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" value={newProduct.categoria_especifica_id} onChange={e => setNewProduct({ ...newProduct, categoria_especifica_id: e.target.value })}><option value="">(Opcional)</option>{specificCategories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
-                        <div className="md:col-span-2"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Precio</label><input type="number" required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" placeholder="$" value={newProduct.precio} onChange={e => setNewProduct({ ...newProduct, precio: e.target.value })} /></div>
-                        <div className="md:col-span-1"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Curva</label><select className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg text-xs font-bold outline-none dark:text-white" value={selectedGridType} onChange={e => setSelectedGridType(e.target.value)}>{Object.keys(SIZE_GRIDS).map(g => <option key={g} value={g}>{g}</option>)}</select></div>
-                        <div className="md:col-span-1"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Stock Ini</label><input type="number" required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg text-center font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" value={newProduct.stock} onChange={e => setNewProduct({ ...newProduct, stock: e.target.value })} /></div>
+
+                        {/* --- NUEVO DESPLEGABLE DE PLANTILLAS --- */}
+                        <div className="md:col-span-2"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Plantilla TN</label>
+                            <select className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white text-xs font-bold"
+                                value={newProduct.descripcion}
+                                onChange={e => setNewProduct({ ...newProduct, descripcion: e.target.value })}>
+                                <option value="">(Genérica)</option>
+                                <option value="Camisetas Nacionales">Camisetas Nacionales</option>
+                                <option value="Camisetas Retro">Camisetas Retro</option>
+                                <option value="Camisetas G5 Importadas">Camisetas G5 Importadas</option>
+                                <option value="Conjuntos">Conjuntos</option>
+                                <option value="Buzos">Buzos</option>
+                                <option value="Camperas">Camperas</option>
+                                <option value="Shorts">Shorts</option>
+                            </select>
+                        </div>
+
+                        <div className="md:col-span-1"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Precio</label><input type="number" required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white px-1" placeholder="$" value={newProduct.precio} onChange={e => setNewProduct({ ...newProduct, precio: e.target.value })} /></div>
+
+                        <div className="md:col-span-1"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Curva</label><select className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg text-xs font-bold outline-none dark:text-white px-1" value={selectedGridType} onChange={e => setSelectedGridType(e.target.value)}>{Object.keys(SIZE_GRIDS).map(g => <option key={g} value={g}>{g}</option>)}</select></div>
+
+                        <div className="md:col-span-1"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Stock</label><input type="number" required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg text-center font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white px-1" value={newProduct.stock} onChange={e => setNewProduct({ ...newProduct, stock: e.target.value })} /></div>
+
                         <div className="md:col-span-12 mt-2"><button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-md transition-all active:scale-[0.99]">GUARDAR PRODUCTO</button></div>
                     </form>
                 </div>

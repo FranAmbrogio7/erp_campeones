@@ -407,6 +407,8 @@ def update_product(id):
             prod.id_categoria = request.form['categoria_id'] or None
         if 'categoria_especifica_id' in request.form:
             prod.id_categoria_especifica = request.form['categoria_especifica_id'] or None
+        if 'descripcion' in request.form:
+            prod.descripcion = request.form['descripcion']
 
         # Imagen Local
         if 'imagen' in request.files:
@@ -438,12 +440,8 @@ def update_product(id):
                     print(f"🔄 [BACKGROUND] Sincronizando '{p.nombre}' con Tienda Nube...")
                     
                     try:
-                        # 1. Datos básicos
-                        tn_service.update_product_data(
-                            tn_product_id=p.tiendanube_id,
-                            nombre=p.nombre,
-                            descripcion=p.descripcion
-                        )
+                        # 1. Datos básicos (Cambiamos esto)
+                        tn_service.update_product_data(p) # <--- AHORA LE PASAMOS EL PRODUCTO COMPLETO
                         
                         # 2. Actualizar variantes existentes
                         for var in p.variantes:
