@@ -248,6 +248,7 @@ def get_products():
         resultado.append({
             "id": prod.id_producto,
             "nombre": prod.nombre,
+            "descripcion": prod.descripcion,
             "precio": float(prod.precio),
             "stock_total": stock_total,
             "imagen": prod.imagen,
