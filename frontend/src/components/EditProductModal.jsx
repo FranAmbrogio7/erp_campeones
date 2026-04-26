@@ -176,6 +176,7 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                                                 <option value="Conjuntos">Conjuntos</option>
                                                 <option value="Buzos">Buzos</option>
                                                 <option value="Camperas">Camperas</option>
+                                                <option value="Pantalones Largos">Pantalones Largos</option>
                                                 <option value="Shorts">Shorts</option>
                                             </select>
                                         </div>
