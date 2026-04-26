@@ -115,8 +115,8 @@ const InventoryPage = () => {
     }, [token]);
 
     // 2. CARGA DE PRODUCTOS (Lógica Híbrida)
-    const fetchProducts = async (currentPage = page) => {
-        setLoading(true);
+    const fetchProducts = async (currentPage = page, silent = false) => { // <--- 1. Agregar 'silent'
+        if (!silent) setLoading(true); // <--- 2. Condicionar el loading
         try {
             // Si hay texto en el buscador, activamos scroll infinito (limit 1000)
             const isSearching = searchTerm.trim() !== '';
@@ -146,11 +146,11 @@ const InventoryPage = () => {
                 setPage(res.data.meta.current_page);
             }
 
-            setSelectedItems(new Set());
+            if (!silent) setSelectedItems(new Set());
         } catch (error) {
             toast.error("Error cargando inventario");
         } finally {
-            setLoading(false);
+            if (!silent) setLoading(false); // <--- 3. Condicionar el fin del loading
         }
     };
 
@@ -684,7 +684,7 @@ const InventoryPage = () => {
             )}
 
             <ModalBarcode isOpen={isBarcodeModalOpen} onClose={() => setIsBarcodeModalOpen(false)} productData={selectedVariantForBarcode} />
-            <EditProductModal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} product={editingProduct} categories={categories} specificCategories={specificCategories} onUpdate={() => { fetchProducts(page); playSound('success'); }} />
+            <EditProductModal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} product={editingProduct} categories={categories} specificCategories={specificCategories} onUpdate={() => { fetchProducts(page, true); playSound('success'); }} />
             <BulkPriceModal isOpen={isBulkModalOpen} onClose={() => setIsBulkModalOpen(false)} onUpdate={() => fetchProducts(page)} categories={categories} specificCategories={specificCategories} />
             {imageModalSrc && <div className="fixed inset-0 bg-black/90 z-[100] flex items-center justify-center p-4 cursor-zoom-out animate-fade-in" onClick={() => setImageModalSrc(null)}><img src={imageModalSrc} className="max-w-full max-h-[90vh] rounded-lg shadow-2xl animate-zoom-in" onClick={e => e.stopPropagation()} /><button className="absolute top-5 right-5 text-white/50 hover:text-white"><X size={32} /></button></div>}
         </div>
