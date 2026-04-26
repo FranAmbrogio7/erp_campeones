@@ -19,9 +19,9 @@ class TiendaNubeService:
         # 3. CONFIGURACIONES ESTÁNDAR DE ENVÍO
         self.PESO_ESTANDAR = 0.150  # 150 gramos (en kg)
         self.MEDIDAS_ESTANDAR = {
-            "width": 15,  # 15 cm
-            "height": 15, # 10 cm
-            "depth": 10   # 15 cm
+            "width": 10,  # 10 cm
+            "height": 10, # 10 cm
+            "depth": 5   # 5 cm
         }
 
         # 4. MOTOR DE PLANTILLAS DE DESCRIPCIÓN
@@ -34,7 +34,9 @@ class TiendaNubeService:
                     <li>Estampas en vinilo de alta calidad con excelente definición.</li>
                     <li>Corte cómodo ideal para uso diario, entrenar o alentar a tu equipo.</li>
                 </ul>
-                <p><em>Viví la pasión del fútbol con la mejor calidad en Campeones Indumentaria.</em></p>
+                <p><strong>📏 Recomendación de Talle:</strong></p>
+                <p>Te recomendamos revisar cuidadosamente la guía de talles antes de realizar tu compra. Si estás entre dos talles o preferís un calce más cómodo, aconsejamos elegir un talle más grande.</p>
+                <p><em>Las medidas son aproximadas y pueden presentar pequeñas variaciones según el modelo o confección.</em></p>
             """,
             "Camisetas Retro": """
                 <p><strong>Camiseta Retro - Clásicos que Hicieron Historia</strong></p>
@@ -45,7 +47,9 @@ class TiendaNubeService:
                     <li>Detalles y escudos cuidadosamente confeccionados.</li>
                     <li>Ideal para coleccionistas y verdaderos fanáticos del fútbol.</li>
                 </ul>
-                <p><em>Llevá la historia de tu club o selección en cada detalle.</em></p>
+                <p><strong>📏 Recomendación de Talle:</strong></p>
+                <p>Te recomendamos revisar cuidadosamente la guía de talles antes de realizar tu compra. Si estás entre dos talles o preferís un calce más cómodo, aconsejamos elegir un talle más grande.</p>
+                <p><em>Las medidas son aproximadas y pueden presentar pequeñas variaciones según el modelo o confección.</em></p>
             """,
             "Camisetas G5 Importadas": """
                 <p><strong>Camiseta G5 Importada - Calidad Premium Profesional</strong></p>
@@ -56,7 +60,9 @@ class TiendaNubeService:
                     <li>Tela tecnológica liviana y respirable con excelente ajuste.</li>
                     <li>Máximo confort y calidad superior en cada detalle.</li>
                 </ul>
-                <p><strong>La mejor calidad disponible para verdaderos fanáticos del fútbol.</strong></p>
+                <p><strong>📏 Recomendación de Talle:</strong></p>
+                <p>Te recomendamos revisar cuidadosamente la guía de talles antes de realizar tu compra. Si estás entre dos talles o preferís un calce más cómodo, aconsejamos elegir un talle más grande.</p>
+                <p><em>Las medidas son aproximadas y pueden presentar pequeñas variaciones según el modelo o confección.</em></p>
             """,
             "Conjuntos": """
                 <p><strong>Conjunto Deportivo Completo (Campera + Pantalón)</strong></p>
@@ -67,17 +73,21 @@ class TiendaNubeService:
                     <li>Bolsillos funcionales con cierre según modelo.</li>
                     <li>Ideal para entrenamiento, viajes o uso diario.</li>
                 </ul>
-                <p><em>Comodidad y estilo deportivo en un solo conjunto.</em></p>
+                <p><strong>📏 Recomendación de Talle:</strong></p>
+                <p>Te recomendamos revisar cuidadosamente la guía de talles antes de realizar tu compra. Si estás entre dos talles o preferís un calce más cómodo, aconsejamos elegir un talle más grande.</p>
+                <p><em>Las medidas son aproximadas y pueden presentar pequeñas variaciones según el modelo o confección.</em></p>
             """,
             "Buzos": """
                 <p><strong>Buzo Deportivo Clubes</strong></p>
                 <ul>
-                    <li>Interior suave y cálido para mayor comodidad.</li>
+                    <li>Interior frizado, super suave y cálido para mayor comodidad.</li>
                     <li>Diseño moderno ideal para uso deportivo o urbano.</li>
-                    <li>Material resistente y de excelente calidad.</li>
+                    <li>Material resistente y de muy buena calidad.</li>
                     <li>Ajuste cómodo pensado para el día a día.</li>
                 </ul>
-                <p><em>Perfecto para los días frescos sin perder el estilo futbolero.</em></p>
+                <p><strong>📏 Recomendación de Talle:</strong></p>
+                <p>Te recomendamos revisar cuidadosamente la guía de talles antes de realizar tu compra. Si estás entre dos talles o preferís un calce más cómodo, aconsejamos elegir un talle más grande.</p>
+                <p><em>Las medidas son aproximadas y pueden presentar pequeñas variaciones según el modelo o confección.</em></p>
             """,
             "Camperas": """
                 <p><strong>Campera Deportiva Clubes</strong></p>
@@ -87,20 +97,40 @@ class TiendaNubeService:
                     <li>Cierre frontal y bolsillos funcionales según modelo.</li>
                     <li>Ideal para entrenamientos, viajes o uso diario.</li>
                 </ul>
-                <p><em>Estilo y comodidad para cualquier ocasión.</em></p>
+                <p><strong>📏 Recomendación de Talle:</strong></p>
+                <p>Te recomendamos revisar cuidadosamente la guía de talles antes de realizar tu compra. Si estás entre dos talles o preferís un calce más cómodo, aconsejamos elegir un talle más grande.</p>
+                <p><em>Las medidas son aproximadas y pueden presentar pequeñas variaciones según el modelo o confección.</em></p>
+            """,
+            "Pantalones Largos": """
+                <p><strong>Pantalón Deportivo Largo</strong></p>
+                <ul>
+                    <li>Interior frizado, super suave y cálido para mayor comodidad.</li>
+                    <li>Diseño moderno ideal para uso deportivo o urbano.</li>
+                    <li>Material resistente y de muy buena calidad.</li>
+                    <li>Ajuste cómodo pensado para el día a día.</li>
+                </ul>
+                <p><strong>📏 Recomendación de Talle:</strong></p>
+                <p>Te recomendamos revisar cuidadosamente la guía de talles antes de realizar tu compra. Si estás entre dos talles o preferís un calce más cómodo, aconsejamos elegir un talle más grande.</p>
+                <p><em>Las medidas son aproximadas y pueden presentar pequeñas variaciones según el modelo o confección.</em></p>
             """,
             "Shorts": """
-                <p><strong>Short Deportivo de Alto Rendimiento</strong></p>
+                <p><strong>Short Deportivo</strong></p>
                 <ul>
                     <li>Tela liviana y respirable para máxima comodidad.</li>
                     <li>Ajuste cómodo ideal para entrenar o uso casual.</li>
                     <li>Cintura elastizada para mejor adaptación.</li>
                     <li>Diseño inspirado en el fútbol profesional.</li>
                 </ul>
-                <p><em>Movete con libertad y representá tu pasión por el fútbol.</em></p>
+                <p><strong>📏 Recomendación de Talle:</strong></p>
+                <p>Te recomendamos revisar cuidadosamente la guía de talles antes de realizar tu compra. Si estás entre dos talles o preferís un calce más cómodo, aconsejamos elegir un talle más grande.</p>
+                <p><em>Las medidas son aproximadas y pueden presentar pequeñas variaciones según el modelo o confección.</em></p>
             """
         }
-        self.DESCRIPCION_DEFAULT = "<p>Producto de alta calidad de <strong>Campeones Indumentaria</strong>. Consultanos por talles y stock disponible.</p>"
+        self.DESCRIPCION_DEFAULT = """
+            <p><strong>📏 Recomendación de Talle:</strong></p>
+            <p>Te recomendamos revisar cuidadosamente la guía de talles antes de realizar tu compra. Si estás entre dos talles o preferís un calce más cómodo, aconsejamos elegir un talle más grande.</p>
+            <p><em>Las medidas son aproximadas y pueden presentar pequeñas variaciones según el modelo o confección.</em></p>
+        """
 
     def _get_headers(self):
         """Helper para headers comunes"""
