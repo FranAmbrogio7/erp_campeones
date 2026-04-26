@@ -278,7 +278,8 @@ const InventoryPage = () => {
             stock: 0,
             sku: '',
             categoria_id: product.categoria_id,
-            categoria_especifica_id: product.categoria_especifica_id
+            categoria_especifica_id: product.categoria_especifica_id,
+            descripcion: product.descripcion
         });
 
         const currentSizes = product.variantes.map(v => v.talle).sort().join(',');
