@@ -241,6 +241,7 @@ def get_products():
             lista_variantes.append({
                 "id_variante": var.id_variante,
                 "talle": var.talla,
+                "estampa": var.color,
                 "sku": var.codigo_sku,
                 "stock": cantidad
             })
@@ -299,32 +300,31 @@ def create_product():
         db.session.add(nuevo_prod)
         db.session.flush() # Obtenemos el ID del producto nuevo
 
-        # 4. GENERACIÓN DE VARIANTES (Lógica de Curva de Talles)
-        # Recibimos un string tipo "S,M,L,XL" o "4,6,8,10"
+        # 4. GENERACIÓN DE VARIANTES (Lógica de Curva de Talles + ESTAMPA)
         talles_input = request.form.get('talle', 'U') 
         stock_por_talle = int(request.form.get('stock', 0))
+        estampa_input = request.form.get('estampa', 'Standard') # <--- CAPTURAMOS ESTAMPA
         
-        # Convertimos "S,M,L" en una lista ['S', 'M', 'L']
         lista_talles = [t.strip() for t in talles_input.split(',')]
 
         for talle in lista_talles:
-            # Generamos SKU automático único: P{ID}-{TALLE}
-            # Ej: P105-XL, P105-4
-            sku_auto = f"P{nuevo_prod.id_producto}-{talle}"
+            # Evitamos colisiones de SKU agregando la estampa si existe
+            sku_suffix = "" if estampa_input == "Standard" else f"-{estampa_input.replace(' ', '').upper()[:5]}"
+            sku_auto = f"P{nuevo_prod.id_producto}-{talle}{sku_suffix}"
 
             nueva_variante = ProductoVariante(
                 id_producto=nuevo_prod.id_producto,
                 talla=talle,
                 codigo_sku=sku_auto,
-                color=request.form.get('color', 'Standard')
+                color=estampa_input # <--- GUARDAMOS LA ESTAMPA AQUÍ (En la columna color)
             )
             db.session.add(nueva_variante)
             db.session.flush() # Necesitamos el ID de la variante
 
-            # Crear Inventario para esta variante
+            # Crear Inventario
             nuevo_inv = Inventario(
                 id_variante=nueva_variante.id_variante,
-                stock_actual=stock_por_talle, # Asignamos el mismo stock inicial a cada talle
+                stock_actual=stock_por_talle,
                 stock_minimo=2
             )
             db.session.add(nuevo_inv)
@@ -535,7 +535,7 @@ def update_variant(id):
 
 
 # ==========================================
-# 10. Agregar una nueva variante
+# 10. Agregar una nueva variante (ACTUALIZADO PARA CURVAS MASIVAS)
 # ==========================================
 @bp.route('/variants', methods=['POST'])
 @jwt_required()
@@ -543,56 +543,64 @@ def add_variant():
     data = request.get_json()
     try:
         prod_id = data.get('id_producto')
-        talla = data.get('talla')
+        tallas_input = data.get('talla') # Ej: "L" o "S,M,L,XL,XXL"
+        estampa_input = data.get('estampa', 'Standard')
+        stock_unitario = int(data.get('stock', 0))
         
-        # 1. Validar duplicados locales
-        existe = ProductoVariante.query.filter_by(id_producto=prod_id, talla=talla).first()
-        if existe: return jsonify({"msg": "Ese talle ya existe"}), 400
+        prod_padre = Producto.query.get(prod_id)
+        if not prod_padre: return jsonify({"msg": "Producto no encontrado"}), 404
 
-        # 2. Crear Variante Local
-        prod_padre = Producto.query.get(prod_id) # Obtenemos el producto padre
-        
-        nueva_var = ProductoVariante(
-            id_producto=prod_id,
-            talla=talla,
-            codigo_sku=data.get('sku') or f"P{prod_id}-{talla}",
-            color='Standard'
-        )
-        db.session.add(nueva_var)
-        db.session.flush() # Generar ID local
+        # Convertimos la entrada en una lista (Ej: ["S", "M", "L", "XL", "XXL"])
+        lista_talles = [t.strip() for t in tallas_input.split(',')]
+        agregadas = 0
+        errores = []
 
-        # 3. Crear Inventario Local
-        nuevo_inv = Inventario(
-            id_variante=nueva_var.id_variante,
-            stock_actual=int(data.get('stock', 0))
-        )
-        db.session.add(nuevo_inv)
-        
-        # Guardamos en DB local para asegurar que existe antes de enviarla
-        db.session.commit()
-        
-        # -------------------------------------------------------
-        # 4. SINCRONIZACIÓN AUTOMÁTICA (El cambio clave)
-        # -------------------------------------------------------
-        if prod_padre.tiendanube_id:
-            print(f"✨ Creando variante '{talla}' en Tienda Nube...")
-            try:
-                # Llamamos al servicio para crearla en la nube
-                resp = tn_service.create_variant_in_cloud(prod_padre.tiendanube_id, nueva_var)
-                
-                if resp['success']:
-                    # Guardamos el ID que nos devuelve Tienda Nube
-                    # IMPORTANTE: Usamos 'tiendanube_variant_id' según tu esquema
-                    nueva_var.tiendanube_variant_id = str(resp['tn_data']['id'])
-                    db.session.commit()
-                    print(f"✅ Variante vinculada con ID: {nueva_var.tiendanube_variant_id}")
-                else:
-                    print(f"⚠️ Error API Tienda Nube: {resp.get('error')}")
-            except Exception as e_tn:
-                print(f"⚠️ Error excepción Tienda Nube: {e_tn}")
-        # -------------------------------------------------------
-        
-        return jsonify({"msg": "Variante agregada y sincronizada"}), 201
+        for talla in lista_talles:
+            # 1. Validar duplicados locales
+            existe = ProductoVariante.query.filter_by(id_producto=prod_id, talla=talla, color=estampa_input).first()
+            if existe:
+                errores.append(talla)
+                continue # Saltamos los talles que ya existen y seguimos con el resto
+
+            # 2. Crear Variante Local
+            sku_suffix = "" if estampa_input == "Standard" else f"-{estampa_input.replace(' ', '').upper()[:5]}"
+            sku_def = f"P{prod_id}-{talla}{sku_suffix}"
+
+            nueva_var = ProductoVariante(
+                id_producto=prod_id,
+                talla=talla,
+                codigo_sku=sku_def,
+                color=estampa_input
+            )
+            db.session.add(nueva_var)
+            db.session.flush() # Generar ID local
+
+            # 3. Crear Inventario Local
+            nuevo_inv = Inventario(
+                id_variante=nueva_var.id_variante,
+                stock_actual=stock_unitario
+            )
+            db.session.add(nuevo_inv)
+            db.session.commit() # Confirmamos localmente cada talle
+            
+            # 4. SINCRONIZACIÓN AUTOMÁTICA EN CADENA
+            if prod_padre.tiendanube_id:
+                print(f"✨ Creando variante '{talla} - {estampa_input}' en Tienda Nube...")
+                try:
+                    resp = tn_service.create_variant_in_cloud(prod_padre.tiendanube_id, nueva_var)
+                    if resp['success']:
+                        nueva_var.tiendanube_variant_id = str(resp['tn_data']['id'])
+                        db.session.commit()
+                        print(f"✅ Vinculada: {talla}")
+                except Exception as e_tn:
+                    print(f"⚠️ Error TN: {e_tn}")
+            
+            agregadas += 1
+
+        if agregadas == 0:
+            return jsonify({"msg": f"No se agregó nada. Los talles {', '.join(errores)} ya existían con esa estampa."}), 400
+
+        return jsonify({"msg": f"Se agregaron {agregadas} variantes correctamente."}), 201
 
     except Exception as e:
         db.session.rollback()
