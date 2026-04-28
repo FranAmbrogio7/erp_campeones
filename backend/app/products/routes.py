@@ -1,3 +1,4 @@
+from sqlalchemy.exc import IntegrityError
 import io
 import os
 import qrcode
@@ -474,7 +475,7 @@ def update_product(id):
 
 
 # ==========================================
-# 9. Editar stock y SKU de una variante (Sincronizado en Segundo Plano)
+# 9. Editar stock, SKU y ESTAMPA de una variante
 # ==========================================
 @bp.route('/variants/<int:id>', methods=['PUT'])
 @jwt_required()
@@ -484,48 +485,45 @@ def update_variant(id):
     
     data = request.get_json()
     try:
-        # Actualizar SKU local
+        # 1. Actualizaciones Locales
         if 'sku' in data: var.codigo_sku = data['sku']
         
-        # Actualizar STOCK local
-        stock_cambio = False
+        # Guardamos la Estampa (columna color)
+        if 'estampa' in data: 
+            var.color = data['estampa'] if data['estampa'].strip() != "" else "Standard"
+        
         if 'stock' in data:
             if not var.inventario:
                 nuevo_inv = Inventario(id_variante=var.id_variante, stock_actual=int(data['stock']))
                 db.session.add(nuevo_inv)
             else:
                 var.inventario.stock_actual = int(data['stock'])
-            stock_cambio = True
         
         db.session.commit()
 
-        # --- SYNC TIENDA NUBE EN SEGUNDO PLANO ---
-        if stock_cambio and var.tiendanube_variant_id and var.producto.tiendanube_id:
+        # 2. Sincronización con Tienda Nube
+        # Nota: Tienda Nube es estricta con el cambio de nombres de variantes.
+        # El cambio se reflejará en la nube la próxima vez que presiones 
+        # "Guardar Cambios e Imagen" en el modal principal, ya que ese botón
+        # dispara la actualización estructural completa.
+        
+        if var.tiendanube_variant_id and var.producto.tiendanube_id:
             app = current_app._get_current_object()
-            
-            # Pasamos diccionarios simples al hilo para máxima velocidad
             sync_data = {
                 'tn_product_id': var.producto.tiendanube_id,
                 'tn_variant_id': var.tiendanube_variant_id,
-                'new_stock': int(data['stock'])
+                'new_stock': int(data.get('stock', var.inventario.stock_actual if var.inventario else 0))
             }
             
             def background_sync_variant(app_context, s_data):
                 with app_context.app_context():
                     from app.services.tiendanube_service import tn_service
-                    print(f"🔄 [BACKGROUND] Sincronizando stock de variante...")
                     try:
-                        tn_service.update_variant_stock(
-                            s_data['tn_product_id'],
-                            s_data['tn_variant_id'],
-                            s_data['new_stock']
-                        )
-                    except Exception as e_bg:
-                        print(f"⚠️ Error en Background Sync de Variante: {e_bg}")
+                        tn_service.update_variant_stock(s_data['tn_product_id'], s_data['tn_variant_id'], s_data['new_stock'])
+                    except: pass
 
             thread = threading.Thread(target=background_sync_variant, args=(app, sync_data))
             thread.start()
-        # -----------------------------------------
 
         return jsonify({"msg": "Variante actualizada localmente"}), 200
         
@@ -533,7 +531,7 @@ def update_variant(id):
         db.session.rollback()
         return jsonify({"msg": str(e)}), 500
 
-
+        
 # ==========================================
 # 10. Agregar una nueva variante (ACTUALIZADO PARA CURVAS MASIVAS)
 # ==========================================
@@ -617,14 +615,26 @@ def delete_variant(id):
         var = ProductoVariante.query.get(id)
         if not var: return jsonify({"msg": "No encontrada"}), 404
         
+        # 1. Eliminar de Tienda Nube primero (si está vinculada)
+        if getattr(var, 'tiendanube_variant_id', None) and var.producto.tiendanube_id:
+            tn_service.delete_variant_in_cloud(var.producto.tiendanube_id, var.tiendanube_variant_id)
+
+        # 2. Eliminar localmente
         if var.inventario: db.session.delete(var.inventario)
         db.session.delete(var)
         
         db.session.commit()
         return jsonify({"msg": "Variante eliminada"}), 200
+        
+    except IntegrityError as e:
+        # AQUÍ CAPTURAMOS EL ERROR DE LAS VENTAS
+        db.session.rollback()
+        print(f"IntegrityError al borrar variante: {e}")
+        return jsonify({"msg": "No puedes borrar este talle porque ya tiene ventas registradas en el sistema. Te sugerimos ponerle Stock 0."}), 400
     except Exception as e:
         db.session.rollback()
-        return jsonify({"msg": str(e)}), 500
+        print(f"Error general en delete_variant: {e}")
+        return jsonify({"msg": f"Error interno: {str(e)}"}), 500
 
 # ==========================================
 # 12. ACTUALIZACIÓN MASIVA DE PRECIOS (SYNC WEB)

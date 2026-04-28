@@ -268,6 +268,22 @@ class TiendaNubeService:
         except Exception as e:
             print(f"⚠️ Error eliminando de TN: {e}")
 
+
+    def delete_variant_in_cloud(self, tn_product_id, tn_variant_id):
+        """Elimina una variante específica en Tienda Nube"""
+        if not self.access_token or not self.api_url: return
+        
+        url = f"{self.api_url}/products/{tn_product_id}/variants/{tn_variant_id}"
+        try:
+            response = requests.delete(url, headers=self._get_headers())
+            if response.status_code == 200:
+                print(f"🗑️ TN Sync: Variante eliminada de la nube (ID: {tn_variant_id})")
+            else:
+                print(f"⚠️ TN Sync: No se pudo eliminar variante. Error: {response.text}")
+        except Exception as e:
+            print(f"⚠️ Error eliminando variante de TN: {e}")
+            
+
     def create_product_in_cloud(self, local_prod):
         """Sube un producto nuevo completo a Tienda Nube (Ahora con Talle y Estampa)"""
         try:

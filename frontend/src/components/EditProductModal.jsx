@@ -75,11 +75,15 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
         }
     };
 
-    // --- 2. ACTUALIZAR STOCK Y SKU ---
-    const handleUpdateVariant = async (variantId, newStock, newSku) => {
+    // --- 2. ACTUALIZAR STOCK, SKU Y ESTAMPA ---
+    const handleUpdateVariant = async (variantId, newStock, newSku, newEstampa) => {
         try {
             await axios.put(`/api/products/variants/${variantId}`,
-                { stock: newStock, sku: newSku },
+                {
+                    stock: newStock,
+                    sku: newSku,
+                    estampa: newEstampa || 'Standard' // <--- NUEVO
+                },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
         } catch (e) { console.error("Error updating variant", e); }
@@ -105,14 +109,17 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
 
     // --- 4. BORRAR VARIANTE ---
     const handleDeleteVariant = async (id) => {
-        if (!window.confirm("¿Borrar este talle?")) return;
+        if (!window.confirm("¿Estás seguro de borrar esta variante?")) return;
         try {
             await axios.delete(`/api/products/variants/${id}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setVariants(prev => prev.filter(v => v.id_variante !== id));
             onUpdate();
-        } catch (e) { alert("Error borrando"); }
+        } catch (e) {
+            // AHORA TE MOSTRARÁ EL MOTIVO REAL
+            alert("Atención: " + (e.response?.data?.msg || "Error desconocido al borrar"));
+        }
     };
 
     return (
@@ -271,10 +278,14 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                                         <tr key={v.id_variante} className="hover:bg-white transition-colors">
                                             <td className="p-3 font-black text-slate-700">{v.talle}</td>
 
+
                                             <td className="p-3">
-                                                <span className={`px-2 py-1 rounded-md text-xs font-bold ${(!v.estampa || v.estampa === 'Standard') ? 'bg-gray-100 text-gray-500' : 'bg-indigo-100 text-indigo-700'}`}>
-                                                    {(!v.estampa || v.estampa === 'Standard') ? 'Sin Estampa' : v.estampa}
-                                                </span>
+                                                <input
+                                                    className="border border-slate-300 p-1.5 rounded-md w-full md:w-40 text-xs font-bold text-indigo-700 focus:ring-2 focus:ring-indigo-400 outline-none bg-white"
+                                                    placeholder="Sin Estampa"
+                                                    defaultValue={v.estampa === 'Standard' ? '' : v.estampa}
+                                                    onBlur={(e) => handleUpdateVariant(v.id_variante, v.stock, v.sku, e.target.value)}
+                                                />
                                             </td>
 
                                             <td className="p-3">
