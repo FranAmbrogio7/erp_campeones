@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
-// 1. IMPORTAMOS EL ICONO LOADER2
 import { X, Save, Trash2, Plus, Image as ImageIcon, Shirt, Loader2 } from 'lucide-react';
 
 const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, specificCategories }) => {
@@ -22,10 +21,10 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
     const [currentImage, setCurrentImage] = useState(null);
 
     const [variants, setVariants] = useState([]);
-    const [newSize, setNewSize] = useState('M');
+    const [newSize, setNewSize] = useState('M'); // Valor por defecto
     const [newStock, setNewStock] = useState(0);
+    const [newEstampa, setNewEstampa] = useState('');
 
-    // 2. NUEVO ESTADO PARA CONTROLAR LA CARGA
     const [isSaving, setIsSaving] = useState(false);
 
     // Cargar datos al abrir
@@ -41,17 +40,17 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
             setCurrentImage(product.imagen);
             setNewImageFile(null);
             setVariants(product.variantes.map(v => ({ ...v })));
-            setIsSaving(false); // Reseteamos el estado de carga al abrir
+            setNewEstampa('');
+            setNewSize('M');
+            setIsSaving(false);
         }
     }, [product, isOpen]);
 
     if (!isOpen || !product) return null;
 
-    // --- 1. GUARDAR DATOS GENERALES E IMAGEN (CON FEEDBACK) ---
+    // --- 1. GUARDAR DATOS GENERALES E IMAGEN ---
     const handleUpdateInfo = async () => {
-        // A. ACTIVAMOS MODO CARGANDO
         setIsSaving(true);
-
         try {
             const dataToSend = new FormData();
             dataToSend.append('nombre', formData.nombre);
@@ -68,21 +67,15 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                 headers: { Authorization: `Bearer ${token}` }
             });
 
-            // Feedback opcional (puedes cambiar alert por toast si lo usas aquí)
-            // alert('Información e imagen actualizadas'); 
-
             onUpdate();
             onClose();
-            // Nota: No hace falta setIsSaving(false) aquí porque el componente se desmonta al cerrar.
-
         } catch (e) {
-            // B. SI FALLA, DESACTIVAMOS MODO CARGANDO PARA QUE PUEDA REINTENTAR
             setIsSaving(false);
             alert("Error actualizando producto: " + (e.response?.data?.msg || e.message));
         }
     };
 
-    // --- 2. ACTUALIZAR STOCK ---
+    // --- 2. ACTUALIZAR STOCK Y SKU ---
     const handleUpdateVariant = async (variantId, newStock, newSku) => {
         try {
             await axios.put(`/api/products/variants/${variantId}`,
@@ -92,14 +85,22 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
         } catch (e) { console.error("Error updating variant", e); }
     };
 
-    // --- 3. AGREGAR VARIANTE ---
+    // --- 3. AGREGAR VARIANTE (SOPORTA CURVAS MASIVAS Y ESTAMPAS) ---
     const handleAddVariant = async () => {
         try {
             await axios.post(`/api/products/variants`, {
-                id_producto: product.id, talla: newSize, stock: newStock
+                id_producto: product.id,
+                talla: newSize, // Puede ser "M" o "S,M,L,XL,XXL"
+                stock: newStock,
+                estampa: newEstampa.trim() !== '' ? newEstampa : 'Standard'
             }, { headers: { Authorization: `Bearer ${token}` } });
-            onUpdate(); setNewStock(0); onClose();
-        } catch (e) { alert("Error: " + (e.response?.data?.msg || "Error al agregar")); }
+
+            onUpdate();
+            setNewStock(0);
+            setNewEstampa('');
+        } catch (e) {
+            alert("Atención: " + (e.response?.data?.msg || "Error al agregar"));
+        }
     };
 
     // --- 4. BORRAR VARIANTE ---
@@ -116,14 +117,13 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
 
     return (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
 
                 {/* Header */}
                 <div className="flex justify-between items-center p-6 border-b bg-slate-50">
                     <h3 className="font-bold text-xl text-slate-800 flex items-center">
                         <Shirt className="mr-2 text-blue-600" /> Editar Producto: {product.nombre}
                     </h3>
-                    {/* Bloqueamos el botón cerrar si está guardando */}
                     <button
                         onClick={!isSaving ? onClose : undefined}
                         className={`transition-colors bg-white rounded-full p-1 shadow-sm border
@@ -140,7 +140,6 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                         <h4 className="font-bold text-blue-900 mb-4 text-sm uppercase tracking-wider border-b border-blue-200 pb-2">Información y Multimedia</h4>
 
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4 animate-fade-in-down">
-                            {/* Columna Izquierda: Datos */}
                             <div className="md:col-span-2 space-y-4">
                                 <div>
                                     <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Nombre del Producto</label>
@@ -165,7 +164,7 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                                             {specificCategories?.map(cat => (<option key={cat.id} value={cat.id}>{cat.nombre}</option>))}
                                         </select>
 
-                                        <div>
+                                        <div className="mt-4">
                                             <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Plantilla Tienda Nube</label>
                                             <select className="w-full border border-slate-300 p-2.5 rounded-lg outline-none bg-white text-slate-700"
                                                 value={formData.descripcion} onChange={e => setFormData({ ...formData, descripcion: e.target.value })} disabled={isSaving}>
@@ -193,16 +192,14 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                                 </div>
                             </div>
 
-                            {/* Columna Derecha: Imagen */}
                             <div className="md:col-span-1 flex flex-col items-center justify-start p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
                                 <label className="text-xs font-bold text-slate-500 uppercase mb-3 block w-full text-center">Imagen Actual</label>
 
-                                {/* Preview */}
                                 <div className={`w-32 h-32 mb-4 rounded-lg border-2 border-slate-100 overflow-hidden bg-slate-50 flex items-center justify-center relative group ${isSaving ? 'opacity-50' : ''}`}>
                                     {newImageFile ? (
                                         <img src={URL.createObjectURL(newImageFile)} alt="Nueva" className="w-full h-full object-cover" />
                                     ) : currentImage ? (
-                                        <img src={`/static/uploads/${currentImage}`} alt="Actual" className="w-full h-full object-cover" onError={(e) => { e.target.src = 'https://via.placeholder.com/150?text=Error'; }} />
+                                        <img src={`/api/static/uploads/${currentImage}`} alt="Actual" className="w-full h-full object-cover" onError={(e) => { e.target.src = 'https://via.placeholder.com/150?text=Error'; }} />
                                     ) : (
                                         <ImageIcon className="text-slate-300" size={40} />
                                     )}
@@ -231,14 +228,13 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                             </div>
                         </div>
 
-                        {/* 3. BOTÓN CON FEEDBACK VISUAL DE CARGA */}
                         <button
                             onClick={handleUpdateInfo}
                             disabled={isSaving}
                             className={`w-full py-3 rounded-lg font-bold flex items-center justify-center transition-all shadow-md 
                     ${isSaving
-                                    ? 'bg-blue-400 text-blue-50 cursor-wait' // Estilos al cargar
-                                    : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg active:scale-95' // Estilos normales
+                                    ? 'bg-blue-400 text-blue-50 cursor-wait'
+                                    : 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-lg active:scale-95'
                                 }`}
                         >
                             {isSaving ? (
@@ -255,55 +251,87 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                         </button>
                     </div>
 
-                    {/* SECCIÓN 2: VARIANTES (STOCK) */}
+                    {/* SECCIÓN 2: VARIANTES (STOCK Y JUGADORES) */}
                     <div className={`bg-slate-50 p-5 rounded-xl border border-slate-200 ${isSaving ? 'opacity-50 pointer-events-none' : ''}`}>
-                        <h4 className="font-bold text-slate-800 mb-4 text-sm uppercase tracking-wider border-b border-slate-200 pb-2">Gestión de Talles y Stock</h4>
+                        <h4 className="font-bold text-slate-800 mb-4 text-sm uppercase tracking-wider border-b border-slate-200 pb-2">Gestión de Talles, Jugadores y Stock</h4>
 
-                        <table className="w-full text-sm text-left mb-4">
-                            <thead className="bg-slate-100 text-slate-500 uppercase text-xs">
-                                <tr>
-                                    <th className="p-3 rounded-l-lg">Talle</th>
-                                    <th className="p-3">SKU (Código)</th>
-                                    <th className="p-3">Stock Físico</th>
-                                    <th className="p-3 text-right rounded-r-lg">Eliminar</th>
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-200">
-                                {variants.map((v) => (
-                                    <tr key={v.id_variante} className="hover:bg-white transition-colors">
-                                        <td className="p-3 font-black text-slate-700">{v.talle}</td>
-                                        <td className="p-3">
-                                            <input className="border border-slate-300 p-1.5 rounded-md w-full md:w-32 text-xs font-mono uppercase focus:ring-2 focus:ring-blue-400 outline-none"
-                                                defaultValue={v.sku} onBlur={(e) => handleUpdateVariant(v.id_variante, v.stock, e.target.value)} />
-                                        </td>
-                                        <td className="p-3">
-                                            <input type="number" className={`border p-1.5 rounded-md w-20 text-center font-bold focus:ring-2 outline-none ${v.stock < 2 ? 'border-red-300 text-red-600 focus:ring-red-400' : 'border-slate-300 text-slate-700 focus:ring-blue-400'}`}
-                                                defaultValue={v.stock} onBlur={(e) => handleUpdateVariant(v.id_variante, e.target.value, v.sku)} />
-                                        </td>
-                                        <td className="p-3 text-right">
-                                            <button onClick={() => handleDeleteVariant(v.id_variante)} className="text-slate-400 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition-colors">
-                                                <Trash2 size={16} />
-                                            </button>
-                                        </td>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm text-left mb-4">
+                                <thead className="bg-slate-100 text-slate-500 uppercase text-[10px] tracking-wider">
+                                    <tr>
+                                        <th className="p-3 rounded-l-lg">Talle</th>
+                                        <th className="p-3">Estampa / Jugador</th>
+                                        <th className="p-3">SKU (Código)</th>
+                                        <th className="p-3 text-center">Stock</th>
+                                        <th className="p-3 text-right rounded-r-lg">Eliminar</th>
                                     </tr>
-                                ))}
-                            </tbody>
-                        </table>
+                                </thead>
+                                <tbody className="divide-y divide-slate-200">
+                                    {variants.map((v) => (
+                                        <tr key={v.id_variante} className="hover:bg-white transition-colors">
+                                            <td className="p-3 font-black text-slate-700">{v.talle}</td>
 
-                        <div className="bg-white p-3 rounded-lg border-2 border-dashed border-slate-300 flex flex-wrap items-end gap-3 animate-fade-in">
+                                            <td className="p-3">
+                                                <span className={`px-2 py-1 rounded-md text-xs font-bold ${(!v.estampa || v.estampa === 'Standard') ? 'bg-gray-100 text-gray-500' : 'bg-indigo-100 text-indigo-700'}`}>
+                                                    {(!v.estampa || v.estampa === 'Standard') ? 'Sin Estampa' : v.estampa}
+                                                </span>
+                                            </td>
+
+                                            <td className="p-3">
+                                                <input className="border border-slate-300 p-1.5 rounded-md w-full md:w-32 text-xs font-mono uppercase focus:ring-2 focus:ring-blue-400 outline-none"
+                                                    defaultValue={v.sku} onBlur={(e) => handleUpdateVariant(v.id_variante, v.stock, e.target.value)} />
+                                            </td>
+                                            <td className="p-3">
+                                                <input type="number" className={`border p-1.5 rounded-md w-20 text-center font-bold focus:ring-2 outline-none mx-auto block ${v.stock < 2 ? 'border-red-300 text-red-600 focus:ring-red-400' : 'border-slate-300 text-slate-700 focus:ring-blue-400'}`}
+                                                    defaultValue={v.stock} onBlur={(e) => handleUpdateVariant(v.id_variante, e.target.value, v.sku)} />
+                                            </td>
+                                            <td className="p-3 text-right">
+                                                <button onClick={() => handleDeleteVariant(v.id_variante)} className="text-slate-400 hover:text-red-500 p-2 hover:bg-red-50 rounded-full transition-colors">
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+
+                        {/* FORMULARIO PARA AGREGAR NUEVA VARIANTE */}
+                        <div className="bg-white p-4 rounded-lg border-2 border-dashed border-slate-300 flex flex-wrap items-end gap-4 animate-fade-in">
                             <div>
-                                <label className="text-xs font-bold text-slate-400 block mb-1 uppercase">Nuevo Talle</label>
-                                <select className="border border-slate-300 p-2 rounded-md text-sm w-24 font-bold text-slate-700 outline-none" value={newSize} onChange={e => setNewSize(e.target.value)}>
-                                    {['S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL', '6', '8', '10', '12', '14', '16'].map(s => <option key={s}>{s}</option>)}
+                                <label className="text-[10px] font-bold text-slate-400 block mb-1 uppercase">Nuevo Talle o Curva</label>
+                                <select className="border border-slate-300 p-2.5 rounded-md text-sm w-44 font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-400"
+                                    value={newSize}
+                                    onChange={e => setNewSize(e.target.value)}>
+                                    <optgroup label="⚡ Crear Curva Completa">
+                                        <option value="S,M,L,XL,XXL">ADULTOS (S al XXL)</option>
+                                        <option value="4,6,8,10,12,14,16">NIÑOS (4 al 16)</option>
+                                        <option value="0,1,2,3,4,5">BEBÉS (0 al 5)</option>
+                                    </optgroup>
+                                    <optgroup label="👕 Talles Individuales">
+                                        {['S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL', '6', '8', '10', '12', '14', '16', 'U'].map(s => <option key={s} value={s}>{s}</option>)}
+                                    </optgroup>
                                 </select>
                             </div>
 
-                            <div>
-                                <label className="text-xs font-bold text-slate-400 block mb-1 uppercase">Stock Inicial</label>
-                                <input type="number" className="border border-slate-300 p-2 rounded-md text-sm w-24 font-bold text-slate-700 outline-none" value={newStock} onChange={e => setNewStock(e.target.value)} />
+                            <div className="flex-1 min-w-[150px]">
+                                <label className="text-[10px] font-bold text-slate-400 block mb-1 uppercase">Estampa / Jugador (Opcional)</label>
+                                <input
+                                    type="text"
+                                    placeholder="Ej: Messi 10, Di Maria 11..."
+                                    className="border border-slate-300 p-2.5 rounded-md text-sm w-full font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-400"
+                                    value={newEstampa}
+                                    onChange={e => setNewEstampa(e.target.value)}
+                                />
                             </div>
-                            <button onClick={handleAddVariant} className="bg-green-500 text-white px-4 py-2 rounded-md text-sm font-bold hover:bg-green-600 flex items-center h-10 shadow-sm hover:shadow transition-all active:scale-95 ml-auto">
-                                <Plus size={16} className="mr-1" /> Agregar Variante
+
+                            <div>
+                                <label className="text-[10px] font-bold text-slate-400 block mb-1 uppercase">Stock (Por Talle)</label>
+                                <input type="number" className="border border-slate-300 p-2.5 rounded-md text-sm w-24 text-center font-bold text-slate-700 outline-none focus:ring-2 focus:ring-blue-400" value={newStock} onChange={e => setNewStock(e.target.value)} />
+                            </div>
+
+                            <button onClick={handleAddVariant} className="bg-emerald-500 text-white px-5 py-2.5 rounded-md text-sm font-bold hover:bg-emerald-600 flex items-center shadow-sm hover:shadow transition-all active:scale-95 ml-auto">
+                                <Plus size={18} className="mr-1" /> Agregar
                             </button>
                         </div>
                     </div>

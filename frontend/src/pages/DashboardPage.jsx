@@ -54,7 +54,7 @@ const DashboardPage = () => {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center border-b border-gray-200 dark:border-slate-800 pb-6 mb-6">
                 <div className="w-full md:w-auto">
                     <h1 className="text-2xl md:text-3xl font-black text-gray-800 dark:text-white tracking-tight flex items-center transition-colors">
-                        Hola, {user?.nombre || 'Campeón'} 👋
+                        Hola, {user?.nombre || 'Campeón'}
                     </h1>
                     <div className="flex items-center text-gray-500 dark:text-slate-400 mt-1 font-medium text-xs md:text-sm transition-colors">
                         <Clock size={14} className="mr-2 text-blue-600 dark:text-blue-400" />

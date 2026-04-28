@@ -40,7 +40,7 @@ const InventoryPage = () => {
     const [loading, setLoading] = useState(true);
 
     // --- ESTADOS DE VISTA ---
-    const [viewMode, setViewMode] = useState('active'); // 'active' | 'archived'
+    const [viewMode, setViewMode] = useState('active');
     const [hideOutOfStock, setHideOutOfStock] = useState(false);
     const [selectedItems, setSelectedItems] = useState(new Set());
     const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
@@ -66,7 +66,7 @@ const InventoryPage = () => {
     const [showForm, setShowForm] = useState(false);
     const [newProduct, setNewProduct] = useState({
         nombre: '', precio: '', stock: '10', sku: '',
-        categoria_id: '', categoria_especifica_id: '', descripcion: ''
+        categoria_id: '', categoria_especifica_id: '', descripcion: '', estampa: ''
     });
     const [selectedGridType, setSelectedGridType] = useState('ADULTO');
     const [selectedFile, setSelectedFile] = useState(null);
@@ -115,10 +115,9 @@ const InventoryPage = () => {
     }, [token]);
 
     // 2. CARGA DE PRODUCTOS (Lógica Híbrida)
-    const fetchProducts = async (currentPage = page, silent = false) => { // <--- 1. Agregar 'silent'
-        if (!silent) setLoading(true); // <--- 2. Condicionar el loading
+    const fetchProducts = async (currentPage = page, silent = false) => {
+        if (!silent) setLoading(true);
         try {
-            // Si hay texto en el buscador, activamos scroll infinito (limit 1000)
             const isSearching = searchTerm.trim() !== '';
             const limit = isSearching ? 200 : 50;
             const targetPage = isSearching ? 1 : currentPage;
@@ -140,7 +139,6 @@ const InventoryPage = () => {
             const res = await api.get('/products', { params });
             setProducts(res.data.products);
 
-            // Si la API devuelve meta (paginación)
             if (res.data.meta) {
                 setTotalPages(res.data.meta.total_pages);
                 setPage(res.data.meta.current_page);
@@ -150,11 +148,10 @@ const InventoryPage = () => {
         } catch (error) {
             toast.error("Error cargando inventario");
         } finally {
-            if (!silent) setLoading(false); // <--- 3. Condicionar el fin del loading
+            if (!silent) setLoading(false);
         }
     };
 
-    // Resetear a página 1 cuando cambian los filtros
     useEffect(() => {
         const delayFn = setTimeout(() => {
             fetchProducts(1);
@@ -208,7 +205,7 @@ const InventoryPage = () => {
         } catch (e) { toast.error("Error al borrar"); }
     };
 
-    // --- NUEVO: ACTUALIZAR PRECIOS SELECCIONADOS ---
+    // --- ACTUALIZAR PRECIOS SELECCIONADOS ---
     const handleUpdateSelectedPrices = async (e) => {
         e.preventDefault();
         if (!selectedPriceValue) return;
@@ -279,7 +276,8 @@ const InventoryPage = () => {
             sku: '',
             categoria_id: product.categoria_id,
             categoria_especifica_id: product.categoria_especifica_id,
-            descripcion: product.descripcion
+            descripcion: product.descripcion,
+            estampa: ''
         });
 
         const currentSizes = product.variantes.map(v => v.talle).sort().join(',');
@@ -318,13 +316,19 @@ const InventoryPage = () => {
             fd.append('categoria_id', newProduct.categoria_id);
             if (newProduct.categoria_especifica_id) fd.append('categoria_especifica_id', newProduct.categoria_especifica_id);
             fd.append('descripcion', newProduct.descripcion);
+
+            // Adjuntamos la estampa si el usuario escribió algo
+            if (newProduct.estampa && newProduct.estampa.trim() !== '') {
+                fd.append('estampa', newProduct.estampa);
+            }
+
             if (selectedFile) fd.append('imagen', selectedFile);
 
             await api.post('/products', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
             toast.success("Producto Creado", { id: toastId });
             playSound('success');
             setShowForm(false);
-            setNewProduct({ nombre: '', precio: '', stock: '10', sku: '', categoria_id: '', categoria_especifica_id: '' });
+            setNewProduct({ nombre: '', precio: '', stock: '10', sku: '', categoria_id: '', categoria_especifica_id: '', descripcion: '', estampa: '' });
             setSelectedFile(null);
             fetchProducts(1);
         } catch (e) { toast.error("Error creando", { id: toastId }); playSound('error'); }
@@ -338,11 +342,13 @@ const InventoryPage = () => {
         document.body.appendChild(link); link.click(); link.remove();
     };
 
+    // IMPRESIÓN INTELIGENTE: Incluye el nombre de la estampa en el PDF
     const handlePrintSingleLabel = async (e, product, variant) => {
         e.stopPropagation();
         const toastId = toast.loading("Generando...");
+        const talleLabel = variant.talle + (variant.estampa && variant.estampa !== 'Standard' ? ` - ${variant.estampa}` : '');
         try {
-            await generatePdf([{ sku: variant.sku || `GEN-${variant.id_variante}`, nombre: product.nombre, talle: variant.talle, cantidad: 1 }]);
+            await generatePdf([{ sku: variant.sku || `GEN-${variant.id_variante}`, nombre: product.nombre, talle: talleLabel, cantidad: 1 }]);
             toast.dismiss(toastId);
         } catch (error) { toast.error("Error", { id: toastId }); }
     };
@@ -359,7 +365,7 @@ const InventoryPage = () => {
                     .map(v => ({
                         nombre: p.nombre,
                         sku: v.sku || `GEN-${v.id_variante}`,
-                        talle: v.talle,
+                        talle: v.talle + (v.estampa && v.estampa !== 'Standard' ? ` - ${v.estampa}` : ''),
                         cantidad: v.stock
                     }))
                 );
@@ -390,7 +396,12 @@ const InventoryPage = () => {
         try {
             const params = { search: searchTerm, category_id: selectedCat, specific_id: selectedSpec, active: viewMode === 'active', limit: 5000 };
             const res = await api.get('/products', { params });
-            const items = (res.data.products || []).flatMap(p => p.variantes.filter(v => v.stock > 0).map(v => ({ sku: v.sku || `GEN-${v.id_variante}`, nombre: p.nombre, talle: v.talle, cantidad: v.stock })));
+            const items = (res.data.products || []).flatMap(p => p.variantes.filter(v => v.stock > 0).map(v => ({
+                sku: v.sku || `GEN-${v.id_variante}`,
+                nombre: p.nombre,
+                talle: v.talle + (v.estampa && v.estampa !== 'Standard' ? ` - ${v.estampa}` : ''),
+                cantidad: v.stock
+            })));
             if (items.length === 0) { toast.error("Stock 0", { id: t }); return; }
             if (items.length > 500 && !window.confirm(`⚠️ ${items.length} etiquetas. ¿Seguir?`)) { toast.dismiss(t); return; }
             await generatePdf(items);
@@ -533,15 +544,26 @@ const InventoryPage = () => {
                 <div id="formCreate" className="bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-lg border border-blue-100 dark:border-slate-700 animate-fade-in-down shrink-0 relative overflow-hidden transition-colors">
                     <div className="absolute top-0 left-0 w-1.5 h-full bg-blue-500"></div>
                     <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white flex items-center"><Plus className="mr-2 text-blue-500" /> Alta Rápida de Producto</h3>
+
                     <form onSubmit={handleSubmitCreate} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                        <div className="md:col-span-3"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Nombre</label><input id="inputName" autoFocus required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" placeholder="Ej: Camiseta..." value={newProduct.nombre} onChange={e => setNewProduct({ ...newProduct, nombre: e.target.value })} /></div>
+                        {/* --- FILA 1 --- */}
+                        <div className="md:col-span-3">
+                            <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Nombre</label>
+                            <input id="inputName" autoFocus required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" placeholder="Ej: Camiseta..." value={newProduct.nombre} onChange={e => setNewProduct({ ...newProduct, nombre: e.target.value })} />
+                        </div>
 
-                        <div className="md:col-span-2"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Categoría</label><select required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" value={newProduct.categoria_id} onChange={e => setNewProduct({ ...newProduct, categoria_id: e.target.value })}><option value="">Seleccionar...</option>{categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
+                        <div className="md:col-span-2">
+                            <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Categoría</label>
+                            <select required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" value={newProduct.categoria_id} onChange={e => setNewProduct({ ...newProduct, categoria_id: e.target.value })}><option value="">Seleccionar...</option>{categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
+                        </div>
 
-                        <div className="md:col-span-2"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Liga</label><select className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" value={newProduct.categoria_especifica_id} onChange={e => setNewProduct({ ...newProduct, categoria_especifica_id: e.target.value })}><option value="">(Opcional)</option>{specificCategories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select></div>
+                        <div className="md:col-span-2">
+                            <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Liga</label>
+                            <select className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" value={newProduct.categoria_especifica_id} onChange={e => setNewProduct({ ...newProduct, categoria_especifica_id: e.target.value })}><option value="">(Opcional)</option>{specificCategories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
+                        </div>
 
-                        {/* --- NUEVO DESPLEGABLE DE PLANTILLAS --- */}
-                        <div className="md:col-span-2"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Plantilla TN</label>
+                        <div className="md:col-span-2">
+                            <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Plantilla TN</label>
                             <select className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white text-xs font-bold"
                                 value={newProduct.descripcion}
                                 onChange={e => setNewProduct({ ...newProduct, descripcion: e.target.value })}>
@@ -552,17 +574,35 @@ const InventoryPage = () => {
                                 <option value="Conjuntos">Conjuntos</option>
                                 <option value="Buzos">Buzos</option>
                                 <option value="Camperas">Camperas</option>
+                                <option value="Pantalones Largos">Pantalones Largos</option>
                                 <option value="Shorts">Shorts</option>
                             </select>
                         </div>
 
-                        <div className="md:col-span-1"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Precio</label><input type="number" required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white px-1" placeholder="$" value={newProduct.precio} onChange={e => setNewProduct({ ...newProduct, precio: e.target.value })} /></div>
+                        <div className="md:col-span-3">
+                            <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Estampa (Opcional)</label>
+                            <input className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white px-2" placeholder="Ej: Messi 10..." value={newProduct.estampa || ''} onChange={e => setNewProduct({ ...newProduct, estampa: e.target.value })} />
+                        </div>
 
-                        <div className="md:col-span-1"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Curva</label><select className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg text-xs font-bold outline-none dark:text-white px-1" value={selectedGridType} onChange={e => setSelectedGridType(e.target.value)}>{Object.keys(SIZE_GRIDS).map(g => <option key={g} value={g}>{g}</option>)}</select></div>
+                        {/* --- FILA 2 --- */}
+                        <div className="md:col-span-2">
+                            <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Precio</label>
+                            <input type="number" required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white px-2" placeholder="$" value={newProduct.precio} onChange={e => setNewProduct({ ...newProduct, precio: e.target.value })} />
+                        </div>
 
-                        <div className="md:col-span-1"><label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Stock</label><input type="number" required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg text-center font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white px-1" value={newProduct.stock} onChange={e => setNewProduct({ ...newProduct, stock: e.target.value })} /></div>
+                        <div className="md:col-span-2">
+                            <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Curva</label>
+                            <select className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg text-xs font-bold outline-none dark:text-white px-1" value={selectedGridType} onChange={e => setSelectedGridType(e.target.value)}>{Object.keys(SIZE_GRIDS).map(g => <option key={g} value={g}>{g}</option>)}</select>
+                        </div>
 
-                        <div className="md:col-span-12 mt-2"><button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-md transition-all active:scale-[0.99]">GUARDAR PRODUCTO</button></div>
+                        <div className="md:col-span-2">
+                            <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Stock por Talle</label>
+                            <input type="number" required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg text-center font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white px-1" value={newProduct.stock} onChange={e => setNewProduct({ ...newProduct, stock: e.target.value })} />
+                        </div>
+
+                        <div className="md:col-span-6 mt-2">
+                            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-md transition-all active:scale-[0.99]">GUARDAR PRODUCTO</button>
+                        </div>
                     </form>
                 </div>
             )}
@@ -590,7 +630,25 @@ const InventoryPage = () => {
                                     <td className="px-4 py-3 text-center"><div onClick={() => p.imagen && setImageModalSrc(`/api/static/uploads/${p.imagen}`)} className="h-10 w-10 rounded-lg bg-white dark:bg-slate-700 border border-gray-200 dark:border-slate-600 flex items-center justify-center overflow-hidden cursor-zoom-in relative group/img mx-auto">{p.imagen ? <img src={`/api/static/uploads/${p.imagen}`} className="h-full w-full object-cover" /> : <Shirt size={16} className="text-gray-300 dark:text-slate-500" />}</div></td>
                                     <td className="px-4 py-3"><div className="font-bold text-gray-800 dark:text-white">{p.nombre}</div><div className="flex gap-2 mt-1"><span className="text-[10px] px-2 py-0.5 bg-gray-100 dark:bg-slate-700 text-gray-600 dark:text-slate-300 rounded font-bold uppercase">{p.categoria}</span>{p.liga !== '-' && <span className="text-[10px] px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 rounded font-bold uppercase">{p.liga}</span>}</div></td>
                                     <td className="px-4 py-3 font-mono font-bold text-gray-700 dark:text-slate-300">$ {p.precio.toLocaleString()}</td>
-                                    <td className="px-4 py-3"><div className="flex flex-wrap gap-2">{p.variantes.map(v => (<div key={v.id_variante} onClick={() => { setSelectedVariantForBarcode({ nombre: p.nombre, talle: v.talle, sku: v.sku, precio: p.precio }); setIsBarcodeModalOpen(true); }} className={`flex items-center pl-2 pr-1 py-1 rounded-md text-xs cursor-pointer transition-all active:scale-95 shadow-sm border ${getStockColorClass(v.stock)}`} title={`SKU: ${v.sku}`}><span className="font-bold mr-1.5">{v.talle}</span><span className="font-mono text-[10px] opacity-80 border-l border-current pl-1.5 mr-1">{v.stock}</span><button onClick={(e) => handlePrintSingleLabel(e, p, v)} className="p-0.5 rounded hover:bg-black/10 transition-colors ml-0.5" title="Imprimir"><Printer size={10} /></button></div>))}</div></td>
+                                    <td className="px-4 py-3">
+                                        <div className="flex flex-wrap gap-2">
+                                            {p.variantes.map(v => (
+                                                <div key={v.id_variante} onClick={() => { setSelectedVariantForBarcode({ nombre: p.nombre, talle: v.talle, sku: v.sku, precio: p.precio }); setIsBarcodeModalOpen(true); }} className={`flex items-center pl-2 pr-1 py-1 rounded-md text-xs cursor-pointer transition-all active:scale-95 shadow-sm border ${getStockColorClass(v.stock)}`} title={`SKU: ${v.sku}`}>
+                                                    <span className="font-bold mr-1.5 flex items-center">
+                                                        {v.talle}
+                                                        {/* --- ETIQUETA VISUAL DE LA ESTAMPA --- */}
+                                                        {v.estampa && v.estampa !== 'Standard' && (
+                                                            <span className="ml-1.5 text-[9px] bg-white/60 text-indigo-800 dark:bg-black/30 dark:text-indigo-200 px-1 rounded shadow-sm border border-current opacity-90 uppercase truncate max-w-[80px]">
+                                                                {v.estampa}
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                    <span className="font-mono text-[10px] opacity-80 border-l border-current pl-1.5 mr-1">{v.stock}</span>
+                                                    <button onClick={(e) => handlePrintSingleLabel(e, p, v)} className="p-0.5 rounded hover:bg-black/10 transition-colors ml-0.5" title="Imprimir"><Printer size={10} /></button>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </td>
                                     <td className="px-4 py-3 text-center">{processingId === p.id ? <Loader2 size={18} className="animate-spin text-blue-600 mx-auto" /> : p.tiendanube_id ? <span className="inline-flex items-center justify-center p-1.5 bg-green-100 dark:bg-green-900/30 text-green-600 dark:text-green-400 rounded-full" title="Sincronizado"><Cloud size={16} /></span> : <button onClick={() => handlePublish(p)} className="inline-flex items-center justify-center p-1.5 bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-slate-400 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-900/50 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors" title="Publicar"><UploadCloud size={16} /></button>}</td>
                                     <td className="px-4 py-3 text-right">
                                         <div className="flex justify-end gap-1">
