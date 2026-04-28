@@ -202,33 +202,61 @@ class TiendaNubeService:
             print(f"⚠️ Error actualizando stock en TN: {e}")
 
     def update_product_data(self, local_prod):
-        """Actualiza nombre y descripción en TN usando el motor de plantillas"""
-        if not self.access_token or not self.api_url: return
-        if not local_prod or not local_prod.tiendanube_id: return
-        
-        # 1. LÓGICA DE PLANTILLA 
-        cat_nombre = local_prod.categoria.nombre if local_prod.categoria else "General"
-        descripcion_seleccionada = str(local_prod.descripcion or "").strip()
+            """Actualiza nombre, descripción y ESTRUCTURA (atributos) en TN"""
+            if not self.access_token or not self.api_url: return
+            if not local_prod or not local_prod.tiendanube_id: return
+            
+            # 1. LÓGICA DE PLANTILLA 
+            cat_nombre = local_prod.categoria.nombre if local_prod.categoria else "General"
+            descripcion_seleccionada = str(local_prod.descripcion or "").strip()
 
-        if descripcion_seleccionada in self.PLANTILLAS:
-            descripcion_final = self.PLANTILLAS[descripcion_seleccionada]
-        elif descripcion_seleccionada == "":
-            descripcion_final = self.DESCRIPCION_DEFAULT
-        else:
-            descripcion_final = descripcion_seleccionada
+            if descripcion_seleccionada in self.PLANTILLAS:
+                descripcion_final = self.PLANTILLAS[descripcion_seleccionada]
+            elif descripcion_seleccionada == "":
+                descripcion_final = self.DESCRIPCION_DEFAULT
+            else:
+                descripcion_final = descripcion_seleccionada
 
-        # 2. ENVIAR A TIENDA NUBE
-        url = f"{self.api_url}/products/{local_prod.tiendanube_id}"
-        data = {
-            "name": {"es": local_prod.nombre},
-            "description": {"es": descripcion_final}
-        }
+            # --- NUEVO: PREPARAMOS TODAS LAS VARIANTES EXISTENTES PARA "ACTUALIZARLAS" ---
+            variants_data = []
+            for var in local_prod.variantes:
+                # Solo migramos las que ya existen en TN. Las de Messi se crean en el paso siguiente
+                if var.tiendanube_variant_id:
+                    stock_val = var.inventario.stock_actual if var.inventario else 0
+                    precio_web = self.calcular_precio_web(local_prod.precio)
+                    nombre_talle = getattr(var, 'talla', None) or getattr(var, 'talle', "Único")
+                    
+                    color_val = getattr(var, 'color', None)
+                    nombre_estampa = "Sin Estampa"
+                    if color_val and color_val.strip() != "" and color_val.strip() != "Standard":
+                        nombre_estampa = color_val.strip()
 
-        try:
-            requests.put(url, json=data, headers=self._get_headers())
-            print(f"✅ TN Sync: Base y plantilla actualizadas (ID: {local_prod.tiendanube_id})")
-        except Exception as e:
-            print(f"⚠️ Error actualizando producto en TN: {e}")
+                    variants_data.append({
+                        "id": int(var.tiendanube_variant_id), # Fundamental mandar el ID a TN
+                        "price": precio_web,
+                        "stock": int(stock_val),
+                        "sku": var.codigo_sku,
+                        "values": [{"es": nombre_talle}, {"es": nombre_estampa}],
+                        "weight": self.PESO_ESTANDAR,
+                        "width": self.MEDIDAS_ESTANDAR["width"],
+                        "height": self.MEDIDAS_ESTANDAR["height"],
+                        "depth": self.MEDIDAS_ESTANDAR["depth"]
+                    })
+
+            # 2. ENVIAR A TIENDA NUBE FORZANDO LA NUEVA ESTRUCTURA DE 2 ATRIBUTOS
+            url = f"{self.api_url}/products/{local_prod.tiendanube_id}"
+            data = {
+                "name": {"es": local_prod.nombre},
+                "description": {"es": descripcion_final},
+                "attributes": [{"es": "Talle"}, {"es": "Estampa"}], # <--- LA MAGIA ESTÁ AQUÍ
+                "variants": variants_data
+            }
+
+            try:
+                requests.put(url, json=data, headers=self._get_headers())
+                print(f"✅ TN Sync: Estructura de producto actualizada a 2 atributos (ID: {local_prod.tiendanube_id})")
+            except Exception as e:
+                print(f"⚠️ Error actualizando producto en TN: {e}")
 
     def delete_product_in_cloud(self, tn_product_id):
         if not self.access_token or not self.api_url: return
