@@ -15,7 +15,6 @@ import BulkPriceModal from '../components/BulkPriceModal';
 import { useScanDetection } from '../hooks/useScanDetection';
 import { toast, Toaster } from 'react-hot-toast';
 
-// --- DEFINICIÓN DE CURVAS DE TALLES ---
 const SIZE_GRIDS = {
     'ADULTO': ['S', 'M', 'L', 'XL', 'XXL'],
     'NIÑOS': ['4', '6', '8', '10', '12', '14', '16'],
@@ -33,19 +32,16 @@ const SOUNDS = {
 const InventoryPage = () => {
     const { token } = useAuth();
 
-    // --- ESTADOS DE DATOS ---
     const [products, setProducts] = useState([]);
     const [categories, setCategories] = useState([]);
     const [specificCategories, setSpecificCategories] = useState([]);
     const [loading, setLoading] = useState(true);
 
-    // --- ESTADOS DE VISTA ---
     const [viewMode, setViewMode] = useState('active');
     const [hideOutOfStock, setHideOutOfStock] = useState(false);
     const [selectedItems, setSelectedItems] = useState(new Set());
     const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
 
-    // --- ESTADOS DE FILTROS Y PAGINACIÓN ---
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
     const [searchTerm, setSearchTerm] = useState('');
@@ -53,16 +49,14 @@ const InventoryPage = () => {
     const [selectedSpec, setSelectedSpec] = useState('');
     const [sortBy, setSortBy] = useState('mas_vendidos');
 
-    // --- NUEVOS FILTROS ESPECÍFICOS ---
     const [filterExactStock, setFilterExactStock] = useState('');
     const [filterSize, setFilterSize] = useState('');
     const [filterNoImage, setFilterNoImage] = useState(false);
 
-    // --- ESTADOS DE ACCIÓN ---
     const [isSyncing, setIsSyncing] = useState(false);
+    const [syncProgress, setSyncProgress] = useState(null); // NUEVO ESTADO PARA LA BARRA
     const [processingId, setProcessingId] = useState(null);
 
-    // --- ESTADOS DE CREACIÓN / EDICIÓN ---
     const [showForm, setShowForm] = useState(false);
     const [newProduct, setNewProduct] = useState({
         nombre: '', precio: '', stock: '10', sku: '',
@@ -71,7 +65,6 @@ const InventoryPage = () => {
     const [selectedGridType, setSelectedGridType] = useState('ADULTO');
     const [selectedFile, setSelectedFile] = useState(null);
 
-    // --- MODALES ---
     const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
     const [selectedVariantForBarcode, setSelectedVariantForBarcode] = useState(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -79,16 +72,13 @@ const InventoryPage = () => {
     const [editingProduct, setEditingProduct] = useState(null);
     const [imageModalSrc, setImageModalSrc] = useState(null);
 
-    // --- NUEVO: MODAL PARA PRECIOS DE SELECCIONADOS ---
     const [isSelectedPriceModalOpen, setIsSelectedPriceModalOpen] = useState(false);
     const [selectedPriceType, setSelectedPriceType] = useState('percent_increase');
     const [selectedPriceValue, setSelectedPriceValue] = useState('');
 
-    // --- REF PARA AUTO-SCAN ---
     const searchInputRef = useRef(null);
     useScanDetection(searchInputRef);
 
-    // Helper Audio
     const playSound = (type) => {
         try {
             if (SOUNDS[type]) {
@@ -99,7 +89,6 @@ const InventoryPage = () => {
         } catch (e) { console.error(e); }
     };
 
-    // 1. CARGA INICIAL
     useEffect(() => {
         const fetchDropdowns = async () => {
             try {
@@ -114,7 +103,6 @@ const InventoryPage = () => {
         if (token) fetchDropdowns();
     }, [token]);
 
-    // 2. CARGA DE PRODUCTOS (Lógica Híbrida)
     const fetchProducts = async (currentPage = page, silent = false) => {
         if (!silent) setLoading(true);
         try {
@@ -123,17 +111,13 @@ const InventoryPage = () => {
             const targetPage = isSearching ? 1 : currentPage;
 
             const params = {
-                page: targetPage,
-                limit: limit,
-                search: searchTerm,
-                category_id: selectedCat || undefined,
-                specific_id: selectedSpec || undefined,
+                page: targetPage, limit: limit, search: searchTerm,
+                category_id: selectedCat || undefined, specific_id: selectedSpec || undefined,
                 active: viewMode === 'active' ? 'true' : 'false',
                 min_stock: hideOutOfStock ? 1 : undefined,
                 exact_stock: filterExactStock !== '' ? filterExactStock : undefined,
                 size_filter: filterSize || undefined,
-                no_image: filterNoImage ? 'true' : undefined,
-                sort_by: sortBy
+                no_image: filterNoImage ? 'true' : undefined, sort_by: sortBy
             };
 
             const res = await api.get('/products', { params });
@@ -143,7 +127,6 @@ const InventoryPage = () => {
                 setTotalPages(res.data.meta.total_pages);
                 setPage(res.data.meta.current_page);
             }
-
             if (!silent) setSelectedItems(new Set());
         } catch (error) {
             toast.error("Error cargando inventario");
@@ -153,13 +136,73 @@ const InventoryPage = () => {
     };
 
     useEffect(() => {
-        const delayFn = setTimeout(() => {
-            fetchProducts(1);
-        }, 400);
+        const delayFn = setTimeout(() => { fetchProducts(1); }, 400);
         return () => clearTimeout(delayFn);
     }, [searchTerm, selectedCat, selectedSpec, viewMode, hideOutOfStock, filterExactStock, filterSize, filterNoImage, sortBy]);
 
-    // --- MANEJO DE SELECCIÓN ---
+    // =========================================================
+    // NUEVO: SISTEMA DE POLLING PARA LA BARRA DE PROGRESO
+    // =========================================================
+
+    // 1. Revisar si hay un proceso corriendo al abrir la página
+    useEffect(() => {
+        const checkActiveSync = async () => {
+            try {
+                const res = await api.get('/products/sync/status');
+                if (res.data && res.data.is_running) {
+                    setIsSyncing(true);
+                    setSyncProgress(res.data);
+                }
+            } catch (e) { }
+        };
+        if (token) checkActiveSync();
+    }, [token]);
+
+    // 2. Efecto de Polling que pregunta cada 3 segundos
+    useEffect(() => {
+        let interval;
+        if (isSyncing) {
+            interval = setInterval(async () => {
+                try {
+                    const res = await api.get('/products/sync/status');
+                    if (res.data && res.data.is_running) {
+                        setSyncProgress(res.data);
+                    } else {
+                        // Terminó
+                        setIsSyncing(false);
+                        setSyncProgress(res.data);
+                        playSound('success');
+                        toast.success("Sincronización Completada");
+                        setTimeout(() => setSyncProgress(null), 8000); // La barra verde se queda 8 segs y desaparece
+                        clearInterval(interval);
+                    }
+                } catch (e) {
+                    setIsSyncing(false);
+                    clearInterval(interval);
+                }
+            }, 3000);
+        }
+        return () => clearInterval(interval);
+    }, [isSyncing]);
+
+    const handleForceSync = async () => {
+        if (!window.confirm("⚠️ ¿Sincronizar Stock Masivamente?\nEl proceso se ejecutará en segundo plano y podrás seguir usando el sistema.")) return;
+
+        setIsSyncing(true);
+        setSyncProgress({ is_running: true, current: 0, total: 1, message: "Iniciando proceso en el servidor..." });
+
+        try {
+            await api.post('/products/sync/force-tiendanube');
+            toast.success("Sincronización Iniciada");
+        } catch (error) {
+            toast.error("Error al iniciar sync");
+            setIsSyncing(false);
+            setSyncProgress(null);
+        }
+    };
+
+    // =========================================================
+
     const toggleSelect = (id) => {
         const newSet = new Set(selectedItems);
         if (newSet.has(id)) newSet.delete(id);
@@ -172,7 +215,6 @@ const InventoryPage = () => {
         else setSelectedItems(new Set(products.map(p => p.id)));
     };
 
-    // --- ACCIONES DE ESTADO ---
     const handleToggleStatus = async (product) => {
         const action = viewMode === 'active' ? 'discontinuar' : 'restaurar';
         if (!window.confirm(`¿${action === 'discontinuar' ? 'Archivar' : 'Reactivar'} "${product.nombre}"?`)) return;
@@ -205,7 +247,6 @@ const InventoryPage = () => {
         } catch (e) { toast.error("Error al borrar"); }
     };
 
-    // --- ACTUALIZAR PRECIOS SELECCIONADOS ---
     const handleUpdateSelectedPrices = async (e) => {
         e.preventDefault();
         if (!selectedPriceValue) return;
@@ -227,18 +268,6 @@ const InventoryPage = () => {
         } catch (error) {
             toast.error("Error al actualizar precios", { id: toastId });
         }
-    };
-
-    // --- ACCIONES DE STOCK Y WEB ---
-    const handleForceSync = async () => {
-        if (!window.confirm("⚠️ ¿Sincronizar Stock Masivamente?")) return;
-        setIsSyncing(true);
-        const toastId = toast.loading("Iniciando sync...");
-        try {
-            const res = await api.post('/products/sync/force-tiendanube');
-            toast.success(res.data.detalles, { id: toastId });
-            playSound('success');
-        } catch (error) { toast.error("Error sync", { id: toastId }); playSound('error'); } finally { setIsSyncing(false); }
     };
 
     const handlePublish = async (product) => {
@@ -267,7 +296,6 @@ const InventoryPage = () => {
         }
     };
 
-    // --- FUNCIÓN DUPLICAR ---
     const handleDuplicate = (product) => {
         setNewProduct({
             nombre: product.nombre + ' (Copia)',
@@ -281,15 +309,8 @@ const InventoryPage = () => {
         });
 
         const currentSizes = product.variantes.map(v => v.talle).sort().join(',');
-        const foundGrid = Object.keys(SIZE_GRIDS).find(key =>
-            SIZE_GRIDS[key].slice().sort().join(',') === currentSizes
-        );
-
-        if (foundGrid) {
-            setSelectedGridType(foundGrid);
-        } else {
-            setSelectedGridType('ADULTO');
-        }
+        const foundGrid = Object.keys(SIZE_GRIDS).find(key => SIZE_GRIDS[key].slice().sort().join(',') === currentSizes);
+        if (foundGrid) { setSelectedGridType(foundGrid); } else { setSelectedGridType('ADULTO'); }
 
         setShowForm(true);
         setTimeout(() => {
@@ -302,7 +323,6 @@ const InventoryPage = () => {
         toast("Producto duplicado. Revisa los datos.", { icon: '📝' });
     };
 
-    // --- CREACIÓN RÁPIDA ---
     const handleSubmitCreate = async (e) => {
         e.preventDefault();
         if (!newProduct.categoria_id) return toast.error("Falta categoría");
@@ -316,12 +336,7 @@ const InventoryPage = () => {
             fd.append('categoria_id', newProduct.categoria_id);
             if (newProduct.categoria_especifica_id) fd.append('categoria_especifica_id', newProduct.categoria_especifica_id);
             fd.append('descripcion', newProduct.descripcion);
-
-            // Adjuntamos la estampa si el usuario escribió algo
-            if (newProduct.estampa && newProduct.estampa.trim() !== '') {
-                fd.append('estampa', newProduct.estampa);
-            }
-
+            if (newProduct.estampa && newProduct.estampa.trim() !== '') { fd.append('estampa', newProduct.estampa); }
             if (selectedFile) fd.append('imagen', selectedFile);
 
             await api.post('/products', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
@@ -334,7 +349,6 @@ const InventoryPage = () => {
         } catch (e) { toast.error("Error creando", { id: toastId }); playSound('error'); }
     };
 
-    // --- ETIQUETAS ---
     const generatePdf = async (items) => {
         const res = await api.post('/products/labels/batch-pdf', { items }, { responseType: 'blob' });
         const url = window.URL.createObjectURL(new Blob([res.data]));
@@ -342,7 +356,6 @@ const InventoryPage = () => {
         document.body.appendChild(link); link.click(); link.remove();
     };
 
-    // IMPRESIÓN INTELIGENTE: Incluye el nombre de la estampa en el PDF
     const handlePrintSingleLabel = async (e, product, variant) => {
         e.stopPropagation();
         const toastId = toast.loading("Generando...");
@@ -356,7 +369,6 @@ const InventoryPage = () => {
     const handlePrintLabelsSelected = async () => {
         if (selectedItems.size === 0) return toast.error("Selecciona productos");
         const t = toast.loading("Generando...");
-
         try {
             const items = products
                 .filter(p => selectedItems.has(p.id))
@@ -370,24 +382,14 @@ const InventoryPage = () => {
                     }))
                 );
 
-            if (items.length === 0) {
-                toast.error("Los productos seleccionados no tienen stock", { id: t });
-                return;
-            }
-
+            if (items.length === 0) { toast.error("Stock cero", { id: t }); return; }
             const totalLabels = items.reduce((sum, item) => sum + item.cantidad, 0);
-
-            if (totalLabels > 500 && !window.confirm(`⚠️ Se van a generar ${totalLabels} etiquetas en total. ¿Continuar?`)) {
-                toast.dismiss(t);
-                return;
-            }
+            if (totalLabels > 500 && !window.confirm(`⚠️ ${totalLabels} etiquetas en total. ¿Continuar?`)) { toast.dismiss(t); return; }
 
             await generatePdf(items);
             toast.success("PDF Listo", { id: t });
             setSelectedItems(new Set());
-        } catch (e) {
-            toast.error("Error al generar etiquetas", { id: t });
-        }
+        } catch (e) { toast.error("Error al generar etiquetas", { id: t }); }
     };
 
     const handlePrintLabelsByFilter = async () => {
@@ -416,7 +418,7 @@ const InventoryPage = () => {
     };
 
     return (
-        <div className="h-[calc(100vh-4rem)] flex flex-col p-4 max-w-[1600px] mx-auto gap-4 bg-gray-100 dark:bg-slate-950 transition-colors duration-300">
+        <div className="h-[calc(100vh-4rem)] flex flex-col p-4 max-w-[1600px] mx-auto gap-4 bg-gray-100 dark:bg-slate-950 transition-colors duration-300 relative">
             <Toaster position="top-center" />
 
             {/* HEADER ACCIONES */}
@@ -443,16 +445,10 @@ const InventoryPage = () => {
 
                         <button onClick={() => setHideOutOfStock(!hideOutOfStock)} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all ${hideOutOfStock ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300' : 'bg-white dark:bg-slate-700 border-gray-200 dark:border-slate-600 text-gray-500 dark:text-slate-300'}`}>{hideOutOfStock ? <EyeOff size={16} className="mr-2" /> : <Eye size={16} className="mr-2" />} {hideOutOfStock ? 'Sin Stock: Oculto' : 'Sin Stock: Visible'}</button>
 
-                        {/* --- BARRA DE ACCIONES PARA SELECCIONADOS --- */}
                         {selectedItems.size > 0 && (
                             <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg animate-fade-in mr-2">
                                 <span className="text-xs font-bold text-slate-600 dark:text-slate-300 px-2">{selectedItems.size} sel.</span>
-
-                                {/* NUEVO BOTÓN DE PRECIOS PARA SELECCIONADOS */}
-                                <button onClick={() => setIsSelectedPriceModalOpen(true)} className="bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 px-3 py-1.5 rounded-md text-xs font-bold flex items-center hover:bg-emerald-200 transition-colors">
-                                    <TrendingUp size={14} className="mr-2" /> Precios
-                                </button>
-
+                                <button onClick={() => setIsSelectedPriceModalOpen(true)} className="bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 px-3 py-1.5 rounded-md text-xs font-bold flex items-center hover:bg-emerald-200 transition-colors"><TrendingUp size={14} className="mr-2" /> Precios</button>
                                 <button onClick={handlePrintLabelsSelected} className="bg-slate-800 text-white px-3 py-1.5 rounded-md text-xs font-bold flex items-center hover:bg-black transition-colors"><Printer size={14} className="mr-2" /> Imprimir</button>
                                 <button onClick={handleBulkToggleStatus} className="bg-red-100 dark:bg-red-900/50 text-red-700 dark:text-red-300 px-3 py-1.5 rounded-md text-xs font-bold flex items-center hover:bg-red-200 transition-colors"><Archive size={14} className="mr-2" /> Archivar</button>
                             </div>
@@ -461,17 +457,13 @@ const InventoryPage = () => {
                         <div className="h-8 w-px bg-gray-200 dark:bg-slate-700 mx-1 hidden md:block"></div>
                         <button onClick={handlePrintLabelsByFilter} className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-3 py-2 rounded-lg flex items-center hover:bg-indigo-100 font-bold text-xs"><Tags size={16} className="mr-2" /> Etiquetas (Filtro)</button>
                         <button onClick={() => setIsBulkModalOpen(true)} className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-3 py-2 rounded-lg flex items-center hover:bg-emerald-100 font-bold text-xs"><TrendingUp size={16} className="mr-2" /> Aumentos Grales</button>
-                        <button onClick={handleForceSync} disabled={isSyncing} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all ${isSyncing ? 'bg-gray-100 dark:bg-slate-800 text-gray-400' : 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/30'}`}><RefreshCw size={14} className={`mr-2 ${isSyncing ? "animate-spin" : ""}`} /> {isSyncing ? "Sync..." : "Sync Nube"}</button>
-                        <button onClick={() => setShowForm(!showForm)} className={`flex items-center px-4 py-2 rounded-lg text-xs font-bold text-white shadow-lg transition-all active:scale-95 ${showForm ? 'bg-gray-500 hover:bg-gray-600' : 'bg-slate-900 hover:bg-black dark:bg-blue-600 dark:hover:bg-blue-700'}`}>{showForm ? <X size={16} className="mr-2" /> : <Plus size={16} className="mr-2" />} {showForm ? "Cancelar" : "Nuevo"}</button>
-                    </div>
-                )}
 
-                {viewMode === 'archived' && selectedItems.size > 0 && (
-                    <div className="flex w-full justify-end border-t border-gray-100 dark:border-slate-700 pt-3">
-                        <div className="flex items-center gap-2 bg-red-50 dark:bg-red-900/20 p-1 rounded-lg animate-fade-in">
-                            <span className="text-xs font-bold text-red-600 dark:text-red-300 px-2">{selectedItems.size} seleccionados</span>
-                            <button onClick={handleBulkToggleStatus} className="bg-green-100 dark:bg-green-900/50 text-green-700 dark:text-green-300 px-3 py-1.5 rounded-md text-xs font-bold flex items-center hover:bg-green-200 transition-colors"><ArchiveRestore size={14} className="mr-2" /> Restaurar</button>
-                        </div>
+                        {/* BOTON DE SYNC ACTUALIZADO */}
+                        <button onClick={handleForceSync} disabled={isSyncing} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all ${isSyncing ? 'bg-gray-100 dark:bg-slate-800 text-gray-400' : 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/30'}`}>
+                            <RefreshCw size={14} className={`mr-2 ${isSyncing ? "animate-spin" : ""}`} /> {isSyncing ? "Sincronizando..." : "Sync Nube"}
+                        </button>
+
+                        <button onClick={() => setShowForm(!showForm)} className={`flex items-center px-4 py-2 rounded-lg text-xs font-bold text-white shadow-lg transition-all active:scale-95 ${showForm ? 'bg-gray-500 hover:bg-gray-600' : 'bg-slate-900 hover:bg-black dark:bg-blue-600 dark:hover:bg-blue-700'}`}>{showForm ? <X size={16} className="mr-2" /> : <Plus size={16} className="mr-2" />} {showForm ? "Cancelar" : "Nuevo"}</button>
                     </div>
                 )}
             </div>
@@ -504,7 +496,6 @@ const InventoryPage = () => {
                         </select>
                     </div>
 
-                    {/* BOTONES DE CATEGORÍAS (CHIPS) */}
                     <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar px-1">
                         <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wide mr-1 shrink-0">Categorías:</span>
                         <button onClick={() => setSelectedCat('')} className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition-all whitespace-nowrap shrink-0 ${selectedCat === '' ? 'bg-blue-600 text-white border-blue-600 shadow-md' : 'bg-white dark:bg-slate-800 text-gray-500 border-gray-200 dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700'}`}>Todas</button>
@@ -515,7 +506,6 @@ const InventoryPage = () => {
                         ))}
                     </div>
 
-                    {/* PANEL DE FILTROS AVANZADOS */}
                     {showAdvancedFilters && (
                         <div className="bg-indigo-50 dark:bg-indigo-900/10 p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/50 flex flex-wrap gap-4 items-center animate-fade-in-down transition-colors">
                             <div className="flex items-center gap-2">
@@ -546,7 +536,6 @@ const InventoryPage = () => {
                     <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white flex items-center"><Plus className="mr-2 text-blue-500" /> Alta Rápida de Producto</h3>
 
                     <form onSubmit={handleSubmitCreate} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
-                        {/* --- FILA 1 --- */}
                         <div className="md:col-span-3">
                             <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Nombre</label>
                             <input id="inputName" autoFocus required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" placeholder="Ej: Camiseta..." value={newProduct.nombre} onChange={e => setNewProduct({ ...newProduct, nombre: e.target.value })} />
@@ -584,7 +573,6 @@ const InventoryPage = () => {
                             <input className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white px-2" placeholder="Ej: Messi 10..." value={newProduct.estampa || ''} onChange={e => setNewProduct({ ...newProduct, estampa: e.target.value })} />
                         </div>
 
-                        {/* --- FILA 2 --- */}
                         <div className="md:col-span-2">
                             <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Precio</label>
                             <input type="number" required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white px-2" placeholder="$" value={newProduct.precio} onChange={e => setNewProduct({ ...newProduct, precio: e.target.value })} />
@@ -636,7 +624,6 @@ const InventoryPage = () => {
                                                 <div key={v.id_variante} onClick={() => { setSelectedVariantForBarcode({ nombre: p.nombre, talle: v.talle, sku: v.sku, precio: p.precio }); setIsBarcodeModalOpen(true); }} className={`flex items-center pl-2 pr-1 py-1 rounded-md text-xs cursor-pointer transition-all active:scale-95 shadow-sm border ${getStockColorClass(v.stock)}`} title={`SKU: ${v.sku}`}>
                                                     <span className="font-bold mr-1.5 flex items-center">
                                                         {v.talle}
-                                                        {/* --- ETIQUETA VISUAL DE LA ESTAMPA --- */}
                                                         {v.estampa && v.estampa !== 'Standard' && (
                                                             <span className="ml-1.5 text-[9px] bg-white/60 text-indigo-800 dark:bg-black/30 dark:text-indigo-200 px-1 rounded shadow-sm border border-current opacity-90 uppercase truncate max-w-[80px]">
                                                                 {v.estampa}
@@ -675,7 +662,6 @@ const InventoryPage = () => {
                     </table>
                 </div>
 
-                {/* --- FOOTER PAGINACIÓN / SCROLL --- */}
                 <div className="bg-white dark:bg-slate-800 p-3 border-t border-gray-200 dark:border-slate-700 flex items-center justify-between shrink-0 transition-colors">
                     {searchTerm.trim() !== '' ? (
                         <span className="text-xs text-gray-500 dark:text-gray-400 font-medium">
@@ -696,7 +682,30 @@ const InventoryPage = () => {
                 </div>
             </div>
 
-            {/* --- MODAL PARA PRECIOS DE SELECCIONADOS --- */}
+            {/* WIDGET FLOTANTE DE BARRA DE PROGRESO */}
+            {syncProgress && (
+                <div className="fixed bottom-6 right-6 bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-2xl border border-blue-100 dark:border-slate-700 z-[100] w-80 animate-fade-in-up transition-colors">
+                    <div className="flex justify-between items-center mb-3">
+                        <h4 className="text-sm font-black text-slate-800 dark:text-white flex items-center">
+                            {syncProgress.is_running ? <RefreshCw size={16} className="mr-2 animate-spin text-blue-500" /> : <Cloud size={16} className="mr-2 text-green-500" />}
+                            Sincronización Nube
+                        </h4>
+                        {!syncProgress.is_running && <button onClick={() => setSyncProgress(null)}><X size={16} className="text-gray-400 hover:text-red-500" /></button>}
+                    </div>
+
+                    <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-3 mb-2 overflow-hidden shadow-inner">
+                        <div className={`h-3 rounded-full transition-all duration-500 ${syncProgress.is_running ? 'bg-blue-500' : 'bg-green-500'}`} style={{ width: `${Math.min(100, (syncProgress.current / syncProgress.total) * 100 || 0)}%` }}></div>
+                    </div>
+
+                    <div className="flex justify-between text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+                        <span>{syncProgress.current} / {syncProgress.total} items</span>
+                        <span>{Math.round((syncProgress.current / syncProgress.total) * 100 || 0)}%</span>
+                    </div>
+
+                    <p className="text-[10px] text-slate-400 truncate font-medium mt-2" title={syncProgress.message}>{syncProgress.message}</p>
+                </div>
+            )}
+
             {isSelectedPriceModalOpen && (
                 <div className="fixed inset-0 z-[150] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setIsSelectedPriceModalOpen(false)}>
                     <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
@@ -721,14 +730,9 @@ const InventoryPage = () => {
                             <div className="mb-6">
                                 <label className="block text-xs font-bold text-gray-500 dark:text-slate-400 uppercase mb-2">Valor ({selectedPriceType === 'fixed' ? '$' : '%'})</label>
                                 <input
-                                    type="number"
-                                    required
-                                    min="0"
-                                    step="0.01"
-                                    autoFocus
+                                    type="number" required min="0" step="0.01" autoFocus
                                     placeholder={selectedPriceType === 'fixed' ? 'Ej: 15000' : 'Ej: 10'}
-                                    value={selectedPriceValue}
-                                    onChange={e => setSelectedPriceValue(e.target.value)}
+                                    value={selectedPriceValue} onChange={e => setSelectedPriceValue(e.target.value)}
                                     className="w-full p-3 border-2 border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-900 rounded-xl font-black text-xl outline-none focus:border-emerald-500 dark:text-white"
                                 />
                             </div>

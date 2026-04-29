@@ -5,6 +5,8 @@ import qrcode
 import threading
 import time
 import requests
+import json
+import tempfile
 from PIL import Image
 from reportlab.lib.utils import ImageReader
 from werkzeug.utils import secure_filename
@@ -26,6 +28,9 @@ from reportlab.lib.pagesizes import A4
 from reportlab.platypus import Paragraph
 from reportlab.lib.styles import ParagraphStyle
 from app.services.tiendanube_service import tn_service # <--- SERVICIO IMPORTADO
+
+
+SYNC_PROGRESS_FILE = os.path.join(tempfile.gettempdir(), 'tn_sync_progress.json')
 
 # ==========================================
 # 1. CRUD DE CATEGORÍAS
@@ -876,92 +881,86 @@ def publish_product_to_cloud(id):
         return jsonify({"msg": "Se subió pero falló al guardar IDs locales", "error": str(e)}), 500
 
 
+def background_full_sync(app):
+    """Proceso pesado en segundo plano con barra de progreso y LOGS DETALLADOS"""
+    with app.app_context():
+        try:
+            # Contadores para el log final
+            actualizados = 0
+            errores = 0
+            
+            with open(SYNC_PROGRESS_FILE, 'w') as f:
+                json.dump({"is_running": True, "current": 0, "total": 1, "message": "Preparando catálogo..."}, f)
+
+            productos = Producto.query.filter(Producto.tiendanube_id.isnot(None)).all()
+            total_productos = len(productos)
+            
+            print(f"🔄 [BACKGROUND] Iniciando Sync Masiva de {total_productos} productos con Tienda Nube...")
+
+            for i, prod in enumerate(productos):
+                # Actualiza la barra de progreso en React
+                with open(SYNC_PROGRESS_FILE, 'w') as f:
+                    json.dump({"is_running": True, "current": i, "total": total_productos, "message": f"Sincronizando: {prod.nombre}"}, f)
+                
+                try:
+                    # 1. Actualizamos estructura y variantes nuevas (Vital para que no falle la estampa)
+                    tn_service.update_product_data(prod)
+                    tn_service.sync_missing_variants(prod)
+                    
+                    # 2. Sincronizamos stock y precio de cada variante existente
+                    for var in prod.variantes:
+                        if var.tiendanube_variant_id:
+                            stock_actual = var.inventario.stock_actual if var.inventario else 0
+                            
+                            tn_service.update_variant_stock(prod.tiendanube_id, var.tiendanube_variant_id, stock_actual)
+                            tn_service.update_variant_price(prod.tiendanube_id, var.tiendanube_variant_id, prod.precio)
+                            
+                            # --- LOG DETALLADO MANTENIDO ---
+                            print(f"✅ TN Sync OK: {var.codigo_sku} -> Stock {stock_actual} | Precio Local Base: ${prod.precio}")
+                            actualizados += 1
+                            
+                except Exception as sync_err:
+                    print(f"❌ TN Sync Error en producto {prod.nombre}: {sync_err}")
+                    errores += 1
+
+            # Terminó con éxito
+            with open(SYNC_PROGRESS_FILE, 'w') as f:
+                json.dump({"is_running": False, "current": total_productos, "total": total_productos, "message": "¡Sincronización completada exitosamente!"}, f)
+            
+            # --- LOG FINAL MANTENIDO ---
+            print(f"🏁 [BACKGROUND] Sync Finalizada. Exitos: {actualizados} | Errores: {errores}")
+
+        except Exception as e:
+            with open(SYNC_PROGRESS_FILE, 'w') as f:
+                json.dump({"is_running": False, "current": 0, "total": 1, "message": f"Error crítico: {str(e)}"}, f)
+            print(f"🔥 Error Crítico en Hilo de Sincronización: {e}")
+
+
 # ==========================================
-# 15. Forzar sincronización con Tienda Nube (STOCK Y PRECIOS)
+# 15. Forzar sincronización con Tienda Nube (FULL SYNC + PROGRESO)
 # ==========================================
 @bp.route('/sync/force-tiendanube', methods=['POST'])
 @jwt_required()
 def force_sync_tiendanube():
+    # Disparamos el hilo secundario para no bloquear al usuario
+    app = current_app._get_current_object()
+    thread = threading.Thread(target=background_full_sync, args=(app,))
+    thread.daemon = True 
+    thread.start()
+    return jsonify({"msg": "Sincronización iniciada en segundo plano"}), 202
+
+@bp.route('/sync/status', methods=['GET'])
+@jwt_required()
+def get_sync_status():
+    # Esta ruta es consultada por React cada 3 segundos para dibujar la barra
     try:
-        # 1. FASE RÁPIDA: Leer Base de Datos Local
-        # Recopilamos toda la info necesaria ANTES de lanzar el hilo
-        productos = Producto.query.filter(Producto.tiendanube_id.isnot(None)).all()
-        lista_para_sync = []
-        
-        for prod in productos:
-            for var in prod.variantes:
-                if var.tiendanube_variant_id:
-                    # Obtenemos el stock actual de la DB
-                    stock_db = var.inventario.stock_actual if var.inventario else 0
-                    
-                    # Guardamos en una lista plana los datos puros (AGREGAMOS EL PRECIO)
-                    lista_para_sync.append({
-                        'sku': var.codigo_sku,
-                        'prod_id': prod.tiendanube_id,
-                        'var_id': var.tiendanube_variant_id,
-                        'stock': stock_db,
-                        'precio': prod.precio  # <--- NUEVO: Capturamos el precio local
-                    })
-        
-        if not lista_para_sync:
-             return jsonify({"msg": "No hay productos vinculados para sincronizar"}), 200
-
-        # 2. FASE DE LANZAMIENTO: Iniciar Hilo
-        # Creamos el hilo pasándole la lista de datos
-        hilo = threading.Thread(target=run_sync_background, args=(lista_para_sync,))
-        hilo.daemon = True 
-        hilo.start()
-
-        # 3. RESPUESTA INMEDIATA
-        return jsonify({
-            "msg": "Sincronización iniciada en segundo plano", 
-            "detalles": f"Se están procesando {len(lista_para_sync)} variantes. Actualizando Stock y Precios."
-        }), 202
-
-    except Exception as e:
-        print(f"Error iniciando sync: {e}")
-        return jsonify({"msg": "Error general al iniciar sincronización", "error": str(e)}), 500
-
-
-# Función auxiliar que correrá "en las sombras"
-def run_sync_background(items_list):
-    """
-    Esta función se ejecuta en un hilo paralelo.
-    No bloquea al usuario ni al servidor.
-    """
-    print(f"🔄 [BACKGROUND] Iniciando Sync Masiva de {len(items_list)} variantes...")
-    actualizados = 0
-    errores = 0
-    
-    # Importamos el servicio aquí adentro para evitar problemas con los hilos
-    from app.services.tiendanube_service import tn_service
-    
-    for item in items_list:
-        try:
-            # 1. Sincronizamos el Stock
-            tn_service.update_variant_stock(
-                item['prod_id'], 
-                item['var_id'], 
-                item['stock']
-            )
-            
-            # 2. Sincronizamos el Precio (NUEVO)
-            # Pasamos el precio local, y tn_service le aplicará el 1.18 automáticamente
-            tn_service.update_variant_price(
-                tn_product_id=item['prod_id'],
-                tn_variant_id=item['var_id'],
-                precio_local=item['precio']
-            )
-            
-            print(f"✅ TN Sync OK: {item['sku']} -> Stock {item['stock']} | Precio Local Base: ${item['precio']}")
-            actualizados += 1
-        except Exception as e:
-            print(f"❌ TN Sync Error {item['sku']}: {e}")
-            errores += 1
-            
-    print(f"🏁 [BACKGROUND] Sync Finalizada. Exitos: {actualizados} | Errores: {errores}")
-
-
+        if os.path.exists(SYNC_PROGRESS_FILE):
+            with open(SYNC_PROGRESS_FILE, 'r') as f:
+                data = json.load(f)
+            return jsonify(data), 200
+        return jsonify({"is_running": False}), 200
+    except:
+        return jsonify({"is_running": False}), 200
 
 @bp.route('/sync/force-prices-update', methods=['GET'])
 @jwt_required()
