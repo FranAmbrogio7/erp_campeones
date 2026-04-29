@@ -59,7 +59,6 @@ const POSPage = () => {
   const [manualTerm, setManualTerm] = useState('');
   const [manualResults, setManualResults] = useState([]);
 
-  // --- NUEVO: ESTADO PARA CONTROLAR EL DROPDOWN ---
   const [showDropdown, setShowDropdown] = useState(false);
 
   const [categories, setCategories] = useState([]);
@@ -72,7 +71,6 @@ const POSPage = () => {
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [selectedMethod, setSelectedMethod] = useState(null);
 
-  // Estados de Precio, Recargo y Descuento
   const [customTotal, setCustomTotal] = useState(null);
   const [isEditingPrice, setIsEditingPrice] = useState(false);
   const [editingItemId, setEditingItemId] = useState(null);
@@ -97,7 +95,7 @@ const POSPage = () => {
   const inputRef = useRef(null);
   const searchInputRef = useRef(null);
   const creditNoteInputRef = useRef(null);
-  const searchContainerRef = useRef(null); // <--- NUEVO: Ref para el contenedor de búsqueda
+  const searchContainerRef = useRef(null);
 
   useScanDetection(inputRef);
 
@@ -105,7 +103,6 @@ const POSPage = () => {
     localStorage.setItem('pos_multi_carts_backup', JSON.stringify(allCarts));
   }, [allCarts]);
 
-  // --- CÁLCULOS MATEMÁTICOS ---
   const subtotalCalculado = cart.reduce((sum, item) => sum + item.subtotal, 0);
   const surchargeAmount = subtotalCalculado * (surchargePercent / 100);
   const discountAmount = subtotalCalculado * (discountPercent / 100);
@@ -168,7 +165,6 @@ const POSPage = () => {
     else if (document.activeElement !== creditNoteInputRef.current) inputRef.current?.focus();
   }, [cart, isRegisterOpen, isEditingPrice, editingItemId, isConfirmModalOpen, isReservationModalOpen, isSearchMode, zoomImage, isCustomModalOpen]);
 
-  // --- NUEVO: CERRAR DROPDOWN AL HACER CLIC AFUERA ---
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
@@ -179,11 +175,10 @@ const POSPage = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // --- BÚSQUEDA ORDENADA POR MAS VENDIDOS ---
   useEffect(() => {
     if (!manualTerm.trim() && !selectedCat && !selectedSpec) {
       setManualResults([]);
-      setShowDropdown(false); // Ocultar si no hay búsqueda
+      setShowDropdown(false);
       return;
     }
     const delaySearch = setTimeout(async () => {
@@ -194,13 +189,12 @@ const POSPage = () => {
         if (selectedSpec) params.specific_id = selectedSpec;
         const res = await api.get('/products', { params });
         setManualResults(res.data.products || []);
-        setShowDropdown(true); // Mostrar cuando lleguen los resultados
+        setShowDropdown(true);
       } catch (error) { console.error(error); }
     }, 300);
     return () => clearTimeout(delaySearch);
   }, [manualTerm, isSearchMode, selectedCat, selectedSpec]);
 
-  // --- NUEVO: CERRAR DROPDOWN CON ESCAPE ---
   const handleSearchKeyDown = (e) => {
     if (e.key === 'Escape') {
       setShowDropdown(false);
@@ -208,19 +202,24 @@ const POSPage = () => {
     }
   };
 
+  // --- NUEVO: CAPTURA LA ESTAMPA AL BUSCAR MANUALMENTE ---
   const handleManualAdd = (product, variant) => {
     const itemFormatted = {
       id_variante: variant.id_variante,
       sku: variant.sku,
       nombre: product.nombre,
       talle: variant.talle,
+      estampa: variant.estampa, // <--- GUARDAMOS LA ESTAMPA
       precio: product.precio,
       stock_actual: variant.stock
     };
     addToCart(itemFormatted);
-    toast.success(`${product.nombre} (${variant.talle}) agregado`);
+
+    // Feedback visual con la estampa
+    const estampaText = variant.estampa && variant.estampa !== 'Standard' ? ` - ${variant.estampa}` : '';
+    toast.success(`${product.nombre} (${variant.talle}${estampaText}) agregado`);
+
     playSound('beep');
-    // Mantenemos el foco por si quieren cargar otra variante de la misma remera
     setTimeout(() => searchInputRef.current?.focus(), 100);
   };
 
@@ -367,10 +366,17 @@ const POSPage = () => {
       if (!isSplitPayment && selectedMethod) metodoNombre = selectedMethod.nombre;
       if (isSplitPayment) metodoNombre = "Pago Combinado";
 
+      // --- TRUCO PARA EL TICKET DE PAPEL ---
+      // Sumamos la estampa al talle para que se imprima automáticamente
+      const cartForTicket = cart.map(i => ({
+        ...i,
+        talle: i.estampa && i.estampa !== 'Standard' ? `${i.talle} - ${i.estampa}` : i.talle
+      }));
+
       setTicketData({
         id_venta: res.data.id,
         fecha: new Date().toLocaleString(),
-        items: cart,
+        items: cartForTicket,
         total: totalFinal,
         cliente: "Consumidor Final",
         metodo: metodoNombre
@@ -495,7 +501,6 @@ const POSPage = () => {
                 )}
               </div>
 
-              {/* CONTENEDOR CON REF PARA DETECTAR CLICS AFUERA */}
               <div className="relative" ref={searchContainerRef}>
                 <input
                   ref={searchInputRef}
@@ -535,15 +540,21 @@ const POSPage = () => {
                               {p.liga && <span className="bg-gray-100 dark:bg-slate-700 px-1 rounded">{p.liga}</span>}
                             </div>
                             <div className="flex flex-wrap gap-2">
+                              {/* --- NUEVO: ETIQUETA VISUAL EN EL DESPLEGABLE DE BÚSQUEDA --- */}
                               {p.variantes.map(v => (
                                 <button
                                   key={v.id_variante}
                                   onClick={(e) => { e.stopPropagation(); handleManualAdd(p, v); }}
                                   disabled={v.stock === 0}
-                                  className={`text-xs px-3 py-1 rounded border transition-all flex items-center gap-1 ${v.stock > 0 ? 'hover:bg-purple-600 hover:text-white border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/20' : 'bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-slate-500 cursor-not-allowed border-gray-200 dark:border-slate-600'}`}
+                                  className={`text-xs px-3 py-1.5 rounded border transition-all flex items-center justify-between gap-2 ${v.stock > 0 ? 'hover:bg-purple-600 hover:text-white border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/20' : 'bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-slate-500 cursor-not-allowed border-gray-200 dark:border-slate-600'}`}
                                 >
-                                  <span className="font-bold">{v.talle}</span>
-                                  <span className="text-[10px] opacity-70 border-l pl-1 ml-1 border-current">{v.stock}</span>
+                                  <div className="flex flex-col items-start text-left">
+                                    <span className="font-bold">{v.talle}</span>
+                                    {v.estampa && v.estampa !== 'Standard' && (
+                                      <span className="text-[9px] uppercase tracking-wider opacity-80">{v.estampa}</span>
+                                    )}
+                                  </div>
+                                  <span className="text-[10px] font-mono opacity-70 border-l pl-2 ml-1 border-current h-full flex items-center">{v.stock}</span>
                                 </button>
                               ))}
                             </div>
@@ -697,10 +708,18 @@ const POSPage = () => {
               <div className="flex flex-col justify-between h-full">
                 <div className="pr-8 mb-2">
                   <p className="font-bold text-sm text-gray-800 dark:text-white truncate leading-tight" title={item.nombre}>{item.nombre}</p>
-                  <div className="text-[10px] text-gray-500 dark:text-slate-400 mt-1 flex gap-2">
+
+                  {/* --- NUEVO: ETIQUETA VISUAL EN EL CARRITO --- */}
+                  <div className="text-[10px] text-gray-500 dark:text-slate-400 mt-1 flex flex-wrap gap-2 items-center">
                     <span className="bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 rounded font-medium">Talle: {item.talle}</span>
+                    {item.estampa && item.estampa !== 'Standard' && (
+                      <span className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800 px-1.5 py-0.5 rounded font-bold uppercase">
+                        {item.estampa}
+                      </span>
+                    )}
                     <span className="truncate py-0.5">SKU: {item.sku}</span>
                   </div>
+
                 </div>
 
                 <div className="flex justify-between items-end pt-2 border-t border-gray-50 dark:border-slate-700/50">

@@ -89,6 +89,9 @@ def get_sales_history():
                 if d.variante:
                     nombre = d.variante.producto.nombre if d.variante.producto else "Prod. Borrado"
                     talle = d.variante.talla
+
+                    if d.variante.color and d.variante.color != 'Standard':
+                        talle += f" - {d.variante.color}"
                 else:
                     nombre = getattr(d, 'producto_nombre', 'Ítem Manual') or 'Ítem Manual'
                     talle = "-"
@@ -175,6 +178,7 @@ def scan_product(code):
             "sku": variante.codigo_sku,
             "nombre": variante.producto.nombre,
             "talle": variante.talla,
+            "estampa": variante.color, 
             "precio": float(variante.producto.precio),
             "stock_actual": stock
         }
