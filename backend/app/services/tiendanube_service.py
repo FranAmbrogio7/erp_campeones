@@ -159,13 +159,21 @@ class TiendaNubeService:
     # --- LÓGICA DE PRECIOS ---
 
     def calcular_precio_web(self, precio_local):
-        """Aplica el recargo web al precio local"""
-        if not precio_local: return 0.0
-        try:
-            precio = float(precio_local)
-            return round(precio * self.PORCENTAJE_WEB, 2)
-        except ValueError:
-            return 0.0
+            """Aplica el recargo web al precio local leyendo desde la Base de Datos"""
+            if not precio_local: return 0.0
+            try:
+                # Importación local para evitar dependencias circulares
+                from app.settings.models import Configuracion 
+                
+                # Leemos el margen de la DB. Si la tabla está vacía, usamos 1.25 de respaldo
+                margen_db = Configuracion.get_valor('margen_web', default='1.25')
+                margen = float(margen_db)
+                
+                precio = float(precio_local)
+                return round(precio * margen, 2)
+            except Exception as e:
+                print(f"⚠️ Error leyendo margen de DB: {e}. Usando fallback 1.25")
+                return round(float(precio_local) * 1.25, 2)
 
     def update_variant_price(self, tn_product_id, tn_variant_id, precio_local):
         """Actualiza SOLO el precio de una variante"""
