@@ -59,9 +59,6 @@ def create_app(config_class=Config):
     from app.clients.routes import bp as clients_bp
     app.register_blueprint(clients_bp, url_prefix='/api/clients')
 
-    from app.settings.routes import bp as settings_bp
-    app.register_blueprint(settings_bp)
-
     # 4. Ruta de Salud
     @app.route('/api/health', methods=['GET'])
     def health_check():

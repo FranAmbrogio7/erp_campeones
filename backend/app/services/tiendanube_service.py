@@ -14,7 +14,7 @@ class TiendaNubeService:
         self.user_agent = "AppGestion (tu_email@ejemplo.com)"
         
         # 2. CONFIGURACIÓN DE PRECIOS
-        self.PORCENTAJE_WEB = 1.25  # 25% de aumento para la web
+        self.PORCENTAJE_WEB = 1.26  # 26% de aumento para la web
         
         # 3. CONFIGURACIONES ESTÁNDAR DE ENVÍO
         self.PESO_ESTANDAR = 0.150  # 150 gramos (en kg)
@@ -126,11 +126,9 @@ class TiendaNubeService:
                 <p><em>Las medidas son aproximadas y pueden presentar pequeñas variaciones según el modelo o confección.</em></p>
             """
         }
-        self.DESCRIPCION_DEFAULT = """
-            <p><strong>📏 Recomendación de Talle:</strong></p>
-            <p>Te recomendamos revisar cuidadosamente la guía de talles antes de realizar tu compra. Si estás entre dos talles o preferís un calce más cómodo, aconsejamos elegir un talle más grande.</p>
-            <p><em>Las medidas son aproximadas y pueden presentar pequeñas variaciones según el modelo o confección.</em></p>
-        """
+        
+        # --- AHORA LA PLANTILLA POR DEFECTO ESTÁ VACÍA ---
+        self.DESCRIPCION_DEFAULT = ""
 
     def _get_headers(self):
         """Helper para headers comunes"""
@@ -139,6 +137,45 @@ class TiendaNubeService:
             "User-Agent": self.user_agent,
             "Content-Type": "application/json"
         }
+
+    # =======================================================
+    # FUNCIONES AUXILIARES: INTELIGENCIA DE VARIANTES
+    # =======================================================
+    def _detect_attributes(self, variantes):
+        """Detecta si el producto necesita atributos de talle o estampa"""
+        usa_talle = False
+        usa_estampa = False
+        if not variantes: 
+            return False, False
+            
+        for var in variantes:
+            t = getattr(var, 'talla', None) or getattr(var, 'talle', 'U')
+            c = getattr(var, 'color', None)
+            
+            # Si tiene un talle que NO sea U, UNICO, etc., requiere Talle
+            if t.strip().upper() not in ['U', 'UNICO', 'ÚNICO']: 
+                usa_talle = True
+            
+            # Si tiene una estampa que NO sea Standard, requiere Estampa
+            if c and c.strip() not in ['', 'Standard', 'Sin Estampa']: 
+                usa_estampa = True
+                
+        return usa_talle, usa_estampa
+
+    def _build_variant_values(self, usa_talle, usa_estampa, var):
+        """Construye el arreglo 'values' dinámicamente según lo que requiera el producto"""
+        t = getattr(var, 'talla', None) or getattr(var, 'talle', 'Único')
+        c = getattr(var, 'color', None)
+        
+        t_clean = t.strip() if t else 'Único'
+        c_clean = c.strip() if c and c.strip() not in ['', 'Standard'] else 'Sin Estampa'
+        
+        vals = []
+        if usa_talle: vals.append({"es": t_clean})
+        if usa_estampa: vals.append({"es": c_clean})
+        return vals
+
+    # =======================================================
 
     def check_connection(self):
         """Verifica si las credenciales funcionan"""
@@ -159,21 +196,13 @@ class TiendaNubeService:
     # --- LÓGICA DE PRECIOS ---
 
     def calcular_precio_web(self, precio_local):
-            """Aplica el recargo web al precio local leyendo desde la Base de Datos"""
-            if not precio_local: return 0.0
-            try:
-                # Importación local para evitar dependencias circulares
-                from app.settings.models import Configuracion 
-                
-                # Leemos el margen de la DB. Si la tabla está vacía, usamos 1.25 de respaldo
-                margen_db = Configuracion.get_valor('margen_web', default='1.25')
-                margen = float(margen_db)
-                
-                precio = float(precio_local)
-                return round(precio * margen, 2)
-            except Exception as e:
-                print(f"⚠️ Error leyendo margen de DB: {e}. Usando fallback 1.25")
-                return round(float(precio_local) * 1.25, 2)
+        """Aplica el recargo web al precio local"""
+        if not precio_local: return 0.0
+        try:
+            precio = float(precio_local)
+            return round(precio * self.PORCENTAJE_WEB, 2)
+        except ValueError:
+            return 0.0
 
     def update_variant_price(self, tn_product_id, tn_variant_id, precio_local):
         """Actualiza SOLO el precio de una variante"""
@@ -215,7 +244,6 @@ class TiendaNubeService:
             if not local_prod or not local_prod.tiendanube_id: return
             
             # 1. LÓGICA DE PLANTILLA 
-            cat_nombre = local_prod.categoria.nombre if local_prod.categoria else "General"
             descripcion_seleccionada = str(local_prod.descripcion or "").strip()
 
             if descripcion_seleccionada in self.PLANTILLAS:
@@ -225,44 +253,45 @@ class TiendaNubeService:
             else:
                 descripcion_final = descripcion_seleccionada
 
-            # --- NUEVO: PREPARAMOS TODAS LAS VARIANTES EXISTENTES PARA "ACTUALIZARLAS" ---
+            # 2. EVALUACIÓN INTELIGENTE DE ATRIBUTOS
+            usa_talle, usa_estampa = self._detect_attributes(local_prod.variantes)
+            
+            attributes_list = []
+            if usa_talle: attributes_list.append({"es": "Talle"})
+            if usa_estampa: attributes_list.append({"es": "Estampa"})
+
+            # 3. PREPARAMOS TODAS LAS VARIANTES EXISTENTES PARA "ACTUALIZARLAS"
             variants_data = []
             for var in local_prod.variantes:
-                # Solo migramos las que ya existen en TN. Las de Messi se crean en el paso siguiente
+                # Solo migramos las que ya existen en TN.
                 if var.tiendanube_variant_id:
                     stock_val = var.inventario.stock_actual if var.inventario else 0
                     precio_web = self.calcular_precio_web(local_prod.precio)
-                    nombre_talle = getattr(var, 'talla', None) or getattr(var, 'talle', "Único")
-                    
-                    color_val = getattr(var, 'color', None)
-                    nombre_estampa = "Sin Estampa"
-                    if color_val and color_val.strip() != "" and color_val.strip() != "Standard":
-                        nombre_estampa = color_val.strip()
 
                     variants_data.append({
                         "id": int(var.tiendanube_variant_id), # Fundamental mandar el ID a TN
                         "price": precio_web,
                         "stock": int(stock_val),
                         "sku": var.codigo_sku,
-                        "values": [{"es": nombre_talle}, {"es": nombre_estampa}],
+                        "values": self._build_variant_values(usa_talle, usa_estampa, var),
                         "weight": self.PESO_ESTANDAR,
                         "width": self.MEDIDAS_ESTANDAR["width"],
                         "height": self.MEDIDAS_ESTANDAR["height"],
                         "depth": self.MEDIDAS_ESTANDAR["depth"]
                     })
 
-            # 2. ENVIAR A TIENDA NUBE FORZANDO LA NUEVA ESTRUCTURA DE 2 ATRIBUTOS
+            # 4. ENVIAR A TIENDA NUBE
             url = f"{self.api_url}/products/{local_prod.tiendanube_id}"
             data = {
                 "name": {"es": local_prod.nombre},
                 "description": {"es": descripcion_final},
-                "attributes": [{"es": "Talle"}, {"es": "Estampa"}], # <--- LA MAGIA ESTÁ AQUÍ
+                "attributes": attributes_list, 
                 "variants": variants_data
             }
 
             try:
                 requests.put(url, json=data, headers=self._get_headers())
-                print(f"✅ TN Sync: Estructura de producto actualizada a 2 atributos (ID: {local_prod.tiendanube_id})")
+                print(f"✅ TN Sync: Estructura de producto actualizada dinámicamente (ID: {local_prod.tiendanube_id})")
             except Exception as e:
                 print(f"⚠️ Error actualizando producto en TN: {e}")
 
@@ -293,7 +322,7 @@ class TiendaNubeService:
             
 
     def create_product_in_cloud(self, local_prod):
-        """Sube un producto nuevo completo a Tienda Nube (Ahora con Talle y Estampa)"""
+        """Sube un producto nuevo a Tienda Nube con lógica inteligente de variantes"""
         try:
             if not self.access_token or not self.api_url: 
                 return {"success": False, "error": "No hay credenciales configuradas"}
@@ -301,7 +330,7 @@ class TiendaNubeService:
             if not local_prod:
                 raise ValueError("El producto local es None")
 
-            # --- 1. LÓGICA DE DESCRIPCIÓN POR DESPLEGABLE (ACTUALIZADA) ---
+            # --- 1. LÓGICA DE DESCRIPCIÓN POR DESPLEGABLE ---
             descripcion_seleccionada = str(local_prod.descripcion or "").strip()
             
             if descripcion_seleccionada in self.PLANTILLAS:
@@ -311,27 +340,23 @@ class TiendaNubeService:
             else:
                 descripcion_final = descripcion_seleccionada
 
-            # --- 2. PREPARAR VARIANTES (TALLE + ESTAMPA) ---
+            # --- 2. LÓGICA INTELIGENTE DE ATRIBUTOS ---
+            usa_talle, usa_estampa = self._detect_attributes(local_prod.variantes)
+            
+            attributes_list = []
+            if usa_talle: attributes_list.append({"es": "Talle"})
+            if usa_estampa: attributes_list.append({"es": "Estampa"})
+
             variants_data = []
             for var in local_prod.variantes:
                 stock_val = var.inventario.stock_actual if var.inventario else 0
                 precio_web = self.calcular_precio_web(local_prod.precio)
-                
-                # Definimos el Talle
-                nombre_talle = getattr(var, 'talla', None) or getattr(var, 'talle', "Único")
-                
-                # Definimos la Estampa (Reciclando la columna 'color')
-                color_val = getattr(var, 'color', None)
-                nombre_estampa = "Sin Estampa"
-                if color_val and color_val.strip() != "" and color_val.strip() != "Standard":
-                    nombre_estampa = color_val.strip()
 
                 variants_data.append({
                     "price": precio_web,
                     "stock": int(stock_val),
                     "sku": var.codigo_sku,
-                    # ENVIAMOS LAS 2 PROPIEDADES EN ORDEN: [1° Talle, 2° Estampa]
-                    "values": [{"es": nombre_talle}, {"es": nombre_estampa}],
+                    "values": self._build_variant_values(usa_talle, usa_estampa, var),
                     "weight": self.PESO_ESTANDAR,
                     "width": self.MEDIDAS_ESTANDAR["width"],
                     "height": self.MEDIDAS_ESTANDAR["height"],
@@ -342,8 +367,7 @@ class TiendaNubeService:
             payload = {
                 "name": {"es": local_prod.nombre},
                 "description": {"es": descripcion_final},
-                # DECLARAMOS LOS 2 ATRIBUTOS GLOBALES DEL PRODUCTO
-                "attributes": [{"es": "Talle"}, {"es": "Estampa"}], 
+                "attributes": attributes_list, 
                 "variants": variants_data,
                 "images": [] 
             }
@@ -381,12 +405,12 @@ class TiendaNubeService:
             return None
 
     # ==========================================
-    # NUEVOS MÉTODOS PARA SINCRONIZAR VARIANTES
+    # MÉTODOS PARA SINCRONIZAR VARIANTES INDIVIDUALES
     # ==========================================
     def create_variant_in_cloud(self, tn_product_id, local_variant):
         """
         Crea una variante específica en un producto existente de Tienda Nube.
-        Actualizada para soportar Estampa.
+        Respeta la estructura dinámica del padre.
         """
         try:
             if not self.access_token or not self.api_url:
@@ -398,22 +422,15 @@ class TiendaNubeService:
             
             stock_val = local_variant.inventario.stock_actual if local_variant.inventario else 0
             
-            # Definimos el Talle
-            nombre_talle = getattr(local_variant, 'talla', None) or getattr(local_variant, 'talle', "Único")
+            # El hijo respeta las reglas que determinan las variantes del padre
+            usa_talle, usa_estampa = self._detect_attributes(prod_padre.variantes)
 
-            # Definimos la Estampa
-            color_val = getattr(local_variant, 'color', None)
-            nombre_estampa = "Sin Estampa"
-            if color_val and color_val.strip() != "" and color_val.strip() != "Standard":
-                nombre_estampa = color_val.strip()
-
-            # Payload con medidas para que los nuevos talles también tengan peso
+            # Payload 
             payload = {
                 "price": precio_web,
                 "stock": int(stock_val),
                 "sku": local_variant.codigo_sku or "",
-                # ENVIAMOS LAS 2 PROPIEDADES EN ORDEN: [1° Talle, 2° Estampa]
-                "values": [{"es": nombre_talle}, {"es": nombre_estampa}],
+                "values": self._build_variant_values(usa_talle, usa_estampa, local_variant),
                 "weight": self.PESO_ESTANDAR,
                 "width": self.MEDIDAS_ESTANDAR["width"],
                 "height": self.MEDIDAS_ESTANDAR["height"],
@@ -424,7 +441,7 @@ class TiendaNubeService:
             response = requests.post(url, json=payload, headers=self._get_headers())
 
             if response.status_code == 201:
-                print(f"✅ TN Sync: Variante '{nombre_talle} - {nombre_estampa}' creada exitosamente.")
+                print(f"✅ TN Sync: Variante creada exitosamente.")
                 return {"success": True, "tn_data": response.json()}
             else:
                 error_msg = f"API Error {response.status_code}: {response.text}"
