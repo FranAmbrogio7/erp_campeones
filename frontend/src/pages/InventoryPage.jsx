@@ -54,14 +54,17 @@ const InventoryPage = () => {
     const [filterNoImage, setFilterNoImage] = useState(false);
 
     const [isSyncing, setIsSyncing] = useState(false);
-    const [syncProgress, setSyncProgress] = useState(null); // NUEVO ESTADO PARA LA BARRA
+    const [syncProgress, setSyncProgress] = useState(null);
     const [processingId, setProcessingId] = useState(null);
 
     const [showForm, setShowForm] = useState(false);
+
+    // --- ESTADO ACTUALIZADO CON TIPO DE ARTÍCULO ---
     const [newProduct, setNewProduct] = useState({
         nombre: '', precio: '', stock: '10', sku: '',
-        categoria_id: '', categoria_especifica_id: '', descripcion: '', estampa: ''
+        categoria_id: '', categoria_especifica_id: '', descripcion: '', estampa: '', tipo_articulo: 'estandar'
     });
+
     const [selectedGridType, setSelectedGridType] = useState('ADULTO');
     const [selectedFile, setSelectedFile] = useState(null);
 
@@ -140,11 +143,6 @@ const InventoryPage = () => {
         return () => clearTimeout(delayFn);
     }, [searchTerm, selectedCat, selectedSpec, viewMode, hideOutOfStock, filterExactStock, filterSize, filterNoImage, sortBy]);
 
-    // =========================================================
-    // NUEVO: SISTEMA DE POLLING PARA LA BARRA DE PROGRESO
-    // =========================================================
-
-    // 1. Revisar si hay un proceso corriendo al abrir la página
     useEffect(() => {
         const checkActiveSync = async () => {
             try {
@@ -158,7 +156,6 @@ const InventoryPage = () => {
         if (token) checkActiveSync();
     }, [token]);
 
-    // 2. Efecto de Polling que pregunta cada 3 segundos
     useEffect(() => {
         let interval;
         if (isSyncing) {
@@ -168,12 +165,11 @@ const InventoryPage = () => {
                     if (res.data && res.data.is_running) {
                         setSyncProgress(res.data);
                     } else {
-                        // Terminó
                         setIsSyncing(false);
                         setSyncProgress(res.data);
                         playSound('success');
                         toast.success("Sincronización Completada");
-                        setTimeout(() => setSyncProgress(null), 8000); // La barra verde se queda 8 segs y desaparece
+                        setTimeout(() => setSyncProgress(null), 8000);
                         clearInterval(interval);
                     }
                 } catch (e) {
@@ -200,8 +196,6 @@ const InventoryPage = () => {
             setSyncProgress(null);
         }
     };
-
-    // =========================================================
 
     const toggleSelect = (id) => {
         const newSet = new Set(selectedItems);
@@ -305,7 +299,8 @@ const InventoryPage = () => {
             categoria_id: product.categoria_id,
             categoria_especifica_id: product.categoria_especifica_id,
             descripcion: product.descripcion,
-            estampa: ''
+            estampa: '',
+            tipo_articulo: 'estandar'
         });
 
         const currentSizes = product.variantes.map(v => v.talle).sort().join(',');
@@ -331,19 +326,34 @@ const InventoryPage = () => {
             const fd = new FormData();
             fd.append('nombre', newProduct.nombre);
             fd.append('precio', newProduct.precio);
-            fd.append('talle', SIZE_GRIDS[selectedGridType].join(','));
             fd.append('stock', newProduct.stock);
             fd.append('categoria_id', newProduct.categoria_id);
             if (newProduct.categoria_especifica_id) fd.append('categoria_especifica_id', newProduct.categoria_especifica_id);
             fd.append('descripcion', newProduct.descripcion);
-            if (newProduct.estampa && newProduct.estampa.trim() !== '') { fd.append('estampa', newProduct.estampa); }
+
+            // --- LÓGICA INTELIGENTE BASADA EN EL TIPO DE ARTÍCULO ---
+            let finalTalle = SIZE_GRIDS[selectedGridType].join(',');
+            let finalEstampa = newProduct.estampa || '';
+
+            if (newProduct.tipo_articulo === 'simple') {
+                finalTalle = 'U';
+                finalEstampa = '';
+            } else if (newProduct.tipo_articulo === 'estandar') {
+                finalEstampa = '';
+            }
+
+            fd.append('talle', finalTalle);
+            if (finalEstampa.trim() !== '') {
+                fd.append('estampa', finalEstampa);
+            }
+
             if (selectedFile) fd.append('imagen', selectedFile);
 
             await api.post('/products', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
             toast.success("Producto Creado", { id: toastId });
             playSound('success');
             setShowForm(false);
-            setNewProduct({ nombre: '', precio: '', stock: '10', sku: '', categoria_id: '', categoria_especifica_id: '', descripcion: '', estampa: '' });
+            setNewProduct({ nombre: '', precio: '', stock: '10', sku: '', categoria_id: '', categoria_especifica_id: '', descripcion: '', estampa: '', tipo_articulo: 'estandar' });
             setSelectedFile(null);
             fetchProducts(1);
         } catch (e) { toast.error("Error creando", { id: toastId }); playSound('error'); }
@@ -458,7 +468,6 @@ const InventoryPage = () => {
                         <button onClick={handlePrintLabelsByFilter} className="bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 px-3 py-2 rounded-lg flex items-center hover:bg-indigo-100 font-bold text-xs"><Tags size={16} className="mr-2" /> Etiquetas (Filtro)</button>
                         <button onClick={() => setIsBulkModalOpen(true)} className="bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-3 py-2 rounded-lg flex items-center hover:bg-emerald-100 font-bold text-xs"><TrendingUp size={16} className="mr-2" /> Aumentos Grales</button>
 
-                        {/* BOTON DE SYNC ACTUALIZADO */}
                         <button onClick={handleForceSync} disabled={isSyncing} className={`flex items-center px-3 py-2 rounded-lg text-xs font-bold border transition-all ${isSyncing ? 'bg-gray-100 dark:bg-slate-800 text-gray-400' : 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-900/30'}`}>
                             <RefreshCw size={14} className={`mr-2 ${isSyncing ? "animate-spin" : ""}`} /> {isSyncing ? "Sincronizando..." : "Sync Nube"}
                         </button>
@@ -470,7 +479,6 @@ const InventoryPage = () => {
 
             {!showForm && (
                 <div className="flex flex-col gap-3 z-10">
-                    {/* FILTROS BÁSICOS */}
                     <div className="bg-white dark:bg-slate-800 p-2 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 flex flex-col md:flex-row gap-2 animate-fade-in transition-colors">
                         <div className="relative flex-1">
                             <Search className="absolute left-3 top-3 text-gray-400" size={18} />
@@ -536,9 +544,20 @@ const InventoryPage = () => {
                     <h3 className="font-bold text-lg mb-4 text-gray-800 dark:text-white flex items-center"><Plus className="mr-2 text-blue-500" /> Alta Rápida de Producto</h3>
 
                     <form onSubmit={handleSubmitCreate} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
+                        {/* --- FILA 1 --- */}
                         <div className="md:col-span-3">
                             <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Nombre</label>
                             <input id="inputName" autoFocus required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" placeholder="Ej: Camiseta..." value={newProduct.nombre} onChange={e => setNewProduct({ ...newProduct, nombre: e.target.value })} />
+                        </div>
+
+                        {/* NUEVO: TIPO DE ARTÍCULO */}
+                        <div className="md:col-span-3">
+                            <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Tipo de Artículo</label>
+                            <select className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white" value={newProduct.tipo_articulo || 'estandar'} onChange={e => setNewProduct({ ...newProduct, tipo_articulo: e.target.value })}>
+                                <option value="simple">📦 Simple (Llaveros, etc)</option>
+                                <option value="estandar">👕 Estándar (Buzos, Shorts)</option>
+                                <option value="personalizable">⭐ Personalizable (Camisetas)</option>
+                            </select>
                         </div>
 
                         <div className="md:col-span-2">
@@ -553,9 +572,7 @@ const InventoryPage = () => {
 
                         <div className="md:col-span-2">
                             <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Plantilla TN</label>
-                            <select className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white text-xs font-bold"
-                                value={newProduct.descripcion}
-                                onChange={e => setNewProduct({ ...newProduct, descripcion: e.target.value })}>
+                            <select className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white text-xs font-bold" value={newProduct.descripcion} onChange={e => setNewProduct({ ...newProduct, descripcion: e.target.value })}>
                                 <option value="">(Genérica)</option>
                                 <option value="Camisetas Nacionales">Camisetas Nacionales</option>
                                 <option value="Camisetas Retro">Camisetas Retro</option>
@@ -568,27 +585,35 @@ const InventoryPage = () => {
                             </select>
                         </div>
 
-                        <div className="md:col-span-3">
-                            <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Estampa (Opcional)</label>
-                            <input className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white px-2" placeholder="Ej: Messi 10..." value={newProduct.estampa || ''} onChange={e => setNewProduct({ ...newProduct, estampa: e.target.value })} />
-                        </div>
-
+                        {/* --- FILA 2 --- */}
                         <div className="md:col-span-2">
                             <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Precio</label>
                             <input type="number" required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white px-2" placeholder="$" value={newProduct.precio} onChange={e => setNewProduct({ ...newProduct, precio: e.target.value })} />
                         </div>
 
-                        <div className="md:col-span-2">
-                            <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Curva</label>
-                            <select className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg text-xs font-bold outline-none dark:text-white px-1" value={selectedGridType} onChange={e => setSelectedGridType(e.target.value)}>{Object.keys(SIZE_GRIDS).map(g => <option key={g} value={g}>{g}</option>)}</select>
-                        </div>
+                        {/* VISIBILIDAD CONDICIONAL: CURVA DE TALLES */}
+                        {newProduct.tipo_articulo !== 'simple' && (
+                            <div className="md:col-span-2">
+                                <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Curva</label>
+                                <select className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg text-xs font-bold outline-none dark:text-white px-1" value={selectedGridType} onChange={e => setSelectedGridType(e.target.value)}>{Object.keys(SIZE_GRIDS).map(g => <option key={g} value={g}>{g}</option>)}</select>
+                            </div>
+                        )}
+
+                        {/* VISIBILIDAD CONDICIONAL: ESTAMPA */}
+                        {newProduct.tipo_articulo === 'personalizable' && (
+                            <div className="md:col-span-3">
+                                <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Estampa (Jugador)</label>
+                                <input className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white px-2" placeholder="Ej: Messi 10..." value={newProduct.estampa || ''} onChange={e => setNewProduct({ ...newProduct, estampa: e.target.value })} />
+                            </div>
+                        )}
 
                         <div className="md:col-span-2">
-                            <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Stock por Talle</label>
+                            <label className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase">Stock {newProduct.tipo_articulo !== 'simple' ? 'x Talle' : 'Total'}</label>
                             <input type="number" required className="w-full border-2 border-gray-100 dark:border-slate-700 bg-gray-50 dark:bg-slate-900 p-2.5 rounded-lg text-center font-bold outline-none focus:border-blue-400 dark:focus:border-blue-600 dark:text-white px-1" value={newProduct.stock} onChange={e => setNewProduct({ ...newProduct, stock: e.target.value })} />
                         </div>
 
-                        <div className="md:col-span-6 mt-2">
+                        {/* ESPACIO DINÁMICO DEL BOTÓN */}
+                        <div className={`mt-2 ${newProduct.tipo_articulo === 'simple' ? 'md:col-span-8' : (newProduct.tipo_articulo === 'estandar' ? 'md:col-span-6' : 'md:col-span-3')}`}>
                             <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-xl font-bold shadow-md transition-all active:scale-[0.99]">GUARDAR PRODUCTO</button>
                         </div>
                     </form>
@@ -682,7 +707,6 @@ const InventoryPage = () => {
                 </div>
             </div>
 
-            {/* WIDGET FLOTANTE DE BARRA DE PROGRESO */}
             {syncProgress && (
                 <div className="fixed bottom-6 right-6 bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-2xl border border-blue-100 dark:border-slate-700 z-[100] w-80 animate-fade-in-up transition-colors">
                     <div className="flex justify-between items-center mb-3">
