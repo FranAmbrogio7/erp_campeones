@@ -14,7 +14,7 @@ class TiendaNubeService:
         self.user_agent = "AppGestion (tu_email@ejemplo.com)"
         
         # 2. CONFIGURACIÓN DE PRECIOS
-        self.PORCENTAJE_WEB = 1.25  # 25% de aumento para la web
+        self.PORCENTAJE_WEB = 1.26  # 25% de aumento para la web
         
         # 3. CONFIGURACIONES ESTÁNDAR DE ENVÍO
         self.PESO_ESTANDAR = 0.150  # 150 gramos (en kg)
