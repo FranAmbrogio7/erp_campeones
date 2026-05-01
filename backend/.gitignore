@@ -20,12 +20,18 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtualenv
+# Entornos virtuales
+.venv/
 venv/
 env/
-ENV/
-.env.environment/
-.environment/
+
+# Archivos de estado local / Config dinámica
+margin_sync_status.json
+tn_config.json
+
+# Cache de Python
+__pycache__/
+*.pyc
 
 # Environment variables
 .env
@@ -40,15 +46,3 @@ ENV/
 .vscode/
 .idea/
 
-# Entornos virtuales
-.venv/
-venv/
-env/
-
-# Archivos de estado local / Config dinámica
-margin_sync_status.json
-tn_config.json
-
-# Cache de Python
-__pycache__/
-*.pyc
