@@ -39,3 +39,16 @@ ENV/
 # IDE
 .vscode/
 .idea/
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Archivos de estado local / Config dinámica
+margin_sync_status.json
+tn_config.json
+
+# Cache de Python
+__pycache__/
+*.pyc
