@@ -1,0 +1,33 @@
+# =========================
+# IGNORAR EN TODO EL PROYECTO
+# =========================
+.DS_Store
+.Rhistory
+.vscode/
+.idea/
+
+# =========================
+# BACKEND (Python / Flask)
+# =========================
+backend/venv/
+backend/.venv/
+backend/env/
+backend/__pycache__/
+backend/*.pyc
+backend/.env
+backend/app/products/margin_sync_status.json
+backend/app/services/tn_config.json
+*.db
+*.sqlite3
+
+# =========================
+# FRONTEND (React / Vite)
+# =========================
+frontend/node_modules/
+frontend/dist/
+frontend/build/
+frontend/.env
+frontend/.env.*
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
