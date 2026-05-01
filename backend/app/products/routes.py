@@ -28,6 +28,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.platypus import Paragraph
 from reportlab.lib.styles import ParagraphStyle
 from app.services.tiendanube_service import tn_service # <--- SERVICIO IMPORTADO
+from threading import Thread
 
 
 SYNC_PROGRESS_FILE = os.path.join(tempfile.gettempdir(), 'tn_sync_progress.json')
@@ -849,9 +850,13 @@ def test_cloud_connection():
     else:
         return jsonify({"msg": "❌ Falló la conexión", "error": result.get('error')}), 400
 
+
+
 @bp.route('/<int:id>/publish', methods=['POST'])
 @jwt_required()
 def publish_product_to_cloud(id):
+    import os
+    print(f"DEBUG TOKEN: {os.getenv('TIENDANUBE_ACCESS_TOKEN')}")
     prod = Producto.query.get_or_404(id)
 
     if prod.tiendanube_id:
@@ -860,8 +865,10 @@ def publish_product_to_cloud(id):
     result = tn_service.create_product_in_cloud(prod)
 
     if not result['success']:
+        # Agregá este print para ver qué dice Tienda Nube
+        print(f"❌ ERROR REAL DE TIENDA NUBE: {result['error']}") 
         return jsonify({"msg": "Error al subir a Tienda Nube", "error": result['error']}), 500
-
+        
     tn_data = result['tn_data']
     prod.tiendanube_id = tn_data['id']
     prod.sincronizado_web = True
@@ -1147,3 +1154,79 @@ def bulk_price_selected():
         db.session.rollback()
         print(f"Error bulk_price: {e}")
         return jsonify({"msg": f"Error al actualizar: {str(e)}"}), 500
+
+
+@bp.route('/tiendanube/margen/status', methods=['GET'])
+@jwt_required()
+def get_tn_margen_status():
+    """Devuelve el progreso actual de la sincronización de precios"""
+    status_file = os.path.join(os.path.dirname(__file__), 'margin_sync_status.json')
+    try:
+        if os.path.exists(status_file):
+            with open(status_file, 'r') as f:
+                return jsonify(json.load(f)), 200
+    except Exception:
+        pass
+    return jsonify({"is_running": False, "current": 0, "total": 0, "message": ""}), 200
+
+@bp.route('/tiendanube/margen', methods=['GET', 'POST'])
+@jwt_required()
+def manage_tn_margen():
+    from app.services.tiendanube_service import tn_service
+    from app.products.models import Producto  # Aseguramos la ruta correcta del modelo
+    
+    status_file = os.path.join(os.path.dirname(__file__), 'margin_sync_status.json')
+    
+    # Helper para reportar el progreso al frontend
+    def update_status(is_running, current, total, message):
+        try:
+            with open(status_file, 'w') as f:
+                json.dump({"is_running": is_running, "current": current, "total": total, "message": message}, f)
+        except Exception:
+            pass
+
+    if request.method == 'GET':
+        return jsonify({'margen': tn_service.get_margen_web()}), 200
+    
+    data = request.get_json()
+    nuevo_margen = data.get('margen')
+    if not nuevo_margen:
+        return jsonify({'msg': 'Falta el margen'}), 400
+        
+    # Verificar si ya está corriendo para evitar que el usuario lo lance dos veces
+    try:
+        if os.path.exists(status_file):
+            with open(status_file, 'r') as f:
+                current_status = json.load(f)
+                if current_status.get("is_running"):
+                    return jsonify({'msg': 'Ya hay una actualización de precios en curso. Por favor, espera a que termine.'}), 400
+    except Exception:
+        pass
+        
+    # Guardamos el nuevo valor
+    tn_service.set_margen_web(nuevo_margen)
+    
+    # Hilo fantasma
+    app = current_app._get_current_object()
+    def background_price_update(app_context):
+        update_status(True, 0, 0, "Preparando productos...")
+        with app_context.app_context():
+            productos_en_nube = Producto.query.filter(Producto.tiendanube_id != None).all()
+            
+            # Contamos el total exacto de variantes a procesar
+            total_variantes = sum(1 for p in productos_en_nube for v in p.variantes if v.tiendanube_variant_id)
+            update_status(True, 0, total_variantes, "Iniciando subida a Tienda Nube...")
+            
+            procesados = 0
+            for prod in productos_en_nube:
+                for var in prod.variantes:
+                    if var.tiendanube_variant_id:
+                        update_status(True, procesados, total_variantes, f"Actualizando: {prod.nombre[:25]}...")
+                        tn_service.update_variant_price(prod.tiendanube_id, var.tiendanube_variant_id, prod.precio)
+                        procesados += 1
+                        
+            # Finalizamos
+            update_status(False, procesados, total_variantes, "¡Precios actualizados con éxito!")
+            
+    Thread(target=background_price_update, args=(app,)).start()
+    return jsonify({'msg': 'Proceso iniciado en segundo plano'}), 200

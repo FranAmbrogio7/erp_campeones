@@ -12,13 +12,86 @@ import {
   CreditCard, Smartphone, Lock, ArrowRight, Printer, Clock,
   Search, Shirt, CalendarClock, X, AlertTriangle, Receipt, Edit3,
   Maximize2, Filter, ChevronDown, Layers, Split, Eye,
-  TrendingUp, TrendingDown, Users
+  TrendingUp, TrendingDown, Users, Sparkles
 } from 'lucide-react';
 
 const SOUNDS = {
   beep: new Audio('https://cdn.freesound.org/previews/536/536108_12152864-lq.mp3'),
   error: new Audio('https://cdn.freesound.org/previews/419/419023_8340785-lq.mp3')
 };
+
+// =========================================================================
+// SUB-COMPONENTE: Modal Seleccionador de Variante (Para el Buscador Manual)
+// =========================================================================
+const VariantSelectionModal = ({ product, isOpen, onClose, onSelect }) => {
+  if (!isOpen || !product) return null;
+
+  // Agrupamos las variantes por Talle
+  const groupedVariants = product.variantes.reduce((acc, v) => {
+      if (!acc[v.talle]) acc[v.talle] = [];
+      const estampaName = (!v.estampa || v.estampa === 'Standard') ? 'Sin Estampa' : v.estampa;
+      acc[v.talle].push({ ...v, estampaName });
+      return acc;
+  }, {});
+
+  return (
+      <div className="fixed inset-0 z-[200] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+              
+              <div className="bg-purple-50 dark:bg-slate-900 p-5 border-b border-purple-100 dark:border-slate-700 flex justify-between items-center shrink-0">
+                  <div>
+                      <h3 className="font-black text-xl text-purple-900 dark:text-white flex items-center">
+                          <Shirt className="mr-2 text-purple-500" size={24}/> Seleccionar Variante
+                      </h3>
+                      <p className="text-sm text-purple-700 dark:text-slate-400 mt-1 font-medium">{product.nombre}</p>
+                  </div>
+                  <button onClick={onClose} className="p-2 bg-white dark:bg-slate-800 text-slate-400 hover:text-red-500 rounded-full shadow-sm border border-slate-200 dark:border-slate-600 transition-colors">
+                      <X size={20} />
+                  </button>
+              </div>
+
+              <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-slate-50 dark:bg-slate-800/50">
+                  <div className="space-y-6">
+                      {Object.keys(groupedVariants).map(talle => {
+                          const detalles = groupedVariants[talle].sort((a, b) => 
+                              a.estampaName === 'Sin Estampa' ? -1 : b.estampaName === 'Sin Estampa' ? 1 : 0
+                          );
+
+                          return (
+                              <div key={talle} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                                  <h4 className="font-black text-lg text-slate-800 dark:text-white mb-3 flex items-center border-b border-slate-100 dark:border-slate-700 pb-2">
+                                      Talle {talle}
+                                  </h4>
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                      {detalles.map(det => (
+                                          <button
+                                              key={det.id_variante}
+                                              disabled={det.stock === 0}
+                                              onClick={() => onSelect(product, det)}
+                                              className={`relative flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all active:scale-95 text-center
+                                                  ${det.stock > 0 
+                                                      ? 'border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-900/20 hover:bg-purple-100 hover:border-purple-400 dark:hover:bg-purple-900/50 cursor-pointer' 
+                                                      : 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 opacity-60 cursor-not-allowed grayscale'}`}
+                                          >
+                                              <span className={`font-bold text-sm mb-1 ${det.stock > 0 ? 'text-purple-900 dark:text-purple-100' : 'text-slate-500'}`}>
+                                                  {det.estampaName}
+                                              </span>
+                                              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${det.stock > 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400'}`}>
+                                                  Stock: {det.stock}
+                                              </span>
+                                          </button>
+                                      ))}
+                                  </div>
+                              </div>
+                          );
+                      })}
+                  </div>
+              </div>
+          </div>
+      </div>
+  );
+};
+
 
 const POSPage = () => {
   const { token } = useAuth();
@@ -55,11 +128,13 @@ const POSPage = () => {
     });
   };
 
-  const [isSearchMode, setIsSearchMode] = useState(false);
+  const [isSearchMode, setIsSearchMode] = useState(true);
   const [manualTerm, setManualTerm] = useState('');
   const [manualResults, setManualResults] = useState([]);
-
   const [showDropdown, setShowDropdown] = useState(false);
+
+  // NUEVO ESTADO: Controla el Modal de Selección de Variante
+  const [variantModalProduct, setVariantModalProduct] = useState(null);
 
   const [categories, setCategories] = useState([]);
   const [specificCats, setSpecificCats] = useState([]);
@@ -160,10 +235,10 @@ const POSPage = () => {
   };
 
   useEffect(() => {
-    if (!isRegisterOpen || isEditingPrice || editingItemId || isConfirmModalOpen || isReservationModalOpen || zoomImage || isCustomModalOpen) return;
+    if (!isRegisterOpen || isEditingPrice || editingItemId || isConfirmModalOpen || isReservationModalOpen || zoomImage || isCustomModalOpen || variantModalProduct) return;
     if (isSearchMode) searchInputRef.current?.focus();
     else if (document.activeElement !== creditNoteInputRef.current) inputRef.current?.focus();
-  }, [cart, isRegisterOpen, isEditingPrice, editingItemId, isConfirmModalOpen, isReservationModalOpen, isSearchMode, zoomImage, isCustomModalOpen]);
+  }, [cart, isRegisterOpen, isEditingPrice, editingItemId, isConfirmModalOpen, isReservationModalOpen, isSearchMode, zoomImage, isCustomModalOpen, variantModalProduct]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -202,24 +277,38 @@ const POSPage = () => {
     }
   };
 
-  // --- NUEVO: CAPTURA LA ESTAMPA AL BUSCAR MANUALMENTE ---
+  // --- LÓGICA DE CLIC EN EL BUSCADOR MANUAL ---
+  const handleProductSelectClick = (product) => {
+    // Si el producto tiene una sola variante (ej. Llavero), lo agrega directo.
+    if (product.variantes.length === 1) {
+        handleManualAdd(product, product.variantes[0]);
+        setShowDropdown(false);
+    } else {
+        // Si tiene múltiples, abre el modal limpio
+        setVariantModalProduct(product);
+        setShowDropdown(false);
+    }
+  };
+
   const handleManualAdd = (product, variant) => {
     const itemFormatted = {
       id_variante: variant.id_variante,
       sku: variant.sku,
       nombre: product.nombre,
       talle: variant.talle,
-      estampa: variant.estampa, // <--- GUARDAMOS LA ESTAMPA
+      estampa: variant.estampa,
       precio: product.precio,
       stock_actual: variant.stock
     };
     addToCart(itemFormatted);
 
-    // Feedback visual con la estampa
     const estampaText = variant.estampa && variant.estampa !== 'Standard' ? ` - ${variant.estampa}` : '';
     toast.success(`${product.nombre} (${variant.talle}${estampaText}) agregado`);
 
     playSound('beep');
+    setVariantModalProduct(null); // Cierra el modal si estaba abierto
+    setManualTerm(''); // Limpia el buscador para el próximo cliente
+    setManualResults([]);
     setTimeout(() => searchInputRef.current?.focus(), 100);
   };
 
@@ -366,8 +455,6 @@ const POSPage = () => {
       if (!isSplitPayment && selectedMethod) metodoNombre = selectedMethod.nombre;
       if (isSplitPayment) metodoNombre = "Pago Combinado";
 
-      // --- TRUCO PARA EL TICKET DE PAPEL ---
-      // Sumamos la estampa al talle para que se imprima automáticamente
       const cartForTicket = cart.map(i => ({
         ...i,
         talle: i.estampa && i.estampa !== 'Standard' ? `${i.talle} - ${i.estampa}` : i.talle
@@ -439,10 +526,17 @@ const POSPage = () => {
       <ConfirmModal isOpen={isConfirmModalOpen} onClose={() => setIsConfirmModalOpen(false)} onConfirm={processSale} title="Cobrar" message={`Total: $${totalFinal.toLocaleString()}`} confirmText="Confirmar" />
       <ReservationModal isOpen={isReservationModalOpen} onClose={() => setIsReservationModalOpen(false)} onConfirm={processReservation} total={totalFinal} paymentMethods={paymentMethods} />
 
+      {/* --- MODAL SELECTOR DE VARIANTE --- */}
+      <VariantSelectionModal 
+          product={variantModalProduct} 
+          isOpen={!!variantModalProduct} 
+          onClose={() => setVariantModalProduct(null)} 
+          onSelect={handleManualAdd} 
+      />
+
       {/* --- COLUMNA IZQUIERDA --- */}
       <div className="w-full md:w-[55%] xl:w-[60%] flex flex-col gap-4 h-full">
 
-        {/* Panel Escáner */}
         <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 relative z-[60] transition-all duration-300">
           <div className="flex justify-between items-center mb-3">
             <h2 className="text-lg font-bold text-gray-700 dark:text-white flex items-center gap-2">
@@ -523,44 +617,51 @@ const POSPage = () => {
                     {manualResults.length === 0 ? (
                       <div className="p-8 text-center text-gray-400 italic font-medium">No se encontraron productos con estos filtros.</div>
                     ) : (
-                      manualResults.map(p => (
-                        <div key={p.id} className="p-3 border-b dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700 flex gap-3 cursor-pointer group">
-                          <div className="w-12 h-12 bg-gray-100 dark:bg-slate-700 rounded-lg shrink-0 flex items-center justify-center border dark:border-slate-600 overflow-hidden cursor-zoom-in relative"
-                            onClick={(e) => { if (p.imagen) { e.stopPropagation(); setZoomImage(`${api.defaults.baseURL}/static/uploads/${p.imagen}`); } }}
+                      manualResults.map(p => {
+                        // Extraemos los talles únicos que tienen stock para el resumen
+                        const tallesDisponibles = Array.from(new Set(p.variantes.filter(v => v.stock > 0).map(v => v.talle)));
+
+                        return (
+                          <div 
+                            key={p.id} 
+                            className="p-3 border-b dark:border-slate-700 hover:bg-purple-50 dark:hover:bg-slate-700/80 flex gap-3 cursor-pointer group transition-colors"
+                            onClick={() => handleProductSelectClick(p)}
                           >
-                            {p.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${p.imagen}`} className="w-full h-full object-cover" /> : <Shirt size={20} className="text-gray-300 dark:text-slate-500" />}
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex justify-between font-bold text-sm text-gray-800 dark:text-white">
-                              <span>{p.nombre}</span>
-                              <span className="text-blue-600 dark:text-blue-400">${p.precio}</span>
+                            <div className="w-16 h-16 bg-gray-100 dark:bg-slate-700 rounded-lg shrink-0 flex items-center justify-center border dark:border-slate-600 overflow-hidden cursor-zoom-in relative"
+                              onClick={(e) => { if (p.imagen) { e.stopPropagation(); setZoomImage(`${api.defaults.baseURL}/static/uploads/${p.imagen}`); } }}
+                            >
+                              {p.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${p.imagen}`} className="w-full h-full object-cover" /> : <Shirt size={24} className="text-gray-300 dark:text-slate-500" />}
                             </div>
-                            <div className="text-xs text-gray-400 dark:text-slate-500 mb-1 flex gap-2">
-                              {p.categoria && <span className="bg-gray-100 dark:bg-slate-700 px-1 rounded">{p.categoria}</span>}
-                              {p.liga && <span className="bg-gray-100 dark:bg-slate-700 px-1 rounded">{p.liga}</span>}
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              {/* --- NUEVO: ETIQUETA VISUAL EN EL DESPLEGABLE DE BÚSQUEDA --- */}
-                              {p.variantes.map(v => (
-                                <button
-                                  key={v.id_variante}
-                                  onClick={(e) => { e.stopPropagation(); handleManualAdd(p, v); }}
-                                  disabled={v.stock === 0}
-                                  className={`text-xs px-3 py-1.5 rounded border transition-all flex items-center justify-between gap-2 ${v.stock > 0 ? 'hover:bg-purple-600 hover:text-white border-purple-200 dark:border-purple-800 text-purple-700 dark:text-purple-300 bg-purple-50 dark:bg-purple-900/20' : 'bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-slate-500 cursor-not-allowed border-gray-200 dark:border-slate-600'}`}
-                                >
-                                  <div className="flex flex-col items-start text-left">
-                                    <span className="font-bold">{v.talle}</span>
-                                    {v.estampa && v.estampa !== 'Standard' && (
-                                      <span className="text-[9px] uppercase tracking-wider opacity-80">{v.estampa}</span>
-                                    )}
+                            
+                            <div className="flex-1 flex flex-col justify-center">
+                              <div className="flex justify-between font-bold text-sm text-gray-800 dark:text-white">
+                                <span>{p.nombre}</span>
+                                <span className="text-blue-600 dark:text-blue-400">${p.precio}</span>
+                              </div>
+                              <div className="text-[10px] text-gray-400 dark:text-slate-500 mb-1 flex gap-2">
+                                {p.categoria && <span className="bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 rounded uppercase font-bold">{p.categoria}</span>}
+                              </div>
+                              
+                              {/* --- EL RESUMEN VISUAL LIMPIO --- */}
+                              <div className="mt-1 flex items-center justify-between bg-purple-50 dark:bg-purple-900/20 p-1.5 rounded-lg border border-purple-100 dark:border-purple-800/50 group-hover:bg-purple-100 dark:group-hover:bg-purple-900/40 transition-colors">
+                                  <div className="flex flex-wrap gap-1">
+                                      {tallesDisponibles.length > 0 ? tallesDisponibles.map(t => (
+                                          <span key={t} className="text-[10px] font-black bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded shadow-sm border border-purple-100 dark:border-slate-600">
+                                              {t}
+                                          </span>
+                                      )) : (
+                                          <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-900/30 px-1.5 py-0.5 rounded">SIN STOCK</span>
+                                      )}
                                   </div>
-                                  <span className="text-[10px] font-mono opacity-70 border-l pl-2 ml-1 border-current h-full flex items-center">{v.stock}</span>
-                                </button>
-                              ))}
+                                  <span className="text-[10px] font-black text-purple-600 dark:text-purple-400 flex items-center">
+                                      Elegir Variante <ArrowRight size={12} className="ml-1" />
+                                  </span>
+                              </div>
+
                             </div>
                           </div>
-                        </div>
-                      ))
+                        );
+                      })
                     )}
                   </div>
                 )}
@@ -574,7 +675,6 @@ const POSPage = () => {
           )}
         </div>
 
-        {/* --- MODAL DETALLE DE VENTA --- */}
         {viewingSale && (
           <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-fade-in" onClick={() => setViewingSale(null)}>
             <div className="bg-white dark:bg-slate-800 rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[80vh] transition-colors" onClick={e => e.stopPropagation()}>
@@ -624,7 +724,6 @@ const POSPage = () => {
           </div>
         )}
 
-        {/* LISTA HISTORIAL */}
         <div className="flex-1 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 flex flex-col relative z-0 overflow-hidden transition-colors">
           <div className="p-4 bg-gray-50 dark:bg-slate-900/50 border-b border-gray-200 dark:border-slate-700 flex justify-between items-center">
             <h3 className="text-sm font-bold text-gray-700 dark:text-white flex items-center"><Clock size={16} className="mr-2 text-blue-500 dark:text-blue-400" /> Últimas Ventas</h3>
@@ -663,7 +762,6 @@ const POSPage = () => {
       {/* --- COLUMNA DERECHA (Carrito y Cobro) --- */}
       <div className="w-full md:w-[45%] xl:w-[40%] bg-white dark:bg-slate-800 flex flex-col rounded-2xl shadow-lg border border-gray-200 dark:border-slate-700 overflow-hidden h-full relative z-10 transition-colors">
 
-        {/* --- PESTAÑAS MULTI-CLIENTE --- */}
         <div className="flex border-b border-gray-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900">
           {[0, 1, 2, 3].map((idx) => (
             <button
@@ -709,7 +807,6 @@ const POSPage = () => {
                 <div className="pr-8 mb-2">
                   <p className="font-bold text-sm text-gray-800 dark:text-white truncate leading-tight" title={item.nombre}>{item.nombre}</p>
 
-                  {/* --- NUEVO: ETIQUETA VISUAL EN EL CARRITO --- */}
                   <div className="text-[10px] text-gray-500 dark:text-slate-400 mt-1 flex flex-wrap gap-2 items-center">
                     <span className="bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 rounded font-medium">Talle: {item.talle}</span>
                     {item.estampa && item.estampa !== 'Standard' && (
@@ -757,10 +854,7 @@ const POSPage = () => {
         <div className="p-4 bg-white dark:bg-slate-800 border-t-2 border-gray-100 dark:border-slate-700 shadow-[0_-10px_40px_rgba(0,0,0,0.1)] z-20 transition-colors">
           {appliedNote && <div className="mb-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-3 rounded-lg flex justify-between items-center animate-pulse"><div><span className="text-xs font-bold text-green-700 dark:text-green-400 block">NOTA APLICADA</span><span className="text-sm font-mono text-gray-700 dark:text-gray-300">{appliedNote.codigo} (-${appliedNote.monto.toLocaleString()})</span></div><button onClick={() => { setAppliedNote(null); setCustomTotal(null); toast("Nota quitada"); }} className="text-red-400 hover:text-red-600 p-1"><X size={16} /></button></div>}
 
-          {/* --- BLOQUE DE AJUSTES (Recargo y Descuento) --- */}
           <div className="grid grid-cols-2 gap-3 mb-4">
-
-            {/* RECARGO */}
             <div className="bg-orange-50 dark:bg-orange-900/10 p-2 rounded-xl border border-orange-100 dark:border-orange-900/30">
               <div className="flex justify-between items-center mb-1">
                 <span className="text-[9px] font-bold text-orange-600 dark:text-orange-400 uppercase flex items-center">
@@ -782,7 +876,6 @@ const POSPage = () => {
               </div>
             </div>
 
-            {/* DESCUENTO */}
             <div className="bg-emerald-50 dark:bg-emerald-900/10 p-2 rounded-xl border border-emerald-100 dark:border-emerald-900/30">
               <div className="flex justify-between items-center mb-1">
                 <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase flex items-center">
@@ -816,7 +909,6 @@ const POSPage = () => {
           </div>
 
           {!isSplitPayment ? (
-            // --- MODO SIMPLE ---
             <div className="mb-4">
               <div className="grid grid-cols-3 gap-2">
                 {paymentMethods.map(m => (
@@ -826,7 +918,6 @@ const POSPage = () => {
               {selectedMethod && (selectedMethod.nombre.toLowerCase().includes('credito') || selectedMethod.nombre.toLowerCase().includes('crédito')) && (<div className="mt-3 bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded-lg border border-yellow-200 dark:border-yellow-800 animate-fade-in shadow-sm"><label className="text-xs font-bold text-yellow-800 dark:text-yellow-500 uppercase block mb-1 flex items-center"><AlertTriangle size={12} className="mr-1" /> Código de la Nota</label><input ref={creditNoteInputRef} value={creditNoteCode} onChange={e => setCreditNoteCode(e.target.value.toUpperCase())} placeholder="NC-XXXXXX" className="w-full p-2 border border-yellow-300 dark:border-yellow-700 rounded font-mono text-center uppercase focus:ring-2 focus:ring-yellow-400 outline-none bg-white dark:bg-slate-900 text-lg font-bold text-gray-800 dark:text-white placeholder-gray-300" /></div>)}
             </div>
           ) : (
-            // --- MODO COMBINADO ---
             <div className="mb-4 bg-purple-50 dark:bg-purple-900/10 p-3 rounded-xl border border-purple-100 dark:border-purple-900/30 animate-fade-in">
               <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar">
                 {splitPayments.map((p, idx) => (
@@ -881,7 +972,6 @@ const POSPage = () => {
         </div>
       </div>
 
-      {/* MODAL ÍTEM LIBRE */}
       {isCustomModalOpen && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-4">
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md p-6 animate-fade-in-up transition-colors">
@@ -907,7 +997,6 @@ const POSPage = () => {
         </div>
       )}
 
-      {/* --- MODAL ZOOM DE IMAGEN --- */}
       {zoomImage && (
         <div className="fixed inset-0 z-[200] bg-black/90 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in cursor-zoom-out" onClick={() => setZoomImage(null)}>
           <img src={zoomImage} className="max-w-full max-h-[90vh] rounded-lg shadow-2xl object-contain animate-zoom-in" onClick={e => e.stopPropagation()} />

@@ -43,7 +43,7 @@ const Topbar = () => {
     {
       type: 'folder', key: 'inventario', name: 'Stock', icon: Package,
       items: [
-        { path: '/productos', name: 'Productos', icon: Shirt },
+        // { path: '/productos', name: 'Productos', icon: Shirt },
         { path: '/inventario', name: 'Inventario', icon: ArrowRightLeft },
         { path: '/recuento', name: 'Recuento', icon: ClipboardCheck },
         { path: '/compras', name: 'Compras', icon: Truck },

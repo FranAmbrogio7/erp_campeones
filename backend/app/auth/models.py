@@ -21,3 +21,6 @@ class Empleado(db.Model):
 
     # Relación para acceder al rol desde el empleado
     rol_obj = db.relationship('Rol', backref='empleados')
+
+
+    
