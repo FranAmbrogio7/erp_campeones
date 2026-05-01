@@ -32,7 +32,7 @@ const SOUNDS = {
 };
 
 // =========================================================================
-// SUB-COMPONENTE 1: Agrupador de Variantes
+// SUB-COMPONENTE 1: Agrupador de Variantes (Más grandes y en 1 fila)
 // =========================================================================
 const VariantStockGroup = ({ variants, onOpenDetails }) => {
     const groupedVariants = variants.reduce((acc, v) => {
@@ -47,27 +47,27 @@ const VariantStockGroup = ({ variants, onOpenDetails }) => {
     }, {});
 
     const getStockColorClass = (stock) => {
-        if (stock === 0) return "bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/50";
-        if (stock < 3) return "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/20 dark:text-amber-400 dark:border-amber-800/50";
-        return "bg-emerald-50/50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/20 dark:text-emerald-400 dark:border-emerald-800/50";
+        if (stock === 0) return "bg-red-50 text-red-600 border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800";
+        if (stock < 3) return "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-400 dark:border-amber-800";
+        return "bg-emerald-50/50 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-400 dark:border-emerald-800";
     };
 
     return (
-        <div className="flex flex-wrap gap-1.5 items-center w-full min-w-[280px] py-1">
+        <div className="flex flex-nowrap gap-2 items-center w-full min-w-max py-1">
             {Object.values(groupedVariants).map((grupo) => {
                 const hasEstampas = grupo.detalles.some(d => d.estampaName !== 'Sin Estampa');
                 return (
                     <div
                         key={grupo.talle}
                         onClick={() => onOpenDetails(grupo)}
-                        className={`flex items-center pl-2 pr-1 py-1 rounded-md text-[11px] cursor-pointer shadow-sm border shrink-0 ${getStockColorClass(grupo.totalStock)} transition-all hover:shadow-md active:scale-95`}
+                        className={`flex items-center pl-3 pr-1.5 py-1.5 rounded-lg text-[13px] cursor-pointer shadow-sm border shrink-0 ${getStockColorClass(grupo.totalStock)} transition-all hover:shadow-md active:scale-95`}
                         title="Clic para ver detalle de estampas"
                     >
-                        <span className="font-bold mr-1.5 flex items-center">
+                        <span className="font-black mr-2 flex items-center">
                             {grupo.talle}
-                            {hasEstampas && <Sparkles size={10} className="ml-1 text-indigo-400" />}
+                            {hasEstampas && <Sparkles size={12} className="ml-1.5 text-indigo-500 dark:text-indigo-400" />}
                         </span>
-                        <span className="font-mono text-[9px] font-black opacity-80 border-l border-current pl-1.5 pr-1 flex items-center h-full">
+                        <span className="font-mono text-xs font-black opacity-90 border-l border-current pl-2 pr-1 flex items-center h-full">
                             {grupo.totalStock}
                         </span>
                     </div>
@@ -78,7 +78,7 @@ const VariantStockGroup = ({ variants, onOpenDetails }) => {
 };
 
 // =========================================================================
-// SUB-COMPONENTE 2: El Nuevo Modal de Detalles
+// SUB-COMPONENTE 2: El Modal de Detalles
 // =========================================================================
 const VariantDetailsModal = ({ isOpen, onClose, grupo, onPrintVariant, onOpenBarcode }) => {
     if (!isOpen || !grupo) return null;
@@ -108,15 +108,15 @@ const VariantDetailsModal = ({ isOpen, onClose, grupo, onPrintVariant, onOpenBar
                         <span>Estampa / Jugador</span>
                         <span>Stock Disponible</span>
                     </div>
-                    <div className="space-y-2.5">
+                    <div className="space-y-3">
                         {detallesOrdenados.map(det => (
-                            <div key={det.id_variante} className="flex items-center justify-between p-3.5 bg-white dark:bg-slate-800/80 rounded-2xl border border-slate-100 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 transition-all shadow-sm hover:shadow-md group">
+                            <div key={det.id_variante} className="flex items-center justify-between p-4 bg-white dark:bg-slate-800/80 rounded-2xl border border-slate-100 dark:border-slate-700 hover:border-indigo-300 dark:hover:border-indigo-500 transition-all shadow-sm hover:shadow-md group">
                                 <div className="flex items-center gap-3">
-                                    <div className={`w-2.5 h-2.5 rounded-full shadow-sm ${det.stock > 0 ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
+                                    <div className={`w-3 h-3 rounded-full shadow-sm ${det.stock > 0 ? 'bg-emerald-500' : 'bg-red-500'}`}></div>
                                     <span className="font-bold text-sm text-slate-700 dark:text-slate-200">{det.estampaName}</span>
                                 </div>
                                 <div className="flex items-center gap-4">
-                                    <span className={`font-mono font-black text-sm px-3 py-1 rounded-xl shadow-inner ${det.stock > 0 ? 'bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-white border border-slate-200 dark:border-slate-700' : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800'}`}>
+                                    <span className={`font-mono font-black text-sm px-3 py-1.5 rounded-xl shadow-inner ${det.stock > 0 ? 'bg-slate-50 dark:bg-slate-900 text-slate-700 dark:text-white border border-slate-200 dark:border-slate-700' : 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800'}`}>
                                         {det.stock}
                                     </span>
                                     <div className="flex gap-1.5 border-l border-slate-100 dark:border-slate-700 pl-4">
@@ -167,7 +167,7 @@ const InventoryPage = () => {
     // ESTADOS DE PROGRESO DE BACKGROUND
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncProgress, setSyncProgress] = useState(null);
-    const [marginProgress, setMarginProgress] = useState(null); 
+    const [marginProgress, setMarginProgress] = useState(null);
 
     const [processingId, setProcessingId] = useState(null);
     const [showForm, setShowForm] = useState(false);
@@ -179,7 +179,6 @@ const InventoryPage = () => {
     const [selectedGridType, setSelectedGridType] = useState('ADULTO');
     const [selectedFile, setSelectedFile] = useState(null);
 
-    // Estados de Modales
     const [isBarcodeModalOpen, setIsBarcodeModalOpen] = useState(false);
     const [selectedVariantForBarcode, setSelectedVariantForBarcode] = useState(null);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -279,24 +278,33 @@ const InventoryPage = () => {
                 });
             } catch (e) { }
         };
-        
-        checkActiveSync(); 
+
+        checkActiveSync();
         const interval = setInterval(checkActiveSync, 3000);
         return () => clearInterval(interval);
     }, [token]);
 
-    // EFECTO POLLING MEJORADO PARA MÁRGENES/PRECIOS
+    // EFECTO POLLING MEJORADO PARA MÁRGENES/PRECIOS CON DETECCIÓN DE ERRORES
     useEffect(() => {
         const checkMarginStatus = async () => {
             try {
                 const res = await api.get('/products/tiendanube/margen/status');
+
                 setMarginProgress(prev => {
+                    // Si terminó el proceso
                     if (prev && prev.is_running && !res.data.is_running) {
-                        playSound('success');
-                        toast.success("¡Todos los precios fueron actualizados en Tienda Nube!", { duration: 6000 });
-                        setTimeout(() => setMarginProgress(null), 6000);
+                        if (res.data.errores > 0) {
+                            playSound('error');
+                            toast.error(`Atención: El proceso terminó, pero ${res.data.errores} precios no se pudieron subir por problemas de red.`, { duration: 8000 });
+                        } else {
+                            playSound('success');
+                            toast.success("¡Todos los precios fueron actualizados en Tienda Nube!", { duration: 6000 });
+                        }
+                        setTimeout(() => setMarginProgress(null), 8000);
                         return res.data;
                     }
+                    
+                    // Si está corriendo o acaba de iniciar
                     if (res.data.is_running || (prev && prev.is_running)) {
                         return res.data;
                     }
@@ -305,7 +313,7 @@ const InventoryPage = () => {
             } catch (e) { }
         };
 
-        checkMarginStatus(); 
+        checkMarginStatus();
         const interval = setInterval(checkMarginStatus, 4000);
         return () => clearInterval(interval);
     }, [token]);
@@ -561,10 +569,10 @@ const InventoryPage = () => {
     };
 
     return (
-        <div className="h-[calc(100vh-4rem)] flex flex-col p-3 md:p-4 max-w-[1600px] mx-auto gap-3 bg-slate-50 dark:bg-slate-950 transition-colors duration-300 relative font-sans">
-            <Toaster position="top-center" toastOptions={{ style: { borderRadius: '10px', fontSize: '13px', fontWeight: 'bold' } }} />
+        <div className="h-[calc(100vh-4rem)] flex flex-col p-3 md:p-4 max-w-[1600px] mx-auto gap-4 bg-slate-50 dark:bg-slate-950 transition-colors duration-300 relative font-sans">
+            <Toaster position="top-center" toastOptions={{ style: { borderRadius: '12px', fontSize: '14px', fontWeight: 'bold' } }} />
 
-            {/* HEADER COMPACTADO */}
+            {/* HEADER SUPERIOR */}
             <div className="flex flex-col gap-3 shrink-0 bg-white dark:bg-slate-900 p-3 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 transition-colors">
                 <div className="flex flex-col md:flex-row justify-between items-center gap-3">
                     <div className="flex items-center gap-3">
@@ -574,17 +582,17 @@ const InventoryPage = () => {
                         <div>
                             <h1 className="text-xl font-black text-slate-800 dark:text-white tracking-tight">{viewMode === 'active' ? 'Inventario Central' : 'Archivo'}</h1>
                             {viewMode === 'active' && (
-                                <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
-                                    <span className="flex items-center"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] mr-1"></div>Normal</span>
-                                    <span className="flex items-center"><div className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)] mr-1"></div>Bajo</span>
-                                    <span className="flex items-center"><div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)] mr-1"></div>Agotado</span>
+                                <div className="flex items-center gap-2 text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-0.5">
+                                    <span className="flex items-center"><div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] mr-1.5"></div>Normal</span>
+                                    <span className="flex items-center"><div className="w-1.5 h-1.5 rounded-full bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)] mr-1.5"></div>Bajo</span>
+                                    <span className="flex items-center"><div className="w-1.5 h-1.5 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)] mr-1.5"></div>Agotado</span>
                                 </div>
                             )}
                         </div>
                     </div>
                     <div className="flex bg-slate-100/80 dark:bg-slate-800/80 p-1 rounded-xl shadow-inner border border-slate-200/50 dark:border-slate-700/50">
-                        <button onClick={() => setViewMode('active')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 ${viewMode === 'active' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}>Activos</button>
-                        <button onClick={() => setViewMode('archived')} className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 flex items-center ${viewMode === 'archived' ? 'bg-white dark:bg-slate-700 text-red-600 dark:text-red-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}><Archive size={14} className="mr-1.5" /> Discontinuos</button>
+                        <button onClick={() => setViewMode('active')} className={`px-5 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 ${viewMode === 'active' ? 'bg-white dark:bg-slate-700 text-indigo-600 dark:text-indigo-300 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}>Activos</button>
+                        <button onClick={() => setViewMode('archived')} className={`px-5 py-1.5 rounded-lg text-xs font-bold transition-all duration-300 flex items-center ${viewMode === 'archived' ? 'bg-white dark:bg-slate-700 text-red-600 dark:text-red-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700'}`}><Archive size={14} className="mr-1.5" /> Discontinuos</button>
                     </div>
                 </div>
 
@@ -658,11 +666,11 @@ const InventoryPage = () => {
                         </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 pt-0.5 no-scrollbar px-1">
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest mr-1 shrink-0">Cat:</span>
-                        <button onClick={() => setSelectedCat('')} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all whitespace-nowrap shrink-0 shadow-sm ${selectedCat === '' ? 'bg-slate-800 text-white border-slate-800 dark:bg-slate-200 dark:text-slate-900' : 'bg-white dark:bg-slate-900 text-slate-600 border-slate-200 dark:border-slate-800'}`}>TODAS</button>
+                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 no-scrollbar px-1">
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2 shrink-0">Cat:</span>
+                        <button onClick={() => setSelectedCat('')} className={`px-4 py-1.5 rounded-lg text-[11px] font-bold border transition-all whitespace-nowrap shrink-0 shadow-sm ${selectedCat === '' ? 'bg-slate-800 text-white border-slate-800 dark:bg-slate-200 dark:text-slate-900' : 'bg-white dark:bg-slate-900 text-slate-600 border-slate-200 dark:border-slate-800'}`}>TODAS</button>
                         {categories.map(c => (
-                            <button key={c.id} onClick={() => setSelectedCat(selectedCat === c.id ? '' : c.id)} className={`px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all duration-300 whitespace-nowrap shrink-0 shadow-sm ${selectedCat == c.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-50'}`}>
+                            <button key={c.id} onClick={() => setSelectedCat(selectedCat === c.id ? '' : c.id)} className={`px-4 py-1.5 rounded-lg text-[11px] font-bold border transition-all duration-300 whitespace-nowrap shrink-0 shadow-sm ${selectedCat == c.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-50'}`}>
                                 {c.nombre}
                             </button>
                         ))}
@@ -697,72 +705,72 @@ const InventoryPage = () => {
 
                     <form onSubmit={handleSubmitCreate} className="grid grid-cols-1 md:grid-cols-12 gap-4 items-end">
                         <div className="md:col-span-4">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Nombre del Producto</label>
-                            <input id="inputName" autoFocus required className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-2.5 rounded-lg text-sm font-bold outline-none focus:border-indigo-400 dark:text-white transition-all" placeholder="Ej: Camiseta Titular..." value={newProduct.nombre} onChange={e => setNewProduct({ ...newProduct, nombre: e.target.value })} />
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Nombre del Producto</label>
+                            <input id="inputName" autoFocus required className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3 rounded-lg text-sm font-bold outline-none focus:border-indigo-400 dark:text-white transition-all" placeholder="Ej: Camiseta Titular..." value={newProduct.nombre} onChange={e => setNewProduct({ ...newProduct, nombre: e.target.value })} />
                         </div>
 
                         <div className="md:col-span-3">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Tipo de Artículo</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Tipo de Artículo</label>
                             <div className="relative">
-                                <select className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-2.5 pr-8 rounded-lg text-sm font-bold outline-none focus:border-indigo-400 dark:text-white appearance-none cursor-pointer" value={newProduct.tipo_articulo || 'estandar'} onChange={e => setNewProduct({ ...newProduct, tipo_articulo: e.target.value })}>
+                                <select className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3 pr-8 rounded-lg text-sm font-bold outline-none focus:border-indigo-400 dark:text-white appearance-none cursor-pointer" value={newProduct.tipo_articulo || 'estandar'} onChange={e => setNewProduct({ ...newProduct, tipo_articulo: e.target.value })}>
                                     <option value="simple">📦 Simple</option>
                                     <option value="estandar">👕 Estándar</option>
                                     <option value="personalizable">⭐ Personalizable</option>
                                 </select>
-                                <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
+                                <ChevronDown size={16} className="absolute right-3 top-3.5 text-slate-400 pointer-events-none" />
                             </div>
                         </div>
 
                         <div className="md:col-span-2">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Categoría</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Categoría</label>
                             <div className="relative">
-                                <select required className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-2.5 pr-8 rounded-lg text-sm font-bold outline-none focus:border-indigo-400 dark:text-white appearance-none cursor-pointer" value={newProduct.categoria_id} onChange={e => setNewProduct({ ...newProduct, categoria_id: e.target.value })}><option value="">Seleccione...</option>{categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
-                                <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
+                                <select required className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3 pr-8 rounded-lg text-sm font-bold outline-none focus:border-indigo-400 dark:text-white appearance-none cursor-pointer" value={newProduct.categoria_id} onChange={e => setNewProduct({ ...newProduct, categoria_id: e.target.value })}><option value="">Seleccione...</option>{categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
+                                <ChevronDown size={16} className="absolute right-3 top-3.5 text-slate-400 pointer-events-none" />
                             </div>
                         </div>
 
                         <div className="md:col-span-3">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Liga / Torneo</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Liga / Torneo</label>
                             <div className="relative">
-                                <select className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-2.5 pr-8 rounded-lg text-sm font-bold outline-none focus:border-indigo-400 dark:text-white appearance-none cursor-pointer" value={newProduct.categoria_especifica_id} onChange={e => setNewProduct({ ...newProduct, categoria_especifica_id: e.target.value })}><option value="">(Opcional)</option>{specificCategories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
-                                <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
+                                <select className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3 pr-8 rounded-lg text-sm font-bold outline-none focus:border-indigo-400 dark:text-white appearance-none cursor-pointer" value={newProduct.categoria_especifica_id} onChange={e => setNewProduct({ ...newProduct, categoria_especifica_id: e.target.value })}><option value="">(Opcional)</option>{specificCategories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}</select>
+                                <ChevronDown size={16} className="absolute right-3 top-3.5 text-slate-400 pointer-events-none" />
                             </div>
                         </div>
 
                         <div className="md:col-span-2">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Precio Venta</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Precio Venta</label>
                             <div className="relative">
-                                <span className="absolute left-3 top-2.5 font-black text-emerald-600 dark:text-emerald-400">$</span>
-                                <input type="number" required className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-2.5 pl-7 rounded-lg text-sm font-black text-emerald-700 dark:text-emerald-400 outline-none focus:border-emerald-500 focus:bg-white transition-all" placeholder="0.00" value={newProduct.precio} onChange={e => setNewProduct({ ...newProduct, precio: e.target.value })} />
+                                <span className="absolute left-3 top-3 font-black text-emerald-600 dark:text-emerald-400">$</span>
+                                <input type="number" required className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3 pl-8 rounded-lg text-sm font-black text-emerald-700 dark:text-emerald-400 outline-none focus:border-emerald-500 focus:bg-white transition-all" placeholder="0.00" value={newProduct.precio} onChange={e => setNewProduct({ ...newProduct, precio: e.target.value })} />
                             </div>
                         </div>
 
                         {newProduct.tipo_articulo !== 'simple' && (
                             <div className="md:col-span-2">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Curva Talles</label>
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Curva Talles</label>
                                 <div className="relative">
-                                    <select className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-2.5 pr-8 rounded-lg font-bold text-xs outline-none focus:border-indigo-400 dark:text-white appearance-none cursor-pointer" value={selectedGridType} onChange={e => setSelectedGridType(e.target.value)}>{Object.keys(SIZE_GRIDS).map(g => <option key={g} value={g}>{g}</option>)}</select>
-                                    <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
+                                    <select className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3 pr-8 rounded-lg font-bold text-sm outline-none focus:border-indigo-400 dark:text-white appearance-none cursor-pointer" value={selectedGridType} onChange={e => setSelectedGridType(e.target.value)}>{Object.keys(SIZE_GRIDS).map(g => <option key={g} value={g}>{g}</option>)}</select>
+                                    <ChevronDown size={16} className="absolute right-3 top-3.5 text-slate-400 pointer-events-none" />
                                 </div>
                             </div>
                         )}
 
                         {newProduct.tipo_articulo === 'personalizable' && (
                             <div className="md:col-span-3">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Estampa (Jugador)</label>
-                                <input className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-2.5 rounded-lg text-sm font-bold outline-none focus:border-indigo-400 focus:bg-white dark:text-white transition-all uppercase placeholder-slate-300" placeholder="Ej: MESSI 10" value={newProduct.estampa || ''} onChange={e => setNewProduct({ ...newProduct, estampa: e.target.value.toUpperCase() })} />
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Estampa (Jugador)</label>
+                                <input className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3 rounded-lg text-sm font-bold outline-none focus:border-indigo-400 focus:bg-white dark:text-white transition-all uppercase placeholder-slate-300" placeholder="Ej: MESSI 10" value={newProduct.estampa || ''} onChange={e => setNewProduct({ ...newProduct, estampa: e.target.value.toUpperCase() })} />
                             </div>
                         )}
 
                         <div className="md:col-span-2">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Stock {newProduct.tipo_articulo !== 'simple' ? 'x Talle' : 'Total'}</label>
-                            <input type="number" required className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-2.5 rounded-lg text-sm text-center font-black outline-none focus:border-indigo-400 focus:bg-white dark:text-white transition-all" value={newProduct.stock} onChange={e => setNewProduct({ ...newProduct, stock: e.target.value })} />
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Stock {newProduct.tipo_articulo !== 'simple' ? 'x Talle' : 'Total'}</label>
+                            <input type="number" required className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3 rounded-lg text-sm text-center font-black outline-none focus:border-indigo-400 focus:bg-white dark:text-white transition-all" value={newProduct.stock} onChange={e => setNewProduct({ ...newProduct, stock: e.target.value })} />
                         </div>
 
                         <div className="md:col-span-3">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Plantilla Nube</label>
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1 block">Plantilla Nube</label>
                             <div className="relative">
-                                <select className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-2.5 pr-8 rounded-lg font-bold text-xs outline-none focus:border-indigo-400 dark:text-white appearance-none cursor-pointer" value={newProduct.descripcion} onChange={e => setNewProduct({ ...newProduct, descripcion: e.target.value })}>
+                                <select className="w-full border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 p-3 pr-8 rounded-lg font-bold text-sm outline-none focus:border-indigo-400 dark:text-white appearance-none cursor-pointer" value={newProduct.descripcion} onChange={e => setNewProduct({ ...newProduct, descripcion: e.target.value })}>
                                     <option value="">(Vacía)</option>
                                     <option value="Camisetas Nacionales">C. Nacionales</option>
                                     <option value="Camisetas Retro">C. Retro</option>
@@ -773,60 +781,60 @@ const InventoryPage = () => {
                                     <option value="Pantalones Largos">Pantalones</option>
                                     <option value="Shorts">Shorts</option>
                                 </select>
-                                <ChevronDown size={14} className="absolute right-3 top-3 text-slate-400 pointer-events-none" />
+                                <ChevronDown size={16} className="absolute right-3 top-3.5 text-slate-400 pointer-events-none" />
                             </div>
                         </div>
 
                         <div className={`mt-2 md:col-span-12`}>
-                            <button type="submit" className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white py-3 rounded-lg font-black shadow-lg shadow-emerald-500/30 transition-all active:scale-[0.99] flex items-center justify-center tracking-wide">
-                                <Save className="mr-2" size={18} /> GUARDAR PRODUCTO EN INVENTARIO
+                            <button type="submit" className="w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white py-3.5 rounded-xl font-black shadow-lg shadow-emerald-500/30 transition-all active:scale-[0.99] flex items-center justify-center tracking-wide">
+                                <Save className="mr-2" size={20} /> GUARDAR PRODUCTO EN INVENTARIO
                             </button>
                         </div>
                     </form>
                 </div>
             )}
 
-            {/* TABLA PRINCIPAL - GANA ESPACIO */}
-            <div className={`bg-white dark:bg-slate-900 rounded-2xl shadow-xl shadow-slate-200/50 dark:shadow-none border flex-1 flex flex-col overflow-hidden relative transition-colors z-0 ${viewMode === 'active' ? 'border-slate-100 dark:border-slate-800' : 'border-red-200 dark:border-red-900'}`}>
-                {viewMode === 'archived' && <div className="bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 text-[10px] font-black p-2 text-center border-b border-red-100 dark:border-red-900/50 tracking-widest uppercase shadow-inner">VISTA DE ARCHIVO (SOLO LECTURA)</div>}
+            {/* TABLA PRINCIPAL - TAMAÑOS RESTAURADOS Y 1 FILA PARA TALLES */}
+            <div className={`bg-white dark:bg-slate-900 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border flex-1 flex flex-col overflow-hidden relative transition-colors z-0 ${viewMode === 'active' ? 'border-slate-100 dark:border-slate-800' : 'border-red-200 dark:border-red-900'}`}>
+                {viewMode === 'archived' && <div className="bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 text-xs font-black p-2.5 text-center border-b border-red-100 dark:border-red-900/50 tracking-widest uppercase shadow-inner">VISTA DE ARCHIVO (SOLO LECTURA)</div>}
 
                 <div className="overflow-auto flex-1 custom-scrollbar">
                     <table className="min-w-full text-sm text-left">
-                        <thead className="bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-md text-slate-500 dark:text-slate-400 font-black uppercase text-[10px] tracking-widest sticky top-0 z-10 transition-colors border-b border-slate-200 dark:border-slate-800 shadow-sm">
+                        <thead className="bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-md text-slate-500 dark:text-slate-400 font-black uppercase text-[11px] tracking-widest sticky top-0 z-10 transition-colors border-b border-slate-200 dark:border-slate-800 shadow-sm">
                             <tr>
-                                <th className="px-4 py-3 w-10 text-center"><button onClick={toggleSelectAll} className="text-slate-400 hover:text-indigo-600 transition-colors">{selectedItems.size === products.length && products.length > 0 ? <CheckSquare size={16} /> : <Square size={16} />}</button></th>
-                                <th className="px-4 py-3 text-center w-14">Foto</th>
-                                <th className="px-4 py-3 w-1/4">Producto & Categoría</th>
-                                <th className="px-4 py-3 w-20">Precio</th>
-                                <th className="px-4 py-3 min-w-[300px]">Agrupación de Variantes</th>
-                                <th className="px-4 py-3 text-center w-16">Nube</th>
-                                <th className="px-4 py-3 text-right w-32">Acciones</th>
+                                <th className="px-5 py-4 w-12 text-center"><button onClick={toggleSelectAll} className="text-slate-400 hover:text-indigo-600 transition-colors">{selectedItems.size === products.length && products.length > 0 ? <CheckSquare size={18} /> : <Square size={18} />}</button></th>
+                                <th className="px-5 py-4 text-center w-16">Foto</th>
+                                <th className="px-5 py-4 w-full max-w-[200px] xl:max-w-[300px]">Producto & Categoría</th>
+                                <th className="px-5 py-4 w-28">Precio</th>
+                                <th className="px-5 py-4 min-w-max">Agrupación de Variantes</th>
+                                <th className="px-5 py-4 text-center w-20">Nube</th>
+                                <th className="px-5 py-4 text-right w-32">Acciones</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                            {loading ? <tr><td colSpan="7" className="p-10 text-center text-slate-400 font-bold flex-col items-center"><Loader2 size={24} className="animate-spin mx-auto mb-2 text-indigo-500" /> Cargando...</td></tr> : products.length === 0 ? <tr><td colSpan="7" className="p-10 text-center text-slate-400 italic text-xs">No se encontraron resultados para la búsqueda actual.</td></tr> : products.map(p => (
+                            {loading ? <tr><td colSpan="7" className="p-12 text-center text-slate-400 font-bold flex-col items-center"><Loader2 size={28} className="animate-spin mx-auto mb-3 text-indigo-500" /> Cargando Inventario...</td></tr> : products.length === 0 ? <tr><td colSpan="7" className="p-12 text-center text-slate-400 italic text-sm">No se encontraron resultados para la búsqueda actual.</td></tr> : products.map(p => (
                                 <tr key={p.id} className={`hover:bg-indigo-50/40 dark:hover:bg-slate-800/50 transition-all duration-200 group ${processingId === p.id ? 'opacity-50 pointer-events-none' : ''}`}>
-                                    <td className="px-4 py-3 text-center"><button onClick={() => toggleSelect(p.id)} className={`transition-transform active:scale-90 ${selectedItems.has(p.id) ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'}`}>{selectedItems.has(p.id) ? <CheckSquare size={18} /> : <Square size={18} />}</button></td>
+                                    <td className="px-5 py-4 text-center"><button onClick={() => toggleSelect(p.id)} className={`transition-transform active:scale-90 ${selectedItems.has(p.id) ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'}`}>{selectedItems.has(p.id) ? <CheckSquare size={20} /> : <Square size={20} />}</button></td>
 
-                                    <td className="px-4 py-3 text-center">
-                                        <div onClick={() => p.imagen && setImageModalSrc(`/api/static/uploads/${p.imagen}`)} className="h-10 w-10 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden cursor-zoom-in relative group/img mx-auto shadow-sm">
-                                            {p.imagen ? <img src={`/api/static/uploads/${p.imagen}`} className="h-full w-full object-cover transform group-hover/img:scale-110 transition-transform duration-300" /> : <Shirt size={16} className="text-slate-300" />}
+                                    <td className="px-5 py-4 text-center">
+                                        <div onClick={() => p.imagen && setImageModalSrc(`/api/static/uploads/${p.imagen}`)} className="h-12 w-12 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden cursor-zoom-in relative group/img mx-auto shadow-sm">
+                                            {p.imagen ? <img src={`/api/static/uploads/${p.imagen}`} className="h-full w-full object-cover transform group-hover/img:scale-110 transition-transform duration-300" /> : <Shirt size={20} className="text-slate-300" />}
                                         </div>
                                     </td>
 
-                                    <td className="px-4 py-3 w-1/4 max-w-[150px] md:max-w-[200px]">
-                                        <div className="font-bold text-sm text-slate-800 dark:text-white truncate" title={p.nombre}>{p.nombre}</div>
-                                        <div className="flex gap-1 mt-1 overflow-hidden">
-                                            <span className="text-[8px] px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded font-black uppercase tracking-wider whitespace-nowrap">{p.categoria}</span>
-                                            {p.liga && p.liga !== '-' && <span className="text-[8px] px-1.5 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 rounded font-black uppercase tracking-wider whitespace-nowrap">{p.liga}</span>}
+                                    <td className="px-5 py-4 w-full max-w-[150px] md:max-w-[250px] 2xl:max-w-[350px]">
+                                        <div className="font-black text-base text-slate-800 dark:text-white truncate" title={p.nombre}>{p.nombre}</div>
+                                        <div className="flex gap-1.5 mt-1.5 overflow-hidden">
+                                            <span className="text-[9px] px-2 py-0.5 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 rounded font-black uppercase tracking-wider whitespace-nowrap">{p.categoria}</span>
+                                            {p.liga && p.liga !== '-' && <span className="text-[9px] px-2 py-0.5 bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-100 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 rounded font-black uppercase tracking-wider whitespace-nowrap">{p.liga}</span>}
                                         </div>
                                     </td>
 
-                                    <td className="px-4 py-3 font-mono font-black text-sm text-emerald-700 dark:text-emerald-400 tracking-tight whitespace-nowrap">
+                                    <td className="px-5 py-4 font-mono font-black text-lg text-emerald-700 dark:text-emerald-400 tracking-tight whitespace-nowrap">
                                         $ {p.precio.toLocaleString()}
                                     </td>
 
-                                    <td className="px-4 py-3 min-w-max">
+                                    <td className="px-5 py-4 min-w-max">
                                         <VariantStockGroup
                                             variants={p.variantes}
                                             onOpenDetails={(grupo) => {
@@ -836,25 +844,25 @@ const InventoryPage = () => {
                                         />
                                     </td>
 
-                                    <td className="px-4 py-3 text-center">
-                                        {processingId === p.id ? <Loader2 size={16} className="animate-spin text-indigo-600 mx-auto" /> : p.tiendanube_id ? <span className="inline-flex items-center justify-center p-1.5 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800 rounded-full shadow-sm" title="Vinculado"><Cloud size={14} /></span> : <button onClick={() => handlePublish(p)} className="inline-flex items-center justify-center p-1.5 bg-slate-50 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700 rounded-full hover:text-indigo-600 transition-all shadow-sm active:scale-95"><UploadCloud size={14} /></button>}
+                                    <td className="px-5 py-4 text-center">
+                                        {processingId === p.id ? <Loader2 size={20} className="animate-spin text-indigo-600 mx-auto" /> : p.tiendanube_id ? <span className="inline-flex items-center justify-center p-2 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border border-emerald-100 dark:border-emerald-800 rounded-full shadow-sm" title="Vinculado"><Cloud size={16} /></span> : <button onClick={() => handlePublish(p)} className="inline-flex items-center justify-center p-2 bg-slate-50 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700 rounded-full hover:text-indigo-600 transition-all shadow-sm active:scale-95"><UploadCloud size={16} /></button>}
                                     </td>
 
-                                    <td className="px-4 py-3 text-right">
-                                        <div className="flex justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                                    <td className="px-5 py-4 text-right">
+                                        <div className="flex justify-end gap-1.5 opacity-60 group-hover:opacity-100 transition-opacity">
                                             {viewMode === 'active' ? (
                                                 <>
                                                     {p.tiendanube_id && (
-                                                        <button onClick={() => handleImportImage(p)} className="text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/30 p-1.5 rounded-lg transition-colors"><DownloadCloud size={16} /></button>
+                                                        <button onClick={() => handleImportImage(p)} className="text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/30 p-2 rounded-lg transition-colors"><DownloadCloud size={18} /></button>
                                                     )}
-                                                    <button onClick={() => handleDuplicate(p)} className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 p-1.5 rounded-lg transition-colors"><Copy size={16} /></button>
-                                                    <button onClick={() => handleToggleStatus(p)} className="text-slate-400 hover:text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/30 p-1.5 rounded-lg transition-colors"><Archive size={16} /></button>
-                                                    <button onClick={() => { setEditingProduct(p); setIsEditModalOpen(true); }} className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 p-1.5 rounded-lg transition-colors"><Edit size={16} /></button>
+                                                    <button onClick={() => handleDuplicate(p)} className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 p-2 rounded-lg transition-colors"><Copy size={18} /></button>
+                                                    <button onClick={() => handleToggleStatus(p)} className="text-slate-400 hover:text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/30 p-2 rounded-lg transition-colors"><Archive size={18} /></button>
+                                                    <button onClick={() => { setEditingProduct(p); setIsEditModalOpen(true); }} className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 p-2 rounded-lg transition-colors"><Edit size={18} /></button>
                                                 </>
                                             ) : (
                                                 <>
-                                                    <button onClick={() => handleToggleStatus(p)} className="text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 p-1.5 rounded-lg transition-colors"><ArchiveRestore size={16} /></button>
-                                                    <button onClick={() => handleDelete(p.id)} className="text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 p-1.5 rounded-lg transition-colors"><Trash2 size={16} /></button>
+                                                    <button onClick={() => handleToggleStatus(p)} className="text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 p-2 rounded-lg transition-colors"><ArchiveRestore size={18} /></button>
+                                                    <button onClick={() => handleDelete(p.id)} className="text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 p-2 rounded-lg transition-colors"><Trash2 size={18} /></button>
                                                 </>
                                             )}
                                         </div>
@@ -865,19 +873,19 @@ const InventoryPage = () => {
                     </table>
                 </div>
 
-                <div className="bg-slate-50 dark:bg-slate-900/80 p-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 transition-colors">
+                <div className="bg-slate-50 dark:bg-slate-900/80 p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 transition-colors">
                     {searchTerm.trim() !== '' ? (
-                        <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                            <span className="text-indigo-600 dark:text-indigo-400 text-sm">{products.length}</span> res
+                        <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
+                            <span className="text-indigo-600 dark:text-indigo-400 text-base">{products.length}</span> resultados
                         </span>
                     ) : (
                         <>
-                            <span className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
-                                Pág <span className="text-slate-800 dark:text-white text-sm">{page}</span> de {totalPages}
+                            <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
+                                Página <span className="text-slate-800 dark:text-white text-base">{page}</span> de {totalPages}
                             </span>
-                            <div className="flex gap-1.5">
-                                <button onClick={() => page > 1 && fetchProducts(page - 1)} disabled={page === 1} className="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-50 shadow-sm transition-all"><ChevronLeft size={14} className="text-slate-600" /></button>
-                                <button onClick={() => page < totalPages && fetchProducts(page + 1)} disabled={page === totalPages} className="p-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-50 shadow-sm transition-all"><ChevronRight size={14} className="text-slate-600" /></button>
+                            <div className="flex gap-2">
+                                <button onClick={() => page > 1 && fetchProducts(page - 1)} disabled={page === 1} className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-50 shadow-sm transition-all"><ChevronLeft size={16} className="text-slate-600" /></button>
+                                <button onClick={() => page < totalPages && fetchProducts(page + 1)} disabled={page === totalPages} className="p-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 disabled:opacity-50 shadow-sm transition-all"><ChevronRight size={16} className="text-slate-600" /></button>
                             </div>
                         </>
                     )}
@@ -906,18 +914,18 @@ const InventoryPage = () => {
             {/* BARRAS DE ESTADO FIJAS */}
             <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-3">
                 {syncProgress && (
-                    <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 w-72 animate-fade-in-up">
+                    <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 w-80 animate-fade-in-up">
                         <div className="flex justify-between items-center mb-3">
-                            <h4 className="text-xs font-black text-slate-800 dark:text-white flex items-center uppercase tracking-wider">
-                                {syncProgress.is_running ? <RefreshCw size={14} className="mr-2 animate-spin text-indigo-500" /> : <Cloud size={14} className="mr-2 text-emerald-500" />}
+                            <h4 className="text-sm font-black text-slate-800 dark:text-white flex items-center uppercase tracking-wider">
+                                {syncProgress.is_running ? <RefreshCw size={16} className="mr-2 animate-spin text-indigo-500" /> : <Cloud size={16} className="mr-2 text-emerald-500" />}
                                 Sincronizando Stock
                             </h4>
-                            {!syncProgress.is_running && <button onClick={() => setSyncProgress(null)} className="p-1 hover:bg-slate-100 rounded-full"><X size={14} className="text-slate-400" /></button>}
+                            {!syncProgress.is_running && <button onClick={() => setSyncProgress(null)} className="p-1.5 hover:bg-slate-100 rounded-full"><X size={16} className="text-slate-400" /></button>}
                         </div>
-                        <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2 mb-1.5 overflow-hidden shadow-inner">
+                        <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2.5 mb-2 overflow-hidden shadow-inner">
                             <div className={`h-full rounded-full transition-all duration-500 ${syncProgress.is_running ? 'bg-indigo-500' : 'bg-emerald-500'}`} style={{ width: `${Math.min(100, (syncProgress.current / syncProgress.total) * 100 || 0)}%` }}></div>
                         </div>
-                        <div className="flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                        <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                             <span>{syncProgress.current} / {syncProgress.total}</span>
                             <span className={syncProgress.is_running ? 'text-indigo-500' : 'text-emerald-500'}>{Math.round((syncProgress.current / syncProgress.total) * 100 || 0)}%</span>
                         </div>
@@ -925,18 +933,18 @@ const InventoryPage = () => {
                 )}
 
                 {marginProgress && (
-                    <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 w-72 animate-fade-in-up">
+                    <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-xl border border-slate-100 dark:border-slate-700 w-80 animate-fade-in-up">
                         <div className="flex justify-between items-center mb-3">
-                            <h4 className="text-xs font-black text-slate-800 dark:text-white flex items-center uppercase tracking-wider">
-                                {marginProgress.is_running ? <TrendingUp size={14} className="mr-2 animate-bounce text-emerald-500" /> : <CheckCircle2 size={14} className="mr-2 text-emerald-500" />}
+                            <h4 className="text-sm font-black text-slate-800 dark:text-white flex items-center uppercase tracking-wider">
+                                {marginProgress.is_running ? <TrendingUp size={16} className="mr-2 animate-bounce text-emerald-500" /> : <CheckCircle2 size={16} className="mr-2 text-emerald-500" />}
                                 Subiendo Precios TN
                             </h4>
-                            {!marginProgress.is_running && <button onClick={() => setMarginProgress(null)} className="p-1 hover:bg-slate-100 rounded-full"><X size={14} className="text-slate-400" /></button>}
+                            {!marginProgress.is_running && <button onClick={() => setMarginProgress(null)} className="p-1.5 hover:bg-slate-100 rounded-full"><X size={16} className="text-slate-400" /></button>}
                         </div>
-                        <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2 mb-1.5 overflow-hidden shadow-inner">
+                        <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2.5 mb-2 overflow-hidden shadow-inner">
                             <div className={`h-full rounded-full transition-all duration-500 ${marginProgress.is_running ? 'bg-emerald-500' : 'bg-emerald-400'}`} style={{ width: `${Math.min(100, (marginProgress.current / marginProgress.total) * 100 || 0)}%` }}></div>
                         </div>
-                        <div className="flex justify-between text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+                        <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                             <span>{marginProgress.current} / {marginProgress.total}</span>
                             <span className="text-emerald-500">{Math.round((marginProgress.current / marginProgress.total) * 100 || 0)}%</span>
                         </div>
@@ -947,30 +955,30 @@ const InventoryPage = () => {
             {isSelectedPriceModalOpen && (
                 <div className="fixed inset-0 z-[150] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={() => setIsSelectedPriceModalOpen(false)}>
                     <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-sm p-8 transform transition-all scale-100" onClick={e => e.stopPropagation()}>
-                        <h3 className="font-black text-xl mb-4 text-slate-800 dark:text-white flex items-center tracking-tight">
-                            <TrendingUp className="mr-3 text-emerald-500" size={24} /> Editar Precios
+                        <h3 className="font-black text-2xl mb-4 text-slate-800 dark:text-white flex items-center tracking-tight">
+                            <TrendingUp className="mr-3 text-emerald-500" size={28} /> Editar Precios
                         </h3>
-                        <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">Actualizando <span className="font-black text-indigo-600">{selectedItems.size} productos</span>.</p>
+                        <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mb-6 leading-relaxed">Actualizando <span className="font-black text-indigo-600">{selectedItems.size} productos</span>.</p>
 
                         <form onSubmit={handleUpdateSelectedPrices}>
-                            <div className="mb-4">
+                            <div className="mb-5">
                                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Tipo de Operación</label>
                                 <div className="relative">
-                                    <select value={selectedPriceType} onChange={e => setSelectedPriceType(e.target.value)} className="w-full p-3 border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded-xl text-sm font-bold outline-none focus:border-emerald-500 dark:text-white appearance-none cursor-pointer">
+                                    <select value={selectedPriceType} onChange={e => setSelectedPriceType(e.target.value)} className="w-full p-4 border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded-xl text-sm font-bold outline-none focus:border-emerald-500 dark:text-white appearance-none cursor-pointer">
                                         <option value="percent_increase">Aumento por Porcentaje (%)</option>
                                         <option value="percent_decrease">Descuento por Porcentaje (%)</option>
                                         <option value="fixed">Establecer Precio Fijo ($)</option>
                                     </select>
-                                    <ChevronDown size={16} className="absolute right-3 top-3.5 text-slate-400 pointer-events-none" />
+                                    <ChevronDown size={18} className="absolute right-4 top-4 text-slate-400 pointer-events-none" />
                                 </div>
                             </div>
-                            <div className="mb-6">
+                            <div className="mb-8">
                                 <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Valor ({selectedPriceType === 'fixed' ? '$' : '%'})</label>
-                                <input type="number" required min="0" step="0.01" autoFocus placeholder="0" value={selectedPriceValue} onChange={e => setSelectedPriceValue(e.target.value)} className="w-full p-3 border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded-xl font-black text-xl outline-none focus:border-emerald-500 text-emerald-600 dark:text-emerald-400 text-center" />
+                                <input type="number" required min="0" step="0.01" autoFocus placeholder="0" value={selectedPriceValue} onChange={e => setSelectedPriceValue(e.target.value)} className="w-full p-4 border-2 border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 rounded-xl font-black text-2xl outline-none focus:border-emerald-500 text-emerald-600 dark:text-emerald-400 text-center" />
                             </div>
-                            <div className="flex gap-3">
-                                <button type="button" onClick={() => setIsSelectedPriceModalOpen(false)} className="flex-1 py-3 text-slate-600 dark:text-slate-300 font-bold text-sm bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 rounded-xl transition-all active:scale-95">Cancelar</button>
-                                <button type="submit" className="flex-1 py-3 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 text-white font-black text-sm rounded-xl shadow-lg transition-all active:scale-95">Aplicar</button>
+                            <div className="flex gap-4">
+                                <button type="button" onClick={() => setIsSelectedPriceModalOpen(false)} className="flex-1 py-4 text-slate-600 dark:text-slate-300 font-bold text-sm bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 rounded-xl transition-all active:scale-95">Cancelar</button>
+                                <button type="submit" className="flex-1 py-4 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 text-white font-black text-sm rounded-xl shadow-lg transition-all active:scale-95">Aplicar</button>
                             </div>
                         </form>
                     </div>
@@ -985,7 +993,7 @@ const InventoryPage = () => {
             {imageModalSrc && (
                 <div className="fixed inset-0 bg-slate-900/90 z-[300] flex items-center justify-center p-4 cursor-zoom-out backdrop-blur-sm animate-fade-in" onClick={() => setImageModalSrc(null)}>
                     <img src={imageModalSrc} className="max-w-full max-h-[90vh] rounded-2xl shadow-2xl animate-zoom-in border-4 border-white/10" onClick={e => e.stopPropagation()} />
-                    <button className="absolute top-6 right-6 text-white/50 hover:text-white bg-black/20 p-2 rounded-full backdrop-blur-md transition-all"><X size={24} /></button>
+                    <button className="absolute top-6 right-6 text-white/50 hover:text-white bg-black/20 p-3 rounded-full backdrop-blur-md transition-all"><X size={28} /></button>
                 </div>
             )}
         </div>

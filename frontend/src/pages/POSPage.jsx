@@ -26,7 +26,7 @@ const SOUNDS = {
 const VariantSelectionModal = ({ product, isOpen, onClose, onSelect }) => {
   if (!isOpen || !product) return null;
 
-  // Agrupamos las variantes por Talle
+  // Agrupamos las variantes por Talle (INCLUYENDO LAS SIN STOCK)
   const groupedVariants = product.variantes.reduce((acc, v) => {
       if (!acc[v.talle]) acc[v.talle] = [];
       const estampaName = (!v.estampa || v.estampa === 'Standard') ? 'Sin Estampa' : v.estampa;
@@ -71,13 +71,13 @@ const VariantSelectionModal = ({ product, isOpen, onClose, onSelect }) => {
                                               className={`relative flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all active:scale-95 text-center
                                                   ${det.stock > 0 
                                                       ? 'border-purple-200 dark:border-purple-800 bg-purple-50/50 dark:bg-purple-900/20 hover:bg-purple-100 hover:border-purple-400 dark:hover:bg-purple-900/50 cursor-pointer' 
-                                                      : 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 opacity-60 cursor-not-allowed grayscale'}`}
+                                                      : 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 opacity-50 cursor-not-allowed grayscale'}`}
                                           >
-                                              <span className={`font-bold text-sm mb-1 ${det.stock > 0 ? 'text-purple-900 dark:text-purple-100' : 'text-slate-500'}`}>
+                                              <span className={`font-bold text-sm mb-1 ${det.stock > 0 ? 'text-purple-900 dark:text-purple-100' : 'text-slate-500 dark:text-slate-400 line-through'}`}>
                                                   {det.estampaName}
                                               </span>
                                               <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${det.stock > 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400'}`}>
-                                                  Stock: {det.stock}
+                                                  {det.stock > 0 ? `Stock: ${det.stock}` : 'SIN STOCK'}
                                               </span>
                                           </button>
                                       ))}
@@ -279,18 +279,24 @@ const POSPage = () => {
 
   // --- LÓGICA DE CLIC EN EL BUSCADOR MANUAL ---
   const handleProductSelectClick = (product) => {
-    // Si el producto tiene una sola variante (ej. Llavero), lo agrega directo.
-    if (product.variantes.length === 1) {
+    // Si el producto tiene una sola variante (ej. Llavero) y tiene stock, lo agrega directo.
+    if (product.variantes.length === 1 && product.variantes[0].stock > 0) {
         handleManualAdd(product, product.variantes[0]);
         setShowDropdown(false);
     } else {
-        // Si tiene múltiples, abre el modal limpio
+        // Si tiene múltiples variantes o la única no tiene stock, abre el modal
         setVariantModalProduct(product);
         setShowDropdown(false);
     }
   };
 
   const handleManualAdd = (product, variant) => {
+    if (variant.stock <= 0) {
+        toast.error("Variante sin stock");
+        playSound('error');
+        return;
+    }
+
     const itemFormatted = {
       id_variante: variant.id_variante,
       sku: variant.sku,
@@ -618,8 +624,9 @@ const POSPage = () => {
                       <div className="p-8 text-center text-gray-400 italic font-medium">No se encontraron productos con estos filtros.</div>
                     ) : (
                       manualResults.map(p => {
-                        // Extraemos los talles únicos que tienen stock para el resumen
-                        const tallesDisponibles = Array.from(new Set(p.variantes.filter(v => v.stock > 0).map(v => v.talle)));
+                        // AQUÍ ESTÁ EL CAMBIO PRINCIPAL PARA EL DROPDOWN: 
+                        // Mostramos TODOS los talles, no solo los que tienen stock > 0
+                        const tallesUnicos = Array.from(new Set(p.variantes.map(v => v.talle)));
 
                         return (
                           <div 
@@ -642,15 +649,26 @@ const POSPage = () => {
                                 {p.categoria && <span className="bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 rounded uppercase font-bold">{p.categoria}</span>}
                               </div>
                               
-                              {/* --- EL RESUMEN VISUAL LIMPIO --- */}
+                              {/* --- EL RESUMEN VISUAL LIMPIO CON COLORES DINÁMICOS --- */}
                               <div className="mt-1 flex items-center justify-between bg-purple-50 dark:bg-purple-900/20 p-1.5 rounded-lg border border-purple-100 dark:border-purple-800/50 group-hover:bg-purple-100 dark:group-hover:bg-purple-900/40 transition-colors">
                                   <div className="flex flex-wrap gap-1">
-                                      {tallesDisponibles.length > 0 ? tallesDisponibles.map(t => (
-                                          <span key={t} className="text-[10px] font-black bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-300 px-1.5 py-0.5 rounded shadow-sm border border-purple-100 dark:border-slate-600">
-                                              {t}
-                                          </span>
-                                      )) : (
-                                          <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-900/30 px-1.5 py-0.5 rounded">SIN STOCK</span>
+                                      {tallesUnicos.length > 0 ? tallesUnicos.map(t => {
+                                          // Revisamos si ESE talle en particular tiene stock en alguna estampa
+                                          const talleTieneStock = p.variantes.some(v => v.talle === t && v.stock > 0);
+                                          return (
+                                            <span 
+                                                key={t} 
+                                                className={`text-[10px] font-black px-1.5 py-0.5 rounded shadow-sm border ${
+                                                    talleTieneStock 
+                                                    ? 'bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-300 border-purple-100 dark:border-slate-600'
+                                                    : 'bg-red-50 dark:bg-red-900/20 text-red-400 dark:text-red-500 border-red-100 dark:border-red-900/50 line-through opacity-70'
+                                                }`}
+                                            >
+                                                {t}
+                                            </span>
+                                          );
+                                      }) : (
+                                          <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-900/30 px-1.5 py-0.5 rounded">SIN VARIANTES</span>
                                       )}
                                   </div>
                                   <span className="text-[10px] font-black text-purple-600 dark:text-purple-400 flex items-center">
