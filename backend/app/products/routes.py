@@ -6,6 +6,7 @@ import threading
 import time
 import requests
 import json
+import time
 import tempfile
 from PIL import Image
 from reportlab.lib.utils import ImageReader
@@ -1159,7 +1160,6 @@ def bulk_price_selected():
 @bp.route('/tiendanube/margen/status', methods=['GET'])
 @jwt_required()
 def get_tn_margen_status():
-    """Devuelve el progreso actual de la sincronización de precios"""
     status_file = os.path.join(os.path.dirname(__file__), 'margin_sync_status.json')
     try:
         if os.path.exists(status_file):
@@ -1167,21 +1167,26 @@ def get_tn_margen_status():
                 return jsonify(json.load(f)), 200
     except Exception:
         pass
-    return jsonify({"is_running": False, "current": 0, "total": 0, "message": ""}), 200
+    return jsonify({"is_running": False, "current": 0, "total": 0, "message": "", "errores": 0}), 200 # <-- Agregamos errores al payload base
 
 @bp.route('/tiendanube/margen', methods=['GET', 'POST'])
 @jwt_required()
 def manage_tn_margen():
     from app.services.tiendanube_service import tn_service
-    from app.products.models import Producto  # Aseguramos la ruta correcta del modelo
+    from app.products.models import Producto
     
     status_file = os.path.join(os.path.dirname(__file__), 'margin_sync_status.json')
     
-    # Helper para reportar el progreso al frontend
-    def update_status(is_running, current, total, message):
+    def update_status(is_running, current, total, message, errores=0):
         try:
             with open(status_file, 'w') as f:
-                json.dump({"is_running": is_running, "current": current, "total": total, "message": message}, f)
+                json.dump({
+                    "is_running": is_running, 
+                    "current": current, 
+                    "total": total, 
+                    "message": message,
+                    "errores": errores # <-- Registramos los errores
+                }, f)
         except Exception:
             pass
 
@@ -1193,40 +1198,56 @@ def manage_tn_margen():
     if not nuevo_margen:
         return jsonify({'msg': 'Falta el margen'}), 400
         
-    # Verificar si ya está corriendo para evitar que el usuario lo lance dos veces
     try:
         if os.path.exists(status_file):
             with open(status_file, 'r') as f:
                 current_status = json.load(f)
                 if current_status.get("is_running"):
-                    return jsonify({'msg': 'Ya hay una actualización de precios en curso. Por favor, espera a que termine.'}), 400
+                    return jsonify({'msg': 'Ya hay una actualización en curso.'}), 400
     except Exception:
         pass
         
-    # Guardamos el nuevo valor
     tn_service.set_margen_web(nuevo_margen)
     
-    # Hilo fantasma
     app = current_app._get_current_object()
     def background_price_update(app_context):
-        update_status(True, 0, 0, "Preparando productos...")
+        update_status(True, 0, 0, "Preparando productos...", 0)
         with app_context.app_context():
             productos_en_nube = Producto.query.filter(Producto.tiendanube_id != None).all()
             
-            # Contamos el total exacto de variantes a procesar
             total_variantes = sum(1 for p in productos_en_nube for v in p.variantes if v.tiendanube_variant_id)
-            update_status(True, 0, total_variantes, "Iniciando subida a Tienda Nube...")
+            update_status(True, 0, total_variantes, "Iniciando subida a Tienda Nube...", 0)
             
             procesados = 0
+            errores = 0
+            
             for prod in productos_en_nube:
                 for var in prod.variantes:
                     if var.tiendanube_variant_id:
-                        update_status(True, procesados, total_variantes, f"Actualizando: {prod.nombre[:25]}...")
-                        tn_service.update_variant_price(prod.tiendanube_id, var.tiendanube_variant_id, prod.precio)
+                        update_status(True, procesados, total_variantes, f"Actualizando: {prod.nombre[:25]}...", errores)
+                        
+                        # --- NUEVO: CAPTURA DE ERRORES INDIVIDUALES ---
+                        try:
+                            # Tu función actual no devuelve el status code directamente, pero si falla, 
+                            # puedes hacer que arroje una excepción, o simplemente asumir que si falla
+                            # la red, lo contaremos como error.
+                            tn_service.update_variant_price(prod.tiendanube_id, var.tiendanube_variant_id, prod.precio)
+                            
+                            # Pequeña pausa para no enojar al firewall de Tienda Nube (Rate Limiting)
+                            time.sleep(0.1) 
+                            
+                        except Exception as e:
+                            print(f"⚠️ Error al subir precio de {prod.nombre} (ID: {var.tiendanube_variant_id}): {e}")
+                            errores += 1
+                            
                         procesados += 1
                         
-            # Finalizamos
-            update_status(False, procesados, total_variantes, "¡Precios actualizados con éxito!")
+            # Mensaje final inteligente
+            mensaje_final = "¡Precios actualizados con éxito!"
+            if errores > 0:
+                mensaje_final = f"Terminado. Fallaron {errores} variantes por red. Intenta de nuevo más tarde."
+                
+            update_status(False, procesados, total_variantes, mensaje_final, errores)
             
     Thread(target=background_price_update, args=(app,)).start()
     return jsonify({'msg': 'Proceso iniciado en segundo plano'}), 200
