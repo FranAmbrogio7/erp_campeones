@@ -11,13 +11,19 @@ import {
   ShoppingCart, Trash2, Plus, Minus, ScanBarcode, Banknote,
   CreditCard, Smartphone, Lock, ArrowRight, Printer, Clock,
   Search, Shirt, CalendarClock, X, AlertTriangle, Receipt, Edit3,
-  Maximize2, Filter, ChevronDown, Layers, Split, Eye,
-  TrendingUp, TrendingDown, Users, Sparkles
+  ChevronDown, Users, TrendingUp, TrendingDown, Eye
 } from 'lucide-react';
 
-const SOUNDS = {
-  beep: new Audio('https://cdn.freesound.org/previews/536/536108_12152864-lq.mp3'),
-  error: new Audio('https://cdn.freesound.org/previews/419/419023_8340785-lq.mp3')
+// =========================================================================
+// UTILERÍA: Normalizador de Estampas
+// =========================================================================
+const getRealEstampa = (estampaStr) => {
+    if (!estampaStr) return null;
+    const clean = estampaStr.toString().trim().toUpperCase();
+    if (clean === '' || clean === 'STANDARD' || clean === 'SIN ESTAMPA' || clean === '-' || clean === 'N/A' || clean === 'SIN DORSAL') {
+        return null;
+    }
+    return estampaStr;
 };
 
 // =========================================================================
@@ -26,13 +32,18 @@ const SOUNDS = {
 const VariantSelectionModal = ({ product, isOpen, onClose, onSelect }) => {
   if (!isOpen || !product) return null;
 
-  // Agrupamos las variantes por Talle (INCLUYENDO LAS SIN STOCK)
+  // Agrupamos las variantes por Talle
   const groupedVariants = product.variantes.reduce((acc, v) => {
       if (!acc[v.talle]) acc[v.talle] = [];
-      const estampaName = (!v.estampa || v.estampa === 'Standard') ? 'Sin Estampa' : v.estampa;
+      const estampaName = getRealEstampa(v.estampa) || 'Sin Estampa';
       acc[v.talle].push({ ...v, estampaName });
       return acc;
   }, {});
+
+  // Si pasamos un talle preseleccionado, solo mostramos ese. Si no, mostramos todos.
+  const targetTalles = product.preselectedTalle 
+      ? [product.preselectedTalle] 
+      : Object.keys(groupedVariants);
 
   return (
       <div className="fixed inset-0 z-[200] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
@@ -41,7 +52,7 @@ const VariantSelectionModal = ({ product, isOpen, onClose, onSelect }) => {
               <div className="bg-purple-50 dark:bg-slate-900 p-5 border-b border-purple-100 dark:border-slate-700 flex justify-between items-center shrink-0">
                   <div>
                       <h3 className="font-black text-xl text-purple-900 dark:text-white flex items-center">
-                          <Shirt className="mr-2 text-purple-500" size={24}/> Seleccionar Variante
+                          <Shirt className="mr-2 text-purple-500" size={24}/> Seleccionar Estampa
                       </h3>
                       <p className="text-sm text-purple-700 dark:text-slate-400 mt-1 font-medium">{product.nombre}</p>
                   </div>
@@ -52,7 +63,7 @@ const VariantSelectionModal = ({ product, isOpen, onClose, onSelect }) => {
 
               <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-slate-50 dark:bg-slate-800/50">
                   <div className="space-y-6">
-                      {Object.keys(groupedVariants).map(talle => {
+                      {targetTalles.map(talle => {
                           const detalles = groupedVariants[talle].sort((a, b) => 
                               a.estampaName === 'Sin Estampa' ? -1 : b.estampaName === 'Sin Estampa' ? 1 : 0
                           );
@@ -133,7 +144,6 @@ const POSPage = () => {
   const [manualResults, setManualResults] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
 
-  // NUEVO ESTADO: Controla el Modal de Selección de Variante
   const [variantModalProduct, setVariantModalProduct] = useState(null);
 
   const [categories, setCategories] = useState([]);
@@ -199,13 +209,6 @@ const POSPage = () => {
 
   const totalPagadoMixto = splitPayments.reduce((acc, curr) => acc + (parseFloat(curr.monto) || 0), 0);
   const restanteMixto = totalFinal - totalPagadoMixto;
-
-  const playSound = (type) => {
-    try {
-      const audio = SOUNDS[type];
-      if (audio) { audio.currentTime = 0; audio.volume = 0.5; audio.play().catch(e => console.warn(e)); }
-    } catch (e) { console.error(e); }
-  };
 
   useEffect(() => {
     const init = async () => {
@@ -277,15 +280,29 @@ const POSPage = () => {
     }
   };
 
-  // --- LÓGICA DE CLIC EN EL BUSCADOR MANUAL ---
+  // --- NUEVA LÓGICA: Clic Directo en el Talle ---
+  const handleSizeClick = (product, talle) => {
+    const variantsForSize = product.variantes.filter(v => v.talle === talle);
+    const hasOptions = variantsForSize.some(v => getRealEstampa(v.estampa) !== null);
+
+    if (!hasOptions) {
+        // Es un artículo simple o estándar sin estampas reales, se agrega directo
+        const variantToAdd = variantsForSize.find(v => v.stock > 0) || variantsForSize[0];
+        handleManualAdd(product, variantToAdd);
+    } else {
+        // Tiene opciones reales de estampas, abrimos el modal solo para este talle
+        setVariantModalProduct({ ...product, preselectedTalle: talle });
+        setShowDropdown(false);
+    }
+  };
+
+  // Mantenemos esto por si el usuario le hace click a todo el renglón
   const handleProductSelectClick = (product) => {
-    // Si el producto tiene una sola variante (ej. Llavero) y tiene stock, lo agrega directo.
     if (product.variantes.length === 1 && product.variantes[0].stock > 0) {
         handleManualAdd(product, product.variantes[0]);
         setShowDropdown(false);
     } else {
-        // Si tiene múltiples variantes o la única no tiene stock, abre el modal
-        setVariantModalProduct(product);
+        setVariantModalProduct(product); // Abrirá el modal con TODOS los talles disponibles
         setShowDropdown(false);
     }
   };
@@ -293,7 +310,6 @@ const POSPage = () => {
   const handleManualAdd = (product, variant) => {
     if (variant.stock <= 0) {
         toast.error("Variante sin stock");
-        playSound('error');
         return;
     }
 
@@ -308,13 +324,11 @@ const POSPage = () => {
     };
     addToCart(itemFormatted);
 
-    const estampaText = variant.estampa && variant.estampa !== 'Standard' ? ` - ${variant.estampa}` : '';
+    const estampaReal = getRealEstampa(variant.estampa);
+    const estampaText = estampaReal ? ` - ${estampaReal}` : '';
     toast.success(`${product.nombre} (${variant.talle}${estampaText}) agregado`);
 
-    playSound('beep');
-    setVariantModalProduct(null); // Cierra el modal si estaba abierto
-    setManualTerm(''); // Limpia el buscador para el próximo cliente
-    setManualResults([]);
+    setVariantModalProduct(null); 
     setTimeout(() => searchInputRef.current?.focus(), 100);
   };
 
@@ -325,12 +339,10 @@ const POSPage = () => {
       const res = await api.get(`/sales/scan/${skuInput}`);
       if (res.data.found) {
         addToCart(res.data.product);
-        playSound('beep');
         toast.success("OK", { position: 'bottom-left', duration: 800 });
         setSkuInput('');
       }
     } catch (error) {
-      playSound('error');
       toast.error("Producto NO Encontrado", { position: 'bottom-left' });
       setSkuInput('');
     }
@@ -342,11 +354,11 @@ const POSPage = () => {
       const existing = prevCart.find(i => i.id_variante === product.id_variante);
       if (existing) {
         if (existing.cantidad + 1 > product.stock_actual) {
-          toast.error("Stock insuficiente"); playSound('error'); return prevCart;
+          toast.error("Stock insuficiente"); return prevCart;
         }
         return prevCart.map(i => i.id_variante === product.id_variante ? { ...i, cantidad: i.cantidad + 1, subtotal: (i.cantidad + 1) * i.precio } : i);
       } else {
-        if (product.stock_actual < 1) { toast.error("Sin stock"); playSound('error'); return prevCart; }
+        if (product.stock_actual < 1) { toast.error("Sin stock"); return prevCart; }
         return [...prevCart, { ...product, cantidad: 1, subtotal: product.precio }];
       }
     });
@@ -409,10 +421,10 @@ const POSPage = () => {
         return;
       }
     } else {
-      if (!selectedMethod) { toast.error("Selecciona medio de pago"); playSound('error'); return; }
+      if (!selectedMethod) { toast.error("Selecciona medio de pago"); return; }
       const mName = selectedMethod.nombre.toLowerCase();
       if ((mName.includes('credito') || mName.includes('crédito')) && !creditNoteCode.trim()) {
-        toast.error("Ingresa código de Nota"); playSound('error');
+        toast.error("Ingresa código de Nota");
         setTimeout(() => creditNoteInputRef.current?.focus(), 200); return;
       }
     }
@@ -461,10 +473,13 @@ const POSPage = () => {
       if (!isSplitPayment && selectedMethod) metodoNombre = selectedMethod.nombre;
       if (isSplitPayment) metodoNombre = "Pago Combinado";
 
-      const cartForTicket = cart.map(i => ({
-        ...i,
-        talle: i.estampa && i.estampa !== 'Standard' ? `${i.talle} - ${i.estampa}` : i.talle
-      }));
+      const cartForTicket = cart.map(i => {
+        const estampaReal = getRealEstampa(i.estampa);
+        return {
+          ...i,
+          talle: estampaReal ? `${i.talle} - ${estampaReal}` : i.talle
+        };
+      });
 
       setTicketData({
         id_venta: res.data.id,
@@ -475,13 +490,13 @@ const POSPage = () => {
         metodo: metodoNombre
       });
 
-      playSound('beep'); toast.success(`Venta #${res.data.id} OK`, { id: toastId });
+      toast.success(`Venta #${res.data.id} OK`, { id: toastId });
 
       setCart([]); setSkuInput(''); setSelectedMethod(null); setCustomTotal(null);
       setCreditNoteCode(''); setAppliedNote(null); setIsSplitPayment(false); setSplitPayments([{ id_metodo: '', monto: '' }]);
       setSurchargePercent(0); setDiscountPercent(0);
       fetchRecentSales();
-    } catch (e) { playSound('error'); toast.error(e.response?.data?.msg || "Error", { id: toastId }); }
+    } catch (e) { toast.error(e.response?.data?.msg || "Error", { id: toastId }); }
   };
 
   const handleVoidSale = async (vid) => {
@@ -510,9 +525,9 @@ const POSPage = () => {
 
   const getPaymentIcon = (n) => {
     const name = n.toLowerCase();
-    if (name.includes('tarjeta')) return <CreditCard size={20} />;
+    if (name.includes('58')) return <CreditCard size={20} />;
     if (name.includes('transferencia')) return <Smartphone size={20} />;
-    if (name.includes('credito')) return <Receipt size={20} />;
+    if (name.includes('credito') || name.includes('crédito')) return <Receipt size={20} />;
     return <Banknote size={20} />;
   };
 
@@ -624,56 +639,55 @@ const POSPage = () => {
                       <div className="p-8 text-center text-gray-400 italic font-medium">No se encontraron productos con estos filtros.</div>
                     ) : (
                       manualResults.map(p => {
-                        // AQUÍ ESTÁ EL CAMBIO PRINCIPAL PARA EL DROPDOWN: 
-                        // Mostramos TODOS los talles, no solo los que tienen stock > 0
                         const tallesUnicos = Array.from(new Set(p.variantes.map(v => v.talle)));
 
                         return (
                           <div 
                             key={p.id} 
-                            className="p-3 border-b dark:border-slate-700 hover:bg-purple-50 dark:hover:bg-slate-700/80 flex gap-3 cursor-pointer group transition-colors"
+                            className="p-4 border-b dark:border-slate-700 hover:bg-purple-50/50 dark:hover:bg-slate-700/50 flex gap-4 cursor-pointer transition-colors"
                             onClick={() => handleProductSelectClick(p)}
                           >
-                            <div className="w-16 h-16 bg-gray-100 dark:bg-slate-700 rounded-lg shrink-0 flex items-center justify-center border dark:border-slate-600 overflow-hidden cursor-zoom-in relative"
+                            <div className="w-20 h-20 bg-gray-100 dark:bg-slate-700 rounded-xl shrink-0 flex items-center justify-center border dark:border-slate-600 overflow-hidden cursor-zoom-in relative"
                               onClick={(e) => { if (p.imagen) { e.stopPropagation(); setZoomImage(`${api.defaults.baseURL}/static/uploads/${p.imagen}`); } }}
                             >
-                              {p.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${p.imagen}`} className="w-full h-full object-cover" /> : <Shirt size={24} className="text-gray-300 dark:text-slate-500" />}
+                              {p.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${p.imagen}`} className="w-full h-full object-cover" /> : <Shirt size={32} className="text-gray-300 dark:text-slate-500" />}
                             </div>
                             
                             <div className="flex-1 flex flex-col justify-center">
-                              <div className="flex justify-between font-bold text-sm text-gray-800 dark:text-white">
-                                <span>{p.nombre}</span>
-                                <span className="text-blue-600 dark:text-blue-400">${p.precio}</span>
-                              </div>
-                              <div className="text-[10px] text-gray-400 dark:text-slate-500 mb-1 flex gap-2">
-                                {p.categoria && <span className="bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 rounded uppercase font-bold">{p.categoria}</span>}
+                              <div className="flex justify-between items-start mb-2">
+                                <div>
+                                    <span className="font-black text-base text-gray-800 dark:text-white leading-tight">{p.nombre}</span>
+                                    {p.categoria && <span className="block text-[10px] text-gray-500 dark:text-slate-400 uppercase mt-0.5 tracking-wider">{p.categoria}</span>}
+                                </div>
+                                <span className="text-purple-600 dark:text-purple-400 font-black text-lg">${p.precio}</span>
                               </div>
                               
-                              {/* --- EL RESUMEN VISUAL LIMPIO CON COLORES DINÁMICOS --- */}
-                              <div className="mt-1 flex items-center justify-between bg-purple-50 dark:bg-purple-900/20 p-1.5 rounded-lg border border-purple-100 dark:border-purple-800/50 group-hover:bg-purple-100 dark:group-hover:bg-purple-900/40 transition-colors">
-                                  <div className="flex flex-wrap gap-1">
-                                      {tallesUnicos.length > 0 ? tallesUnicos.map(t => {
-                                          // Revisamos si ESE talle en particular tiene stock en alguna estampa
-                                          const talleTieneStock = p.variantes.some(v => v.talle === t && v.stock > 0);
-                                          return (
-                                            <span 
-                                                key={t} 
-                                                className={`text-[10px] font-black px-1.5 py-0.5 rounded shadow-sm border ${
-                                                    talleTieneStock 
-                                                    ? 'bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-300 border-purple-100 dark:border-slate-600'
-                                                    : 'bg-red-50 dark:bg-red-900/20 text-red-400 dark:text-red-500 border-red-100 dark:border-red-900/50 line-through opacity-70'
-                                                }`}
-                                            >
-                                                {t}
-                                            </span>
-                                          );
-                                      }) : (
-                                          <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-900/30 px-1.5 py-0.5 rounded">SIN VARIANTES</span>
-                                      )}
-                                  </div>
-                                  <span className="text-[10px] font-black text-purple-600 dark:text-purple-400 flex items-center">
-                                      Elegir Variante <ArrowRight size={12} className="ml-1" />
-                                  </span>
+                              {/* --- BOTONES DE TALLES AMPLIOS DIRECTOS --- */}
+                              <div className="mt-1 flex flex-wrap gap-2">
+                                  {tallesUnicos.length > 0 ? tallesUnicos.map(t => {
+                                      const variantsForSize = p.variantes.filter(v => v.talle === t);
+                                      const hasStock = variantsForSize.some(v => v.stock > 0);
+                                      
+                                      return (
+                                        <button 
+                                            key={t} 
+                                            disabled={!hasStock}
+                                            onClick={(e) => {
+                                                e.stopPropagation(); // Evita que se dispare el click general de la fila
+                                                handleSizeClick(p, t);
+                                            }}
+                                            className={`text-sm font-black px-4 py-2 rounded-xl shadow-sm border-2 transition-all active:scale-95 ${
+                                                hasStock 
+                                                ? 'bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-slate-600 hover:bg-purple-100 dark:hover:bg-purple-900/50 hover:border-purple-400'
+                                                : 'bg-slate-50 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800 line-through opacity-70 cursor-not-allowed'
+                                            }`}
+                                        >
+                                            {t}
+                                        </button>
+                                      );
+                                  }) : (
+                                      <span className="text-xs font-bold text-red-500 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded">SIN STOCK</span>
+                                  )}
                               </div>
 
                             </div>
@@ -814,58 +828,62 @@ const POSPage = () => {
               <ScanBarcode size={48} className="mb-2" />
               <p className="text-sm font-bold">Esperando productos...</p>
             </div>
-          ) : cart.map(item => (
-            <div key={item.id_variante} className="bg-white dark:bg-slate-800 p-2.5 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 animate-fade-in-down transition-colors relative">
+          ) : cart.map(item => {
+            const estampaReal = getRealEstampa(item.estampa);
+            
+            return (
+              <div key={item.id_variante} className="bg-white dark:bg-slate-800 p-2.5 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 animate-fade-in-down transition-colors relative">
 
-              <button onClick={() => removeFromCart(item.id_variante)} className="absolute right-2 top-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 p-1.5 rounded-lg transition-colors">
-                <X size={16} />
-              </button>
+                <button onClick={() => removeFromCart(item.id_variante)} className="absolute right-2 top-2 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 p-1.5 rounded-lg transition-colors">
+                  <X size={16} />
+                </button>
 
-              <div className="flex flex-col justify-between h-full">
-                <div className="pr-8 mb-2">
-                  <p className="font-bold text-sm text-gray-800 dark:text-white truncate leading-tight" title={item.nombre}>{item.nombre}</p>
+                <div className="flex flex-col justify-between h-full">
+                  <div className="pr-8 mb-2">
+                    <p className="font-bold text-sm text-gray-800 dark:text-white truncate leading-tight" title={item.nombre}>{item.nombre}</p>
 
-                  <div className="text-[10px] text-gray-500 dark:text-slate-400 mt-1 flex flex-wrap gap-2 items-center">
-                    <span className="bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 rounded font-medium">Talle: {item.talle}</span>
-                    {item.estampa && item.estampa !== 'Standard' && (
-                      <span className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800 px-1.5 py-0.5 rounded font-bold uppercase">
-                        {item.estampa}
-                      </span>
-                    )}
-                    <span className="truncate py-0.5">SKU: {item.sku}</span>
+                    <div className="text-[10px] text-gray-500 dark:text-slate-400 mt-1 flex flex-wrap gap-2 items-center">
+                      <span className="bg-gray-100 dark:bg-slate-700 px-1.5 py-0.5 rounded font-medium">Talle: {item.talle}</span>
+                      {estampaReal && (
+                        <span className="bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 border border-indigo-100 dark:border-indigo-800 px-1.5 py-0.5 rounded font-bold uppercase">
+                          {estampaReal}
+                        </span>
+                      )}
+                      <span className="truncate py-0.5">SKU: {item.sku}</span>
+                    </div>
+
                   </div>
 
-                </div>
+                  <div className="flex justify-between items-end pt-2 border-t border-gray-50 dark:border-slate-700/50">
+                    <div className="flex items-center bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-200 dark:border-slate-700 p-0.5 shadow-inner">
+                      <button onClick={() => updateQuantity(item.id_variante, -1)} className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-700 rounded-md transition-colors"><Minus size={14} /></button>
+                      <span className="font-bold text-xs w-8 text-center text-gray-800 dark:text-white">{item.cantidad}</span>
+                      <button onClick={() => updateQuantity(item.id_variante, 1)} className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-700 rounded-md transition-colors"><Plus size={14} /></button>
+                    </div>
 
-                <div className="flex justify-between items-end pt-2 border-t border-gray-50 dark:border-slate-700/50">
-                  <div className="flex items-center bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-200 dark:border-slate-700 p-0.5 shadow-inner">
-                    <button onClick={() => updateQuantity(item.id_variante, -1)} className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-700 rounded-md transition-colors"><Minus size={14} /></button>
-                    <span className="font-bold text-xs w-8 text-center text-gray-800 dark:text-white">{item.cantidad}</span>
-                    <button onClick={() => updateQuantity(item.id_variante, 1)} className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-blue-600 hover:bg-white dark:hover:bg-slate-700 rounded-md transition-colors"><Plus size={14} /></button>
-                  </div>
-
-                  <div className="flex flex-col items-end">
-                    <span className="text-[9px] text-gray-400 uppercase font-bold tracking-wider mb-0.5">Precio Subtotal</span>
-                    {editingItemId === item.id_variante ? (
-                      <input
-                        type="number"
-                        autoFocus
-                        className="w-24 text-right font-black text-sm border-b-2 border-blue-500 outline-none bg-blue-50 dark:bg-blue-900/30 dark:text-white text-blue-700 px-1 rounded-t transition-all"
-                        defaultValue={item.precio}
-                        onBlur={(e) => { updateItemPrice(item.id_variante, e.target.value); setEditingItemId(null); }}
-                        onKeyDown={(e) => { if (e.key === 'Enter') { updateItemPrice(item.id_variante, e.target.value); setEditingItemId(null); } }}
-                      />
-                    ) : (
-                      <div onClick={() => setEditingItemId(item.id_variante)} className="flex items-center cursor-pointer group bg-gray-50 hover:bg-blue-50 dark:bg-slate-900 dark:hover:bg-blue-900/20 px-2 py-1 rounded-lg border border-transparent hover:border-blue-200 dark:hover:border-blue-800 transition-colors" title="Clic para editar precio unitario">
-                        <span className="font-black text-sm text-green-700 dark:text-green-400 font-mono">$ {item.subtotal.toLocaleString()}</span>
-                        <Edit3 size={12} className="ml-1.5 text-gray-400 group-hover:text-blue-500 transition-colors" />
-                      </div>
-                    )}
+                    <div className="flex flex-col items-end">
+                      <span className="text-[9px] text-gray-400 uppercase font-bold tracking-wider mb-0.5">Precio Subtotal</span>
+                      {editingItemId === item.id_variante ? (
+                        <input
+                          type="number"
+                          autoFocus
+                          className="w-24 text-right font-black text-sm border-b-2 border-blue-500 outline-none bg-blue-50 dark:bg-blue-900/30 dark:text-white text-blue-700 px-1 rounded-t transition-all"
+                          defaultValue={item.precio}
+                          onBlur={(e) => { updateItemPrice(item.id_variante, e.target.value); setEditingItemId(null); }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { updateItemPrice(item.id_variante, e.target.value); setEditingItemId(null); } }}
+                        />
+                      ) : (
+                        <div onClick={() => setEditingItemId(item.id_variante)} className="flex items-center cursor-pointer group bg-gray-50 hover:bg-blue-50 dark:bg-slate-900 dark:hover:bg-blue-900/20 px-2 py-1 rounded-lg border border-transparent hover:border-blue-200 dark:hover:border-blue-800 transition-colors" title="Clic para editar precio unitario">
+                          <span className="font-black text-sm text-green-700 dark:text-green-400 font-mono">$ {item.subtotal.toLocaleString()}</span>
+                          <Edit3 size={12} className="ml-1.5 text-gray-400 group-hover:text-blue-500 transition-colors" />
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
 
         {/* FOOTER COBRO */}

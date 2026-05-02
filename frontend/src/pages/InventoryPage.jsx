@@ -303,7 +303,7 @@ const InventoryPage = () => {
                         setTimeout(() => setMarginProgress(null), 8000);
                         return res.data;
                     }
-                    
+
                     // Si está corriendo o acaba de iniciar
                     if (res.data.is_running || (prev && prev.is_running)) {
                         return res.data;
@@ -487,9 +487,15 @@ const InventoryPage = () => {
                 finalEstampa = '';
             } else if (newProduct.tipo_articulo === 'estandar') {
                 finalEstampa = '';
+            } else if (newProduct.tipo_articulo === 'personalizable') {
+                // Si es personalizable y dejaron el campo vacío, asignamos por defecto
+                if (finalEstampa.trim() === '') {
+                    finalEstampa = 'SIN DORSAL';
+                }
             }
 
             fd.append('talle', finalTalle);
+
             if (finalEstampa.trim() !== '') {
                 fd.append('estampa', finalEstampa.toUpperCase());
             }

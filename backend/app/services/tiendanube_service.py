@@ -37,7 +37,7 @@ class TiendaNubeService:
                 <ul>
                     <li>Diseño fiel a los modelos históricos originales.</li>
                     <li>Telas modernas que brindan mayor comodidad y durabilidad.</li>
-                    <li>Detalles y escudos cuidadosamente confeccionados.</li>
+                    <li>Detalles y escudos carefully confeccionados.</li>
                     <li>Ideal para coleccionistas y verdaderos fanáticos del fútbol.</li>
                 </ul>
                 <p><strong>📏 Recomendación de Talle:</strong></p>
@@ -163,7 +163,6 @@ class TiendaNubeService:
         except ValueError:
             return 0.0
 
-
     # =======================================================
     # FUNCIONES AUXILIARES: INTELIGENCIA DE VARIANTES
     # =======================================================
@@ -189,22 +188,27 @@ class TiendaNubeService:
             if t.strip().upper() not in ['U', 'UNICO', 'ÚNICO']: 
                 usa_talle = True
             
-            if c and c.strip() not in ['', 'Standard', 'Sin Estampa']: 
+            # Solo si existe y no es basura
+            if c and c.strip() not in ['', 'Standard', 'Sin Estampa', 'STANDARD']: 
                 usa_estampa = True
                 
         return usa_talle, usa_estampa
 
     def _build_variant_values(self, usa_talle, usa_estampa, var):
-        """Construye el arreglo 'values' dinámicamente"""
+        """Construye el arreglo 'values' dinámicamente. IGNORA CAMPOS VACÍOS O BASURA."""
         t = getattr(var, 'talla', None) or getattr(var, 'talle', 'Único')
         c = getattr(var, 'color', None)
         
-        t_clean = t.strip() if t else 'Único'
-        c_clean = c.strip() if c and c.strip() not in ['', 'Standard'] else 'Sin Estampa'
-        
         vals = []
-        if usa_talle: vals.append({"es": t_clean})
-        if usa_estampa: vals.append({"es": c_clean})
+        
+        if usa_talle: 
+            t_clean = t.strip() if t else 'Único'
+            vals.append({"es": t_clean})
+            
+        # MAGIA: Solo si la estampa es real, la adjunta.
+        if usa_estampa and c and c.strip() not in ['', 'Standard', 'STANDARD', 'Sin Estampa', 'N/A']: 
+            vals.append({"es": c.strip()})
+            
         return vals
 
     # =======================================================
@@ -284,7 +288,6 @@ class TiendaNubeService:
         except Exception as e:
             print(f"⚠️ Error actualizando producto en TN: {e}")
 
-
     def delete_product_in_cloud(self, tn_product_id):
         if not self.access_token or not self.api_url: return
         
@@ -308,7 +311,6 @@ class TiendaNubeService:
         except Exception as e:
             print(f"⚠️ Error eliminando variante de TN: {e}")
             
-
     def create_product_in_cloud(self, local_prod):
         try:
             if not self.access_token or not self.api_url: 
@@ -330,13 +332,15 @@ class TiendaNubeService:
             
             attributes_list = []
             if usa_talle: attributes_list.append({"es": "Talle"})
-            if usa_estampa: attributes_list.append({"es": "Estampa"})
+            # Solo mandamos el atributo madre "Estampa" si usa_estampa es True
+            if usa_estampa: attributes_list.append({"es": "Estampa / Jugador"})
 
             variants_data = []
             for var in local_prod.variantes:
                 stock_val = var.inventario.stock_actual if var.inventario else 0
                 precio_web = self.calcular_precio_web(local_prod.precio)
 
+                # Si NO usa estampa (es un llavero o buzo comun), _build_variant_values le dara un array de 1 solo elemento: [{"es": "M"}]
                 variants_data.append({
                     "price": precio_web,
                     "stock": int(stock_val),

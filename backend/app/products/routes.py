@@ -311,20 +311,31 @@ def create_product():
         # 4. GENERACIÓN DE VARIANTES (Lógica de Curva de Talles + ESTAMPA)
         talles_input = request.form.get('talle', 'U') 
         stock_por_talle = int(request.form.get('stock', 0))
-        estampa_input = request.form.get('estampa', 'Standard') # <--- CAPTURAMOS ESTAMPA
+        
+        # --- NUEVA LÓGICA DE ESTAMPA ---
+        # Capturamos lo que venga, pero sin valor por defecto 'Standard'
+        estampa_raw = request.form.get('estampa')
+        estampa_final = None # Por defecto es nulo
+        
+        if estampa_raw:
+            clean_estampa = estampa_raw.strip().upper()
+            # Si tiene texto real y no es basura de sistema, la guardamos
+            if clean_estampa not in ['', 'STANDARD', 'SIN ESTAMPA', 'N/A']:
+                estampa_final = clean_estampa
+        # -------------------------------
         
         lista_talles = [t.strip() for t in talles_input.split(',')]
 
         for talle in lista_talles:
-            # Evitamos colisiones de SKU agregando la estampa si existe
-            sku_suffix = "" if estampa_input == "Standard" else f"-{estampa_input.replace(' ', '').upper()[:5]}"
+            # Evitamos colisiones de SKU agregando la estampa solo si realmente existe
+            sku_suffix = f"-{estampa_final.replace(' ', '')[:5]}" if estampa_final else ""
             sku_auto = f"P{nuevo_prod.id_producto}-{talle}{sku_suffix}"
 
             nueva_variante = ProductoVariante(
                 id_producto=nuevo_prod.id_producto,
                 talla=talle,
                 codigo_sku=sku_auto,
-                color=estampa_input # <--- GUARDAMOS LA ESTAMPA AQUÍ (En la columna color)
+                color=estampa_final # <--- AHORA GUARDARÁ NULL CUANDO CORRESPONDA
             )
             db.session.add(nueva_variante)
             db.session.flush() # Necesitamos el ID de la variante
@@ -495,10 +506,19 @@ def update_variant(id):
         # 1. Actualizaciones Locales
         if 'sku' in data: var.codigo_sku = data['sku']
         
-        # Guardamos la Estampa (columna color)
-        if 'estampa' in data: 
-            var.color = data['estampa'] if data['estampa'].strip() != "" else "Standard"
-        
+        # --- NUEVA LÓGICA DE ESTAMPA ---
+        if 'estampa' in data:
+            estampa_raw = data.get('estampa')
+            estampa_final = None # Por defecto nulo
+            
+            if estampa_raw:
+                clean_estampa = str(estampa_raw).strip().upper()
+                if clean_estampa not in ['', 'STANDARD', 'SIN ESTAMPA', 'N/A']:
+                    estampa_final = clean_estampa
+                    
+            var.color = estampa_final # Guardamos el valor limpio o nulo
+        # -------------------------------
+
         if 'stock' in data:
             if not var.inventario:
                 nuevo_inv = Inventario(id_variante=var.id_variante, stock_actual=int(data['stock']))
@@ -508,12 +528,7 @@ def update_variant(id):
         
         db.session.commit()
 
-        # 2. Sincronización con Tienda Nube
-        # Nota: Tienda Nube es estricta con el cambio de nombres de variantes.
-        # El cambio se reflejará en la nube la próxima vez que presiones 
-        # "Guardar Cambios e Imagen" en el modal principal, ya que ese botón
-        # dispara la actualización estructural completa.
-        
+        # 2. Sincronización con Tienda Nube (Stock)
         if var.tiendanube_variant_id and var.producto.tiendanube_id:
             app = current_app._get_current_object()
             sync_data = {
@@ -549,8 +564,17 @@ def add_variant():
     try:
         prod_id = data.get('id_producto')
         tallas_input = data.get('talla') # Ej: "L" o "S,M,L,XL,XXL"
-        estampa_input = data.get('estampa', 'Standard')
         stock_unitario = int(data.get('stock', 0))
+        
+        # --- NUEVA LÓGICA DE ESTAMPA ---
+        estampa_raw = data.get('estampa')
+        estampa_final = None # Por defecto nulo
+        
+        if estampa_raw:
+            clean_estampa = str(estampa_raw).strip().upper()
+            if clean_estampa not in ['', 'STANDARD', 'SIN ESTAMPA', 'N/A']:
+                estampa_final = clean_estampa
+        # -------------------------------
         
         prod_padre = Producto.query.get(prod_id)
         if not prod_padre: return jsonify({"msg": "Producto no encontrado"}), 404
@@ -561,21 +585,22 @@ def add_variant():
         errores = []
 
         for talla in lista_talles:
-            # 1. Validar duplicados locales
-            existe = ProductoVariante.query.filter_by(id_producto=prod_id, talla=talla, color=estampa_input).first()
+            # 1. Validar duplicados locales (SQLAlchemy detecta None como IS NULL automáticamente)
+            existe = ProductoVariante.query.filter_by(id_producto=prod_id, talla=talla, color=estampa_final).first()
             if existe:
                 errores.append(talla)
                 continue # Saltamos los talles que ya existen y seguimos con el resto
 
             # 2. Crear Variante Local
-            sku_suffix = "" if estampa_input == "Standard" else f"-{estampa_input.replace(' ', '').upper()[:5]}"
+            # Solo ponemos el guion y la estampa si estampa_final tiene un valor real
+            sku_suffix = f"-{estampa_final.replace(' ', '')[:5]}" if estampa_final else ""
             sku_def = f"P{prod_id}-{talla}{sku_suffix}"
 
             nueva_var = ProductoVariante(
                 id_producto=prod_id,
                 talla=talla,
                 codigo_sku=sku_def,
-                color=estampa_input
+                color=estampa_final # <--- GUARDA NULL SI ES LLAVERO O BUZO
             )
             db.session.add(nueva_var)
             db.session.flush() # Generar ID local
@@ -590,7 +615,8 @@ def add_variant():
             
             # 4. SINCRONIZACIÓN AUTOMÁTICA EN CADENA
             if prod_padre.tiendanube_id:
-                print(f"✨ Creando variante '{talla} - {estampa_input}' en Tienda Nube...")
+                estampa_log = estampa_final if estampa_final else "Sin Estampa"
+                print(f"✨ Creando variante '{talla} - {estampa_log}' en Tienda Nube...")
                 try:
                     resp = tn_service.create_variant_in_cloud(prod_padre.tiendanube_id, nueva_var)
                     if resp['success']:
@@ -603,7 +629,7 @@ def add_variant():
             agregadas += 1
 
         if agregadas == 0:
-            return jsonify({"msg": f"No se agregó nada. Los talles {', '.join(errores)} ya existían con esa estampa."}), 400
+            return jsonify({"msg": f"No se agregó nada. Los talles {', '.join(errores)} ya existían."}), 400
 
         return jsonify({"msg": f"Se agregaron {agregadas} variantes correctamente."}), 201
 

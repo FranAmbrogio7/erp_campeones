@@ -4,29 +4,44 @@ import { useAuth } from '../context/AuthContext';
 import { X, Save, Trash2, Plus, Image as ImageIcon, Shirt, Loader2, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+// UTILERÍA: Para limpiar la estampa visualmente
+const getRealEstampa = (estampaStr) => {
+    if (!estampaStr) return null;
+    const clean = estampaStr.toString().trim().toUpperCase();
+    if (clean === '' || clean === 'STANDARD' || clean === 'SIN ESTAMPA' || clean === '-' || clean === 'N/A') {
+        return null;
+    }
+    return estampaStr;
+};
+
 // =========================================================================
 // 1. SUB-COMPONENTE OPTIMIZADO
 // =========================================================================
-const VariantRow = memo(({ v, onUpdateVariant, onDeleteVariant }) => {
+const VariantRow = memo(({ v, onUpdateVariant, onDeleteVariant, showEstampa }) => {
     return (
         <tr className="hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition-colors group border-b border-slate-50 dark:border-slate-800/50 last:border-0">
             <td className="py-2.5 px-4 font-black text-slate-700 dark:text-slate-200">{v.talle}</td>
-            <td className="py-2.5 px-4">
-                <input
-                    className="border border-slate-200 dark:border-slate-700 p-1.5 rounded-lg w-full md:w-36 text-xs font-bold text-indigo-700 dark:text-indigo-400 focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/30 outline-none bg-white dark:bg-slate-900 transition-all placeholder-slate-300 dark:placeholder-slate-600 uppercase"
-                    placeholder="Sin Estampa"
-                    defaultValue={v.estampa === 'Standard' ? '' : v.estampa}
-                    onBlur={(e) => {
-                        e.target.value = e.target.value.toUpperCase(); // Fuerza visual al salir
-                        onUpdateVariant(v.id_variante, v.stock, v.sku, e.target.value);
-                    }}
-                />
-            </td>
+            
+            {/* Solo mostramos esta columna si el producto acepta estampas */}
+            {showEstampa && (
+                <td className="py-2.5 px-4">
+                    <input
+                        className="border border-slate-200 dark:border-slate-700 p-1.5 rounded-lg w-full md:w-36 text-xs font-bold text-indigo-700 dark:text-indigo-400 focus:border-indigo-400 dark:focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/30 outline-none bg-white dark:bg-slate-900 transition-all placeholder-slate-300 dark:placeholder-slate-600 uppercase"
+                        placeholder="Sin Estampa"
+                        defaultValue={getRealEstampa(v.estampa) || ''}
+                        onBlur={(e) => {
+                            e.target.value = e.target.value.toUpperCase(); 
+                            onUpdateVariant(v.id_variante, v.stock, v.sku, e.target.value);
+                        }}
+                    />
+                </td>
+            )}
+
             <td className="py-2.5 px-4">
                 <input
                     className="border border-slate-200 dark:border-slate-700 p-1.5 rounded-lg w-full md:w-36 text-xs font-mono uppercase focus:border-blue-400 dark:focus:border-blue-500 focus:ring-2 focus:ring-blue-100 dark:focus:ring-blue-900/30 outline-none bg-white dark:bg-slate-900 dark:text-slate-300 transition-all"
                     defaultValue={v.sku}
-                    onBlur={(e) => onUpdateVariant(v.id_variante, v.stock, e.target.value, v.estampa)}
+                    onBlur={(e) => onUpdateVariant(v.id_variante, v.stock, e.target.value, getRealEstampa(v.estampa) || '')}
                 />
             </td>
             <td className="py-2.5 px-4 text-center">
@@ -34,7 +49,7 @@ const VariantRow = memo(({ v, onUpdateVariant, onDeleteVariant }) => {
                     type="number"
                     className={`border p-1.5 rounded-lg w-20 text-center font-black focus:ring-2 outline-none mx-auto block bg-white dark:bg-slate-900 transition-all ${v.stock < 2 ? 'border-red-300 dark:border-red-800/50 text-red-600 dark:text-red-400 focus:ring-red-100 dark:focus:ring-red-900/30' : 'border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 focus:border-emerald-400 dark:focus:border-emerald-500 focus:ring-emerald-100 dark:focus:ring-emerald-900/30'}`}
                     defaultValue={v.stock}
-                    onBlur={(e) => onUpdateVariant(v.id_variante, e.target.value, v.sku, v.estampa)}
+                    onBlur={(e) => onUpdateVariant(v.id_variante, e.target.value, v.sku, getRealEstampa(v.estampa) || '')}
                 />
             </td>
             <td className="py-2.5 px-4 text-right">
@@ -68,6 +83,9 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isAddingVariant, setIsAddingVariant] = useState(false);
 
+    // LÓGICA INTELIGENTE: Detectamos si el producto en general es de tipo "Con Estampa"
+    const hasEstampaSupport = variants.some(v => getRealEstampa(v.estampa) !== null) || (product?.nombre || '').toUpperCase().includes('CAMISETA');
+
     const refreshLocalData = useCallback(async () => {
         setIsRefreshing(true);
         try {
@@ -99,7 +117,7 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
             setNewImageFile(null);
             setVariants(product.variantes.map(v => ({ ...v })));
             setNewEstampa('');
-            setNewSize('S,M,L,XL,XXL');
+            setNewSize(product.variantes.some(v => v.talle && !['U', 'UNICO', 'ÚNICO'].includes(v.talle.toUpperCase())) ? 'S,M,L,XL,XXL' : 'U');
             setNewStock(0);
             setIsSaving(false);
             setIsAddingVariant(false);
@@ -108,11 +126,8 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
 
     const handleUpdateVariant = useCallback(async (variantId, newStock, newSku, newEstampa) => {
         try {
-            // DOBLE CANDADO LÓGICO PARA EDICIÓN
-            const estampaFinal = newEstampa && newEstampa.trim() !== '' ? newEstampa.toUpperCase() : 'Standard';
-            
             await axios.put(`/api/products/variants/${variantId}`,
-                { stock: newStock, sku: newSku, estampa: estampaFinal },
+                { stock: newStock, sku: newSku, estampa: newEstampa }, // Ya no forzamos 'Standard' acá
                 { headers: { Authorization: `Bearer ${token}` } }
             );
         } catch (e) { console.error("Error updating variant", e); }
@@ -158,14 +173,11 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
         const toastId = toast.loading(isMultiple ? "Creando curva y sincronizando con TN..." : "Agregando talle...");
 
         try {
-            // DOBLE CANDADO LÓGICO PARA CREACIÓN
-            const estampaFinal = newEstampa.trim() !== '' ? newEstampa.toUpperCase() : 'Standard';
-
             await axios.post(`/api/products/variants`, {
                 id_producto: product.id,
                 talla: newSize,
                 stock: newStock,
-                estampa: estampaFinal
+                estampa: newEstampa // El backend ahora acepta estampa vacía
             }, { headers: { Authorization: `Bearer ${token}` } });
 
             toast.success("Variante/s agregada/s correctamente", { id: toastId });
@@ -279,11 +291,12 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                             <table className="w-full text-sm text-left">
                                 <thead className="bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 uppercase text-[10px] font-bold tracking-widest border-b border-slate-200 dark:border-slate-700">
                                     <tr>
-                                        <th className="p-3">Talle</th>
-                                        <th className="p-3">Estampa / Jugador</th>
-                                        <th className="p-3">SKU Nube</th>
-                                        <th className="p-3 text-center">Stock</th>
-                                        <th className="p-3 text-right">Borrar</th>
+                                        <th className="p-3 w-16">Talle</th>
+                                        {/* CABECERA DINÁMICA DE ESTAMPA */}
+                                        {hasEstampaSupport && <th className="p-3">Estampa / Jugador</th>}
+                                        <th className="p-3 w-40">SKU Nube</th>
+                                        <th className="p-3 text-center w-28">Stock</th>
+                                        <th className="p-3 text-right w-16">Borrar</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -293,10 +306,11 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                                             v={v}
                                             onUpdateVariant={handleUpdateVariant}
                                             onDeleteVariant={handleDeleteVariant}
+                                            showEstampa={hasEstampaSupport}
                                         />
                                     ))}
                                     {variants.length === 0 && (
-                                        <tr><td colSpan="5" className="p-6 text-center text-slate-400 text-xs italic">No hay variantes cargadas.</td></tr>
+                                        <tr><td colSpan={hasEstampaSupport ? "5" : "4"} className="p-6 text-center text-slate-400 text-xs italic">No hay variantes cargadas.</td></tr>
                                     )}
                                 </tbody>
                             </table>
@@ -327,11 +341,15 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                                     </optgroup>
                                 </select>
                             </div>
-                            <div className="flex-1 min-w-[140px]">
-                                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1 uppercase tracking-wider">Estampa (Opcional)</label>
-                                {/* DOBLE CANDADO VISUAL: onChange fuerza a mayúsculas mientras el usuario escribe */}
-                                <input type="text" disabled={isAddingVariant} placeholder="Ej: MESSI 10" className="border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-sm w-full font-medium text-slate-700 dark:text-white outline-none focus:border-emerald-400 dark:focus:border-emerald-500 bg-white dark:bg-slate-800 transition-all disabled:opacity-50 uppercase placeholder-slate-300 dark:placeholder-slate-600" value={newEstampa} onChange={e => setNewEstampa(e.target.value.toUpperCase())} />
-                            </div>
+                            
+                            {/* INPUT ESTAMPA DINÁMICO */}
+                            {hasEstampaSupport && (
+                                <div className="flex-1 min-w-[140px]">
+                                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1 uppercase tracking-wider">Estampa (Opcional)</label>
+                                    <input type="text" disabled={isAddingVariant} placeholder="Ej: MESSI 10" className="border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-sm w-full font-medium text-slate-700 dark:text-white outline-none focus:border-emerald-400 dark:focus:border-emerald-500 bg-white dark:bg-slate-800 transition-all disabled:opacity-50 uppercase placeholder-slate-300 dark:placeholder-slate-600" value={newEstampa} onChange={e => setNewEstampa(e.target.value.toUpperCase())} />
+                                </div>
+                            )}
+
                             <div>
                                 <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1 uppercase tracking-wider">Stock</label>
                                 <input type="number" disabled={isAddingVariant} className="border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-sm w-20 text-center font-bold text-slate-700 dark:text-white outline-none focus:border-emerald-400 dark:focus:border-emerald-500 bg-white dark:bg-slate-800 transition-all disabled:opacity-50" value={newStock} onChange={e => setNewStock(e.target.value)} />
@@ -347,7 +365,7 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                     </div>
                 </div>
 
-                {/* --- FOOTER SÓLIDO (Cubre todo al scrollear) --- */}
+                {/* --- FOOTER SÓLIDO --- */}
                 <div className="p-4 bg-slate-100 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex justify-end shrink-0 z-10 relative">
                     <button onClick={onClose} disabled={isSaving || isAddingVariant} className={`px-6 py-2 rounded-lg font-bold text-sm tracking-wide transition-all ${isSaving || isAddingVariant ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-95 shadow-sm'}`}>Cerrar Ventana</button>
                 </div>
