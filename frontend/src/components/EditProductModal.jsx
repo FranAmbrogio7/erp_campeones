@@ -21,7 +21,7 @@ const VariantRow = memo(({ v, onUpdateVariant, onDeleteVariant, showEstampa }) =
     return (
         <tr className="hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition-colors group border-b border-slate-50 dark:border-slate-800/50 last:border-0">
             <td className="py-2.5 px-4 font-black text-slate-700 dark:text-slate-200">{v.talle}</td>
-            
+
             {/* Solo mostramos esta columna si el producto acepta estampas */}
             {showEstampa && (
                 <td className="py-2.5 px-4">
@@ -30,7 +30,7 @@ const VariantRow = memo(({ v, onUpdateVariant, onDeleteVariant, showEstampa }) =
                         placeholder="Sin Estampa"
                         defaultValue={getRealEstampa(v.estampa) || ''}
                         onBlur={(e) => {
-                            e.target.value = e.target.value.toUpperCase(); 
+                            e.target.value = e.target.value.toUpperCase();
                             onUpdateVariant(v.id_variante, v.stock, v.sku, e.target.value);
                         }}
                     />
@@ -84,8 +84,7 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
     const [isAddingVariant, setIsAddingVariant] = useState(false);
 
     // LÓGICA INTELIGENTE: Detectamos si el producto en general es de tipo "Con Estampa"
-    const hasEstampaSupport = variants.some(v => getRealEstampa(v.estampa) !== null) || (product?.nombre || '').toUpperCase().includes('CAMISETA');
-
+    const hasEstampaSupport = variants.some(v => getRealEstampa(v.estampa) !== null);
     const refreshLocalData = useCallback(async () => {
         setIsRefreshing(true);
         try {
@@ -201,7 +200,7 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                 {/* --- HEADER --- */}
                 <div className="flex justify-between items-center p-5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 shrink-0 relative z-20">
                     <h3 className="font-black text-lg md:text-xl text-slate-800 dark:text-white flex items-center tracking-tight truncate pr-4">
-                        <Shirt className="mr-3 text-indigo-500 shrink-0" size={24}/> 
+                        <Shirt className="mr-3 text-indigo-500 shrink-0" size={24} />
                         <span className="truncate">Editar: {product.nombre}</span>
                         {isRefreshing && <RefreshCw size={16} className="ml-3 animate-spin text-indigo-400 shrink-0" />}
                     </h3>
@@ -212,14 +211,14 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
 
                 {/* --- CUERPO SCROLLABLE --- */}
                 <div className="p-5 md:p-6 space-y-6 overflow-y-auto flex-1 custom-scrollbar will-change-scroll bg-slate-50/50 dark:bg-slate-900/50 relative z-0">
-                    
+
                     {/* INFO Y MULTIMEDIA */}
                     <div className="bg-white dark:bg-slate-800/60 p-5 rounded-xl border border-slate-200 dark:border-slate-700/60 shadow-sm">
                         <h4 className="font-bold text-slate-800 dark:text-slate-300 mb-4 text-xs uppercase tracking-widest flex items-center">
                             Información Base
                             <span className="flex-1 h-px bg-slate-100 dark:bg-slate-700/50 ml-3"></span>
                         </h4>
-                        
+
                         <div className="grid grid-cols-1 lg:grid-cols-4 gap-5 mb-4">
                             <div className="lg:col-span-3 space-y-4">
                                 <div>
@@ -341,14 +340,12 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                                     </optgroup>
                                 </select>
                             </div>
-                            
-                            {/* INPUT ESTAMPA DINÁMICO */}
-                            {hasEstampaSupport && (
-                                <div className="flex-1 min-w-[140px]">
-                                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1 uppercase tracking-wider">Estampa (Opcional)</label>
-                                    <input type="text" disabled={isAddingVariant} placeholder="Ej: MESSI 10" className="border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-sm w-full font-medium text-slate-700 dark:text-white outline-none focus:border-emerald-400 dark:focus:border-emerald-500 bg-white dark:bg-slate-800 transition-all disabled:opacity-50 uppercase placeholder-slate-300 dark:placeholder-slate-600" value={newEstampa} onChange={e => setNewEstampa(e.target.value.toUpperCase())} />
-                                </div>
-                            )}
+
+                            {/* INPUT ESTAMPA (SIEMPRE VISIBLE POR SI QUERÉS HACERLO PERSONALIZADO EN EL FUTURO) */}
+                            <div className="flex-1 min-w-[140px]">
+                                <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1 uppercase tracking-wider">Estampa (Opcional)</label>
+                                <input type="text" disabled={isAddingVariant} placeholder="Ej: MESSI 10" className="border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-sm w-full font-medium text-slate-700 dark:text-white outline-none focus:border-emerald-400 dark:focus:border-emerald-500 bg-white dark:bg-slate-800 transition-all disabled:opacity-50 uppercase placeholder-slate-300 dark:placeholder-slate-600" value={newEstampa} onChange={e => setNewEstampa(e.target.value.toUpperCase())} />
+                            </div>
 
                             <div>
                                 <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1 uppercase tracking-wider">Stock</label>

@@ -171,12 +171,6 @@ class TiendaNubeService:
         usa_talle = False
         usa_estampa = False
         
-        nombre_prod = str(local_prod.nombre or "").upper()
-        desc_prod = str(local_prod.descripcion or "").upper()
-        
-        if "CAMISETA" in nombre_prod or "CAMISETA" in desc_prod:
-            usa_estampa = True
-
         variantes = getattr(local_prod, 'variantes', [])
         if not variantes: 
             return False, usa_estampa
@@ -188,8 +182,8 @@ class TiendaNubeService:
             if t.strip().upper() not in ['U', 'UNICO', 'ÚNICO']: 
                 usa_talle = True
             
-            # Solo si existe y no es basura
-            if c and c.strip() not in ['', 'Standard', 'Sin Estampa', 'STANDARD']: 
+            # Solo si existe una estampa real y no es basura
+            if c and c.strip().upper() not in ['', 'STANDARD', 'SIN ESTAMPA', 'N/A']: 
                 usa_estampa = True
                 
         return usa_talle, usa_estampa
