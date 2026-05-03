@@ -56,9 +56,11 @@ def get_sales_history():
         solo_actual = request.args.get('current_session') == 'true'
         limite_solicitado = request.args.get('limit', 100, type=int)
         
-        # NUEVO: Atrapamos las fechas que nos envíe React
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
+        
+        # NUEVO: Atrapamos el tipo de caja que pide el frontend
+        tipo_caja_req = request.args.get('tipo_caja', 'PRINCIPAL')
         
         query = Venta.query.options(
             db.joinedload(Venta.metodo),
@@ -66,15 +68,15 @@ def get_sales_history():
         ).order_by(desc(Venta.fecha_venta))
 
         if solo_actual:
-            tipo_caja_req = request.args.get('tipo_caja', 'PRINCIPAL')
             sesion = SesionCaja.query.filter_by(estado='abierta', tipo_caja=tipo_caja_req).first()
             if sesion:
                 query = query.filter(Venta.fecha_venta >= sesion.fecha_apertura, Venta.tipo_caja == tipo_caja_req)
-
             else:
                 return jsonify({"history": [], "today_summary": {"total": 0, "count": 0}}), 200
         else:
-            # NUEVO: Filtramos directamente en la Base de Datos (Súper Rápido)
+            # NUEVO: Filtramos por tipo de caja en el historial general
+            query = query.filter(Venta.tipo_caja == tipo_caja_req)
+            
             if start_date:
                 query = query.filter(Venta.fecha_venta >= f"{start_date} 00:00:00")
             if end_date:
@@ -317,8 +319,11 @@ def close_caja():
 @bp.route('/caja/list', methods=['GET'])
 @jwt_required()
 def list_closed_sessions():
-    # Eliminamos el límite para traer absolutamente todo el historial
-    sesiones = SesionCaja.query.filter_by(estado='cerrada')\
+    # NUEVO: Recibimos el tipo de caja por parámetro
+    tipo_caja = request.args.get('tipo_caja', 'PRINCIPAL')
+    
+    # Filtramos por estado 'cerrada' Y por el 'tipo_caja'
+    sesiones = SesionCaja.query.filter_by(estado='cerrada', tipo_caja=tipo_caja)\
         .order_by(desc(SesionCaja.fecha_cierre)).all()
     
     resultado = []
@@ -405,24 +410,31 @@ def get_dashboard_stats():
         hoy = date.today()
         mes_actual = hoy.month
         anio_actual = hoy.year
+        
+        # NUEVO: Atrapamos el tipo de caja (Por defecto GLOBAL para ver todo sumado)
+        tipo_caja = request.args.get('tipo_caja', 'GLOBAL')
+
+        # Armamos una consulta base para las ventas
+        q_ventas = db.session.query(Venta)
+        if tipo_caja != 'GLOBAL':
+            q_ventas = q_ventas.filter(Venta.tipo_caja == tipo_caja)
 
         # 1. VENTAS HOY
-        total_hoy = db.session.query(func.sum(Venta.total)).filter(func.date(Venta.fecha_venta) == hoy).scalar() or 0
-        count_hoy = db.session.query(func.count(Venta.id_venta)).filter(func.date(Venta.fecha_venta) == hoy).scalar() or 0
+        total_hoy = q_ventas.with_entities(func.sum(Venta.total)).filter(func.date(Venta.fecha_venta) == hoy).scalar() or 0
+        count_hoy = q_ventas.with_entities(func.count(Venta.id_venta)).filter(func.date(Venta.fecha_venta) == hoy).scalar() or 0
 
         # 2. VENTAS DEL MES (KPI Clave)
-        total_mes = db.session.query(func.sum(Venta.total)).filter(
+        total_mes = q_ventas.with_entities(func.sum(Venta.total)).filter(
             extract('month', Venta.fecha_venta) == mes_actual,
             extract('year', Venta.fecha_venta) == anio_actual
         ).scalar() or 0
 
-        # 3. STOCK CRÍTICO (Tu pedido específico)
-        # Buscamos variantes donde el stock sea menor o igual al mínimo
+        # 3. STOCK CRÍTICO (Se mantiene global, ya que Merch no usa stock por ahora)
         low_stock_query = db.session.query(Producto, ProductoVariante, Inventario)\
             .join(ProductoVariante, Producto.id_producto == ProductoVariante.id_producto)\
             .join(Inventario, ProductoVariante.id_variante == Inventario.id_variante)\
             .filter(Inventario.stock_actual <= Inventario.stock_minimo)\
-            .limit(10).all() # Limitamos a 10 para no saturar el dashboard
+            .limit(10).all() 
 
         low_stock_list = []
         for prod, var, inv in low_stock_query:
@@ -436,15 +448,20 @@ def get_dashboard_stats():
             })
 
         # 4. ÚLTIMAS 5 VENTAS (Actividad)
-        ultimas_ventas = Venta.query.order_by(desc(Venta.fecha_venta)).limit(5).all()
+        ultimas_ventas = q_ventas.order_by(desc(Venta.fecha_venta)).limit(5).all()
         recent_activity = [{
             "hora": v.fecha_venta.strftime('%H:%M'),
             "total": float(v.total),
-            "metodo": v.metodo.nombre if v.metodo else "-"
+            "metodo": v.metodo.nombre if v.metodo else "-",
+            "tipo_caja": v.tipo_caja # Para que el front sepa de dónde vino
         } for v in ultimas_ventas]
 
-        # 5. ESTADO CAJA
-        caja = SesionCaja.query.filter_by(estado='abierta').first()
+        # 5. ESTADO CAJA (Buscamos si hay ALGUNA caja abierta)
+        q_caja = SesionCaja.query.filter_by(estado='abierta')
+        if tipo_caja != 'GLOBAL':
+            q_caja = q_caja.filter_by(tipo_caja=tipo_caja)
+        
+        caja = q_caja.first()
         caja_status = "abierta" if caja else "cerrada"
 
         return jsonify({
@@ -462,7 +479,6 @@ def get_dashboard_stats():
         print(e)
         return jsonify({"msg": "Error dashboard"}), 500
 
-
 # backend/app/sales/routes.py
 
 # ... imports ...
@@ -472,8 +488,9 @@ from sqlalchemy import func, desc
 @jwt_required()
 def get_period_stats():
     data = request.get_json()
-    start_date = data.get('start_date') # String 'YYYY-MM-DD'
-    end_date = data.get('end_date')     # String 'YYYY-MM-DD'
+    start_date = data.get('start_date') 
+    end_date = data.get('end_date')     
+    tipo_caja = data.get('tipo_caja', 'GLOBAL') # NUEVO
 
     if not start_date or not end_date:
         return jsonify({"msg": "Fechas requeridas"}), 400
@@ -481,26 +498,25 @@ def get_period_stats():
     try:
         end_date_full = f"{end_date} 23:59:59"
 
-        # 1. INGRESOS (VENTAS)
-        total_ingresos = db.session.query(func.sum(Venta.total)).filter(
+        # Consulta base
+        q_ventas = db.session.query(Venta).filter(
             Venta.fecha_venta >= start_date,
             Venta.fecha_venta <= end_date_full
-        ).scalar() or 0
+        )
+        if tipo_caja != 'GLOBAL':
+            q_ventas = q_ventas.filter(Venta.tipo_caja == tipo_caja)
 
-        total_tickets = db.session.query(func.count(Venta.id_venta)).filter(
-            Venta.fecha_venta >= start_date,
-            Venta.fecha_venta <= end_date_full
-        ).scalar() or 0
-        
+        # 1. INGRESOS (VENTAS)
+        total_ingresos = q_ventas.with_entities(func.sum(Venta.total)).scalar() or 0
+        total_tickets = q_ventas.with_entities(func.count(Venta.id_venta)).scalar() or 0
         ticket_promedio = total_ingresos / total_tickets if total_tickets > 0 else 0
 
-        # 2. EGRESOS (GASTOS) - NUEVO BLOQUE
+        # 2. EGRESOS (GASTOS) - Los gastos los dejamos globales a menos que quieras separarlos luego
         total_gastos = db.session.query(func.sum(Gasto.monto)).filter(
             Gasto.fecha >= start_date,
             Gasto.fecha <= end_date_full
         ).scalar() or 0
 
-        # Lista de gastos para la tabla
         gastos_query = Gasto.query.filter(
             Gasto.fecha >= start_date,
             Gasto.fecha <= end_date_full
@@ -515,14 +531,18 @@ def get_period_stats():
         } for g in gastos_query]
 
         # 3. VENTAS POR MÉTODO
-        by_method = db.session.query(
+        q_by_method = db.session.query(
             MetodoPago.nombre, 
             func.sum(Venta.total), 
             func.count(Venta.id_venta)
         ).join(Venta).filter(
             Venta.fecha_venta >= start_date,
             Venta.fecha_venta <= end_date_full
-        ).group_by(MetodoPago.nombre).all()
+        )
+        if tipo_caja != 'GLOBAL':
+            q_by_method = q_by_method.filter(Venta.tipo_caja == tipo_caja)
+            
+        by_method = q_by_method.group_by(MetodoPago.nombre).all()
 
         methods_data = [{
             "nombre": m[0], 
@@ -531,15 +551,19 @@ def get_period_stats():
         } for m in by_method]
 
         # 4. TOP PRODUCTOS
-        top_products = db.session.query(
+        q_top = db.session.query(
             Producto.nombre,
             func.sum(DetalleVenta.cantidad).label('qty_total'),
             func.sum(DetalleVenta.subtotal).label('money_total')
         ).join(ProductoVariante, DetalleVenta.id_variante == ProductoVariante.id_variante)\
          .join(Producto, ProductoVariante.id_producto == Producto.id_producto)\
          .join(Venta, DetalleVenta.id_venta == Venta.id_venta)\
-         .filter(Venta.fecha_venta >= start_date, Venta.fecha_venta <= end_date_full)\
-         .group_by(Producto.id_producto)\
+         .filter(Venta.fecha_venta >= start_date, Venta.fecha_venta <= end_date_full)
+         
+        if tipo_caja != 'GLOBAL':
+            q_top = q_top.filter(Venta.tipo_caja == tipo_caja)
+
+        top_products = q_top.group_by(Producto.id_producto)\
          .order_by(desc('money_total'))\
          .limit(5).all()
 
@@ -549,18 +573,17 @@ def get_period_stats():
             "recaudado": float(tp[2])
         } for tp in top_products]
 
-        # RESULTADO FINAL
         return jsonify({
             "summary": {
                 "ingresos": float(total_ingresos),
                 "tickets": total_tickets,
                 "promedio": float(ticket_promedio),
-                "gastos": float(total_gastos),          # Nuevo
-                "ganancia_neta": float(total_ingresos) - float(total_gastos) # Nuevo
+                "gastos": float(total_gastos),
+                "ganancia_neta": float(total_ingresos) - float(total_gastos)
             },
             "by_method": methods_data,
             "top_products": top_products_data,
-            "gastos_list": gastos_list # Nuevo
+            "gastos_list": gastos_list
         }), 200
 
     except Exception as e:
@@ -575,14 +598,14 @@ def get_product_stats_detail():
     data = request.get_json()
     start_date = data.get('start_date')
     end_date = data.get('end_date')
+    tipo_caja = data.get('tipo_caja', 'GLOBAL') # NUEVO
 
     if not start_date or not end_date: return jsonify({"msg": "Fechas requeridas"}), 400
 
     try:
         end_date_full = f"{end_date} 23:59:59"
 
-        # Consulta corregida con GROUP BY completo
-        stats = db.session.query(
+        q_stats = db.session.query(
             Producto.nombre,
             Categoria.nombre.label('categoria'),
             func.sum(DetalleVenta.cantidad).label('unidades'),
@@ -592,8 +615,12 @@ def get_product_stats_detail():
          .join(Producto, ProductoVariante.id_producto == Producto.id_producto)\
          .join(Categoria, Producto.id_categoria == Categoria.id_categoria, isouter=True)\
          .join(Venta, DetalleVenta.id_venta == Venta.id_venta)\
-         .filter(Venta.fecha_venta >= start_date, Venta.fecha_venta <= end_date_full)\
-         .group_by(Producto.id_producto, Producto.nombre, Categoria.nombre)\
+         .filter(Venta.fecha_venta >= start_date, Venta.fecha_venta <= end_date_full)
+
+        if tipo_caja != 'GLOBAL':
+            q_stats = q_stats.filter(Venta.tipo_caja == tipo_caja)
+
+        stats = q_stats.group_by(Producto.id_producto, Producto.nombre, Categoria.nombre)\
          .order_by(desc('unidades'))\
          .all()
 

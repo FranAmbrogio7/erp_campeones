@@ -1,10 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import axios from 'axios';
 import { useAuth, api } from '../context/AuthContext';
+import { Link } from 'react-router-dom';
 import {
     CalendarClock, Search, CheckCircle, XCircle, DollarSign,
     Phone, Eye, Printer, AlertTriangle, X, CreditCard, Banknote,
-    Trash2 // <--- IMPORTADO EL ÍCONO DE BORRAR
+    Trash2, Lock, ArrowRight, Store
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import { useReactToPrint } from 'react-to-print';
@@ -13,6 +14,11 @@ import Ticket from '../components/Ticket';
 
 const ReservationsPage = () => {
     const { token } = useAuth();
+    
+    // --- IDENTIDAD DE TERMINAL ---
+    const tipoCaja = localStorage.getItem('terminal_tipo_caja') || 'PRINCIPAL';
+    const isMerch = tipoCaja === 'MERCHANDISING';
+
     const [reservas, setReservas] = useState([]);
     const [filter, setFilter] = useState('');
 
@@ -52,11 +58,12 @@ const ReservationsPage = () => {
     };
 
     useEffect(() => {
-        if (token) {
+        // Solo cargamos los datos si la terminal NO es Merch
+        if (token && !isMerch) {
             fetchReservas();
             api.get('/sales/payment-methods').then(res => setPaymentMethods(res.data)).catch(console.error);
         }
-    }, [token]);
+    }, [token, isMerch]);
 
     const openPayModal = (reserva) => {
         setReservaToPay(reserva);
@@ -73,6 +80,8 @@ const ReservationsPage = () => {
 
         const toastId = toast.loading("Procesando retiro...");
         try {
+            // Se asume que el backend tomará el tipo_caja de la venta de retiro 
+            // como la caja abierta. Siendo que solo campeones puede abrir esto, estará bien.
             await axios.post(`/api/sales/reservas/${reservaToPay.id}/retirar`,
                 { id_metodo_pago: selectedMethodId },
                 { headers: { Authorization: `Bearer ${token}` } }
@@ -90,14 +99,13 @@ const ReservationsPage = () => {
         } catch (e) { toast.error("Error cancelando"); }
     };
 
-    // --- NUEVA FUNCIÓN PARA ELIMINAR RESERVA ---
     const handleDelete = async (id) => {
         if (!window.confirm("⚠️ ¿Estás seguro de eliminar esta reserva permanentemente? Esta acción no se puede deshacer.")) return;
         const toastId = toast.loading("Eliminando...");
         try {
             await axios.delete(`/api/sales/reservas/${id}`, { headers: { Authorization: `Bearer ${token}` } });
             toast.success("Reserva eliminada exitosamente", { id: toastId });
-            fetchReservas(); // Recarga la lista
+            fetchReservas(); 
         } catch (e) {
             toast.error(e.response?.data?.msg || "Error al eliminar la reserva", { id: toastId });
         }
@@ -113,8 +121,29 @@ const ReservationsPage = () => {
         (r.telefono && r.telefono.includes(filter))
     );
 
+    // --- PANTALLA DE BLOQUEO PARA MERCHANDISING ---
+    if (isMerch) {
+        return (
+            <div className="flex flex-col h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950 transition-colors duration-300 p-4 md:p-6">
+                <div className="flex-1 flex flex-col items-center justify-center rounded-3xl border border-purple-200 dark:border-purple-900/50 bg-purple-50 dark:bg-purple-950/20 shadow-sm transition-colors text-center p-6">
+                    <div className="p-6 rounded-full mb-6 border shadow-inner bg-purple-100 dark:bg-purple-900/50 text-purple-500 border-purple-200 dark:border-purple-800">
+                        <Lock size={64} />
+                    </div>
+                    <h2 className="text-3xl font-black text-slate-800 dark:text-white mb-3 tracking-tight">Módulo Exclusivo</h2>
+                    <p className="text-slate-500 dark:text-slate-400 mb-8 font-medium max-w-md">
+                        El sistema de reservas está deshabilitado para la Terminal de Merchandising. Este módulo es de uso exclusivo para artículos de indumentaria.
+                    </p>
+                    <Link to="/caja-control" className="px-8 py-4 rounded-2xl font-black text-white shadow-lg uppercase tracking-widest transition-all active:scale-95 flex items-center bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-700 shadow-purple-500/30">
+                        Volver a Terminal Merch <ArrowRight size={18} className="ml-2" />
+                    </Link>
+                </div>
+            </div>
+        );
+    }
+
+    // --- VISTA NORMAL (CAMPEONES) ---
     return (
-        <div className="p-6 max-w-7xl mx-auto space-y-6 relative bg-gray-50 dark:bg-slate-950 min-h-screen transition-colors duration-300">
+        <div className="p-4 md:p-6 max-w-[1600px] mx-auto space-y-6 relative bg-slate-50 dark:bg-slate-950 min-h-[calc(100vh-4rem)] transition-colors duration-300">
             <Toaster position="top-center" />
             <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
                 <div ref={ticketRef}><Ticket saleData={ticketData} /></div>
@@ -124,105 +153,123 @@ const ReservationsPage = () => {
 
             {isPayModalOpen && reservaToPay && (
                 <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4 animate-fade-in">
-                    <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transition-colors">
-                        <div className="bg-green-600 p-4 text-white flex justify-between items-center">
-                            <h3 className="font-bold text-lg flex items-center"><DollarSign className="mr-2" /> Cobrar Saldo</h3>
-                            <button onClick={() => setIsPayModalOpen(false)} className="hover:bg-green-700 p-1 rounded-full"><X size={20} /></button>
+                    <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden transition-colors border border-slate-200 dark:border-slate-700">
+                        <div className="bg-emerald-500 dark:bg-emerald-600 p-5 text-white flex justify-between items-center shadow-md relative z-10">
+                            <h3 className="font-black text-xl flex items-center tracking-tight"><DollarSign className="mr-2" size={24} /> Cobrar Saldo</h3>
+                            <button onClick={() => setIsPayModalOpen(false)} className="hover:bg-white/20 p-2 rounded-full transition-colors"><X size={20} /></button>
                         </div>
 
-                        <form onSubmit={handleConfirmRetiro} className="p-6">
-                            <div className="mb-6 text-center">
-                                <p className="text-gray-500 dark:text-gray-400 text-sm uppercase font-bold mb-1">Total a Pagar</p>
-                                <p className="text-4xl font-black text-gray-800 dark:text-white">$ {reservaToPay.saldo.toLocaleString()}</p>
-                                <p className="text-xs text-gray-400 mt-2">Cliente: {reservaToPay.cliente}</p>
+                        <form onSubmit={handleConfirmRetiro} className="p-6 md:p-8 bg-slate-50 dark:bg-slate-900 relative z-0">
+                            <div className="mb-8 text-center bg-white dark:bg-slate-800 p-6 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700">
+                                <p className="text-slate-400 dark:text-slate-500 text-[10px] uppercase font-black tracking-widest mb-2">Total a Pagar</p>
+                                <p className="text-5xl font-black text-slate-800 dark:text-white font-mono tracking-tighter">$ {reservaToPay.saldo.toLocaleString()}</p>
+                                <p className="text-xs font-bold text-slate-500 dark:text-slate-400 mt-3 bg-slate-100 dark:bg-slate-700/50 inline-block px-3 py-1 rounded-lg uppercase tracking-widest">{reservaToPay.cliente}</p>
                             </div>
 
                             {reservaToPay.saldo > 0 ? (
-                                <div className="mb-6">
-                                    <label className="block text-xs font-bold text-gray-500 dark:text-gray-400 uppercase mb-2">Selecciona Medio de Pago</label>
-                                    <div className="grid grid-cols-2 gap-2">
+                                <div className="mb-8">
+                                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3 text-center">Selecciona Medio de Pago</label>
+                                    <div className="grid grid-cols-2 gap-3">
                                         {paymentMethods.map(m => (
-                                            <button key={m.id} type="button" onClick={() => setSelectedMethodId(m.id)} className={`p-3 rounded-xl border-2 flex flex-col items-center transition-all ${selectedMethodId === m.id ? 'border-green-500 bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-300' : 'border-gray-100 dark:border-slate-700 hover:border-gray-300 dark:hover:border-slate-600 text-gray-500 dark:text-gray-400'}`}>
-                                                {m.nombre.toLowerCase().includes('tarjeta') ? <CreditCard size={20} /> : <Banknote size={20} />}
-                                                <span className="text-xs font-bold mt-1">{m.nombre}</span>
+                                            <button key={m.id} type="button" onClick={() => setSelectedMethodId(m.id)} className={`p-4 rounded-2xl border-2 flex flex-col items-center transition-all shadow-sm active:scale-95 ${selectedMethodId === m.id ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 shadow-emerald-500/20' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-emerald-300 dark:hover:border-emerald-700 text-slate-600 dark:text-slate-400'}`}>
+                                                {m.nombre.toLowerCase().includes('tarjeta') ? <CreditCard size={24} /> : <Banknote size={24} />}
+                                                <span className="text-[10px] font-black uppercase tracking-widest mt-2">{m.nombre}</span>
                                             </button>
                                         ))}
                                     </div>
                                 </div>
                             ) : (
-                                <div className="bg-green-50 dark:bg-green-900/20 p-3 rounded-lg text-center text-green-700 dark:text-green-400 font-bold mb-6">
+                                <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl text-center text-emerald-700 dark:text-emerald-400 font-bold mb-8 border border-emerald-100 dark:border-emerald-800/50 shadow-inner">
                                     ¡Saldo cubierto! Solo confirmar retiro.
                                 </div>
                             )}
 
-                            <button type="submit" className="w-full py-3 bg-slate-900 dark:bg-slate-700 text-white font-bold rounded-xl hover:bg-black dark:hover:bg-slate-600 transition-transform active:scale-95 shadow-lg">CONFIRMAR RETIRO</button>
+                            <button type="submit" className="w-full py-4 bg-emerald-500 hover:bg-emerald-600 text-slate-900 font-black text-sm uppercase tracking-widest rounded-2xl transition-transform active:scale-95 shadow-lg shadow-emerald-500/30">CONFIRMAR RETIRO</button>
                         </form>
                     </div>
                 </div>
             )}
 
-            <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-white dark:bg-slate-900 p-5 md:p-6 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 transition-colors">
                 <div>
-                    <h1 className="text-2xl font-bold text-gray-800 dark:text-white flex items-center">
-                        <CalendarClock className="mr-3 text-purple-600 dark:text-purple-400" /> Reservas
+                    <h1 className="text-xl md:text-2xl font-black text-slate-800 dark:text-white flex items-center tracking-tight mb-1">
+                        <CalendarClock className="mr-3 text-indigo-500" size={28} /> Reservas y Señas
                     </h1>
-                    <p className="text-gray-500 dark:text-gray-400 text-sm">Gestiona señas, pedidos apartados y saldos pendientes.</p>
+                    <p className="text-slate-500 dark:text-slate-400 text-xs font-bold uppercase tracking-wider">Gestiona pedidos apartados y saldos pendientes.</p>
                 </div>
-                <div className="relative w-full md:w-auto">
-                    <input placeholder="Buscar cliente o teléfono..." className="pl-10 pr-4 py-2 border dark:border-slate-700 rounded-lg w-full md:w-72 focus:ring-2 focus:ring-purple-500 outline-none shadow-sm bg-white dark:bg-slate-800 text-gray-800 dark:text-white transition-colors" value={filter} onChange={e => setFilter(e.target.value)} />
-                    <Search className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                
+                <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
+                    <div className="relative w-full md:w-80">
+                        <input placeholder="Buscar cliente o teléfono..." className="pl-11 pr-4 py-3 border border-slate-200 dark:border-slate-700 rounded-xl w-full focus:ring-2 focus:ring-indigo-500 outline-none shadow-inner bg-slate-50 dark:bg-slate-800/50 text-slate-800 dark:text-white transition-colors font-bold text-sm placeholder-slate-400" value={filter} onChange={e => setFilter(e.target.value)} />
+                        <Search className="absolute left-4 top-3.5 text-slate-400" size={18} />
+                    </div>
+
+                    <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-2 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner w-full md:w-auto overflow-hidden">
+                        <div className="flex items-center justify-center gap-2 px-4 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-slate-600 w-full whitespace-nowrap">
+                            <Store size={14} /> Terminal Campeones
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <div className="bg-white dark:bg-slate-800 rounded-xl shadow-sm border border-gray-200 dark:border-slate-700 overflow-hidden transition-colors">
-                <div className="overflow-x-auto">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden transition-colors">
+                <div className="overflow-x-auto custom-scrollbar">
                     <table className="w-full text-sm text-left">
-                        <thead className="bg-gray-50 dark:bg-slate-900 text-gray-500 dark:text-gray-400 font-bold uppercase text-xs border-b dark:border-slate-700">
+                        <thead className="bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 font-black uppercase text-[10px] tracking-widest border-b border-slate-200 dark:border-slate-700">
                             <tr>
-                                <th className="p-4">Cliente</th>
+                                <th className="p-4 pl-6">Cliente</th>
                                 <th className="p-4">Estado / Vencimiento</th>
                                 <th className="p-4 text-right">Total</th>
                                 <th className="p-4 text-right">Seña</th>
                                 <th className="p-4 text-right">Saldo</th>
                                 <th className="p-4 text-center">Detalle</th>
-                                <th className="p-4 text-right">Acciones</th>
+                                <th className="p-4 text-right pr-6">Acciones</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
                             {filtered.map(r => (
-                                <tr key={r.id} className="hover:bg-purple-50/20 dark:hover:bg-purple-900/10 transition-colors group">
-                                    <td className="p-4">
-                                        <div className="font-bold text-gray-800 dark:text-white">{r.cliente}</div>
-                                        <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 mt-0.5"><Phone size={12} className="text-gray-400" /> {r.telefono || '-'}</div>
+                                <tr key={r.id} className="hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 transition-colors group">
+                                    <td className="p-4 pl-6">
+                                        <div className="font-black text-slate-800 dark:text-white leading-tight">{r.cliente}</div>
+                                        <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1.5 mt-1.5"><Phone size={12} className="text-slate-400" /> {r.telefono || 'SIN TELÉFONO'}</div>
                                     </td>
                                     <td className="p-4">
-                                        <div className="flex items-center gap-2">
-                                            <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase border ${r.estado === 'pendiente' ? 'bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800' : r.estado === 'retirada' ? 'bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 border-green-200 dark:border-green-800' : 'bg-gray-100 dark:bg-slate-700 text-gray-500 dark:text-gray-300 border-gray-200 dark:border-slate-600'}`}>{r.estado}</span>
-                                            {r.estado === 'pendiente' && r.is_vencida && <span className="flex items-center text-[10px] font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-0.5 rounded border border-red-100 dark:border-red-800 animate-pulse"><AlertTriangle size={10} className="mr-1" /> VENCIDA</span>}
+                                        <div className="flex items-center gap-2 mb-1.5">
+                                            <span className={`px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest border shadow-sm ${r.estado === 'pendiente' ? 'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800/50' : r.estado === 'retirada' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50' : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600'}`}>{r.estado}</span>
+                                            {r.estado === 'pendiente' && r.is_vencida && <span className="flex items-center text-[9px] font-black text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded-md border border-red-200 dark:border-red-800/50 shadow-sm animate-pulse"><AlertTriangle size={12} className="mr-1" /> VENCIDA</span>}
                                         </div>
-                                        <div className="text-xs text-gray-400 mt-1">Vence: {r.vencimiento}</div>
+                                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Vence: {r.vencimiento}</div>
                                     </td>
-                                    <td className="p-4 text-right font-medium text-gray-600 dark:text-gray-300">$ {r.total.toLocaleString()}</td>
-                                    <td className="p-4 text-right text-green-600 dark:text-green-400 font-medium">$ {r.sena.toLocaleString()}</td>
-                                    <td className="p-4 text-right">{r.saldo > 0 ? <span className="font-black text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded">$ {r.saldo.toLocaleString()}</span> : <span className="text-gray-400 font-medium">-</span>}</td>
-                                    <td className="p-4 text-center"><button onClick={() => handleViewDetail(r)} className="text-blue-500 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 p-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-full transition-all" title="Ver artículos"><Eye size={20} /></button></td>
+                                    <td className="p-4 text-right font-black text-slate-600 dark:text-slate-300 font-mono tracking-tight">$ {r.total.toLocaleString()}</td>
+                                    <td className="p-4 text-right font-black text-emerald-600 dark:text-emerald-400 font-mono tracking-tight border-l border-dashed border-slate-200 dark:border-slate-700">$ {r.sena.toLocaleString()}</td>
                                     <td className="p-4 text-right">
-                                        <div className="flex justify-end items-center gap-1.5">
-                                            <button onClick={() => handleReprint(r)} className="p-2 text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors border border-transparent hover:border-blue-100" title="Reimprimir"><Printer size={18} /></button>
+                                        {r.saldo > 0 
+                                        ? <span className="font-black text-red-600 dark:text-red-400 font-mono tracking-tight bg-red-50 dark:bg-red-900/20 px-2 py-1 rounded border border-red-100 dark:border-red-800/50 shadow-sm">$ {r.saldo.toLocaleString()}</span> 
+                                        : <span className="text-slate-300 dark:text-slate-600 font-black font-mono tracking-widest">-</span>}
+                                    </td>
+                                    <td className="p-4 text-center">
+                                        <button onClick={() => handleViewDetail(r)} className="text-indigo-400 dark:text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400 p-2 bg-slate-50 hover:bg-indigo-50 dark:bg-slate-800 dark:hover:bg-indigo-900/30 rounded-xl transition-all border border-slate-200 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-800/50 shadow-sm" title="Ver artículos"><Eye size={18} /></button>
+                                    </td>
+                                    <td className="p-4 pr-6 text-right">
+                                        <div className="flex justify-end items-center gap-2">
+                                            <button onClick={() => handleReprint(r)} className="p-2 text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 rounded-lg transition-colors border border-transparent hover:border-indigo-200 dark:hover:border-indigo-800/50 shadow-sm" title="Reimprimir Ticket"><Printer size={18} /></button>
+                                            
                                             {r.estado === 'pendiente' ? (
                                                 <>
-                                                    <button onClick={() => handleCancelar(r.id)} className="p-2 text-gray-400 dark:text-gray-500 hover:text-orange-600 dark:hover:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 rounded-lg transition-colors border border-transparent hover:border-orange-100" title="Cancelar"><XCircle size={18} /></button>
-                                                    <button onClick={() => openPayModal(r)} className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg shadow-sm flex items-center gap-1.5 text-xs font-bold transition-transform active:scale-95" title="Cobrar"><DollarSign size={14} /> RETIRAR</button>
+                                                    <button onClick={() => handleCancelar(r.id)} className="p-2 text-slate-400 dark:text-slate-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 rounded-lg transition-colors border border-transparent hover:border-amber-200 dark:hover:border-amber-800/50 shadow-sm" title="Cancelar Reserva y Devolver Stock"><XCircle size={18} /></button>
+                                                    <button onClick={() => openPayModal(r)} className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-slate-900 rounded-lg shadow-md shadow-emerald-500/20 flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest transition-transform active:scale-95 ml-1" title="Cobrar Saldo"><DollarSign size={14} /> RETIRAR</button>
                                                 </>
                                             ) : (
-                                                <span className="text-gray-300 dark:text-gray-600 italic text-xs flex items-center justify-end mr-2"><CheckCircle size={14} className="mr-1" /> Completada</span>
+                                                <span className="text-slate-300 dark:text-slate-600 italic text-[10px] font-black uppercase tracking-widest flex items-center justify-end mr-3"><CheckCircle size={14} className="mr-1" /> Lista</span>
                                             )}
 
-                                            {/* BOTÓN ELIMINAR AÑADIDO AL FINAL */}
+                                            <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 mx-1"></div>
+
+                                            {/* BOTÓN ELIMINAR */}
                                             <button
                                                 onClick={() => handleDelete(r.id)}
-                                                className="p-2 ml-1 text-gray-400 dark:text-gray-500 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors border border-transparent hover:border-red-100"
-                                                title="Eliminar permanentemente"
+                                                className="p-2 text-slate-300 dark:text-slate-600 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors border border-transparent hover:border-red-200 dark:hover:border-red-800/50 shadow-sm"
+                                                title="Eliminar registro permanentemente"
                                             >
                                                 <Trash2 size={18} />
                                             </button>
@@ -233,7 +280,7 @@ const ReservationsPage = () => {
                         </tbody>
                     </table>
                 </div>
-                {filtered.length === 0 && <div className="p-10 text-center text-gray-400 dark:text-gray-500">No se encontraron reservas.</div>}
+                {filtered.length === 0 && <div className="p-16 text-center text-slate-400 dark:text-slate-500 font-bold text-xs uppercase tracking-widest">No se encontraron reservas con esos datos.</div>}
             </div>
         </div>
     );
