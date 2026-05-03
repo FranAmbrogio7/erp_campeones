@@ -66,9 +66,11 @@ def get_sales_history():
         ).order_by(desc(Venta.fecha_venta))
 
         if solo_actual:
-            sesion = SesionCaja.query.filter_by(estado='abierta').first()
+            tipo_caja_req = request.args.get('tipo_caja', 'PRINCIPAL')
+            sesion = SesionCaja.query.filter_by(estado='abierta', tipo_caja=tipo_caja_req).first()
             if sesion:
-                query = query.filter(Venta.fecha_venta >= sesion.fecha_apertura)
+                query = query.filter(Venta.fecha_venta >= sesion.fecha_apertura, Venta.tipo_caja == tipo_caja_req)
+
             else:
                 return jsonify({"history": [], "today_summary": {"total": 0, "count": 0}}), 200
         else:
