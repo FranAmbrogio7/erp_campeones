@@ -6,18 +6,39 @@ import {
   LayoutDashboard, ChevronDown, LogOut, Menu, X,
   Store, Package, Users, ShoppingCart, Lock, ScrollText, History, FileText,
   Shirt, ArrowRightLeft, ClipboardCheck, Truck, QrCode, Tags,
-  CalendarClock, FileSpreadsheet, PieChart,
+  CalendarClock, FileSpreadsheet, PieChart, Maximize, Minimize
 } from 'lucide-react';
-import ThemeToggle from './ThemeToggle'; // <--- Asegúrate de que esté importado
-
+import ThemeToggle from './ThemeToggle'; 
 
 const Topbar = () => {
   const { user, logout } = useAuth();
   const { pathname } = useLocation();
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   // Cerrar menú móvil al navegar
   useEffect(() => setIsMobileOpen(false), [pathname]);
+
+  // Sincronizar el estado si el usuario usa la tecla ESC para salir del fullscreen
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const toggleFullScreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch((err) => {
+        console.error(`Error intentando entrar a pantalla completa: ${err.message}`);
+      });
+    } else {
+      if (document.exitFullscreen) {
+        document.exitFullscreen();
+      }
+    }
+  };
 
   const menuStructure = [
     { type: 'link', path: '/', name: 'Dashboard', icon: LayoutDashboard },
@@ -43,7 +64,6 @@ const Topbar = () => {
     {
       type: 'folder', key: 'inventario', name: 'Stock', icon: Package,
       items: [
-        // { path: '/productos', name: 'Productos', icon: Shirt },
         { path: '/inventario', name: 'Inventario', icon: ArrowRightLeft },
         { path: '/recuento', name: 'Recuento', icon: ClipboardCheck },
         { path: '/compras', name: 'Compras', icon: Truck },
@@ -59,7 +79,6 @@ const Topbar = () => {
       ]
     },
     { type: 'link', key: 'notas', name: 'Notas', icon: FileText, path: '/notas' }
-
   ];
 
   return (
@@ -145,11 +164,18 @@ const Topbar = () => {
           })}
         </nav>
 
-        {/* --- 3. USUARIO Y MENU MÓVIL --- */}
+        {/* --- 3. USUARIO, SWITCHES Y MENU MÓVIL --- */}
         <div className="flex items-center gap-3">
 
-          {/* >>>> AQUÍ AGREGAMOS EL SWITCH DESKTOP <<<< */}
-          <div className="hidden md:block mr-2">
+          {/* CONTENEDOR DE UTILIDADES DESKTOP (Dark Mode + Pantalla Completa) */}
+          <div className="hidden md:flex items-center gap-1 mr-2">
+            <button 
+              onClick={toggleFullScreen} 
+              title={isFullscreen ? "Salir de Pantalla Completa" : "Pantalla Completa"}
+              className="p-2 text-slate-400 hover:text-white rounded-lg transition-colors hover:bg-slate-800"
+            >
+              {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+            </button>
             <ThemeToggle />
           </div>
 
@@ -172,10 +198,18 @@ const Topbar = () => {
       {isMobileOpen && (
         <div className="md:hidden fixed top-16 left-0 right-0 bottom-0 bg-slate-950/95 backdrop-blur-sm z-40 overflow-y-auto p-4 border-t border-slate-800 animate-fade-in">
 
-          {/* >>>> AQUÍ AGREGAMOS EL SWITCH MÓVIL <<<< */}
+          {/* CONTENEDOR DE UTILIDADES MÓVIL (Dark Mode + Pantalla Completa) */}
           <div className="flex justify-between items-center mb-6 bg-slate-900 p-4 rounded-xl border border-slate-800">
-            <span className="text-sm font-bold text-slate-400">Apariencia</span>
-            <ThemeToggle />
+            <span className="text-sm font-bold text-slate-400">Apariencia / Vista</span>
+            <div className="flex items-center gap-2">
+              <button 
+                onClick={toggleFullScreen} 
+                className="p-2 bg-slate-800 text-slate-300 rounded-lg hover:text-white transition-colors"
+              >
+                {isFullscreen ? <Minimize size={20} /> : <Maximize size={20} />}
+              </button>
+              <ThemeToggle />
+            </div>
           </div>
 
           <div className="space-y-4 pb-20">

@@ -28,11 +28,13 @@ bp = Blueprint('sales', __name__)
 @bp.route('/caja/movement', methods=['POST'])
 @jwt_required()
 def add_movement():
-    # Buscar caja abierta
-    sesion = SesionCaja.query.filter_by(estado='abierta').first()
-    if not sesion: return jsonify({"msg": "No hay caja abierta"}), 400
-
     data = request.get_json()
+    tipo_caja = data.get('tipo_caja', 'PRINCIPAL')
+    
+    # Buscar caja abierta específica
+    sesion = SesionCaja.query.filter_by(estado='abierta', tipo_caja=tipo_caja).first()
+    if not sesion: return jsonify({"msg": f"No hay caja abierta para {tipo_caja}"}), 400
+
     try:
         mov = MovimientoCaja(
             id_sesion=sesion.id_sesion,
@@ -189,38 +191,34 @@ def scan_product(code):
 @bp.route('/caja/status', methods=['GET'])
 @jwt_required()
 def get_caja_status():
-    sesion = SesionCaja.query.filter_by(estado='abierta').first()
-    if not sesion: return jsonify({"estado": "cerrada"}), 200
+    tipo_caja = request.args.get('tipo_caja', 'PRINCIPAL')
+    sesion = SesionCaja.query.filter_by(estado='abierta', tipo_caja=tipo_caja).first()
+    if not sesion: return jsonify({"estado": "cerrada", "tipo_caja": tipo_caja}), 200
     
-    # Optimizamos la consulta para traer los pagos junto con la venta (evita errores de carga)
+    # Resto de la lógica igual, filtrando por la sesión actual
     ventas = Venta.query.options(db.joinedload(Venta.pagos).joinedload(VentaPago.metodo))\
-        .filter(Venta.fecha_venta >= sesion.fecha_apertura).all()
+        .filter(Venta.fecha_venta >= sesion.fecha_apertura, Venta.tipo_caja == tipo_caja).all()
         
     retiros = MovimientoCaja.query.filter_by(id_sesion=sesion.id_sesion, tipo='retiro').all()
     
     lista_retiros = [{"id": r.id_movimiento, "hora": r.fecha.strftime('%H:%M'), "descripcion": r.descripcion, "monto": float(r.monto)} for r in retiros]
     total_retiros = sum(m.monto for m in retiros)
 
-    # --- LÓGICA DE SUMA MIXTA CORREGIDA ---
     total_ventas = 0
     desglose = {"Efectivo": 0, "Tarjeta": 0, "Transferencia": 0, "Otros": 0}
 
     for v in ventas:
         total_ventas += v.total
         
-        # Si tiene pagos en la tabla nueva (prioridad)
         if v.pagos and len(v.pagos) > 0:
             for p in v.pagos:
                 nombre_metodo = p.metodo.nombre if p.metodo else "Otros"
                 monto = float(p.monto)
-                
-                # Clasificación por nombre
                 if "Efectivo" in nombre_metodo: desglose["Efectivo"] += monto
                 elif "Tarjeta" in nombre_metodo: desglose["Tarjeta"] += monto
                 elif "Transferencia" in nombre_metodo: desglose["Transferencia"] += monto
                 else: desglose["Otros"] += monto
         else:
-            # Fallback para ventas antiguas (sin tabla pagos)
             nombre_metodo = v.metodo.nombre if v.metodo else "Otros"
             if "Efectivo" in nombre_metodo: desglose["Efectivo"] += float(v.total)
             elif "Tarjeta" in nombre_metodo: desglose["Tarjeta"] += float(v.total)
@@ -238,43 +236,44 @@ def get_caja_status():
         "total_retiros": float(total_retiros),
         "movimientos": lista_retiros,
         "desglose": desglose,
+        "tipo_caja": sesion.tipo_caja,
         "totales_esperados": {
             "efectivo_en_caja": efectivo_en_caja,
             "digital": desglose["Tarjeta"] + desglose["Transferencia"] + desglose["Otros"]
         }
     }), 200
-
     
 # --- 2. ABRIR CAJA ---
 @bp.route('/caja/open', methods=['POST'])
 @jwt_required()
 def open_caja():
-    # Verificar que no haya otra abierta
-    if SesionCaja.query.filter_by(estado='abierta').first():
-        return jsonify({"msg": "Ya existe una caja abierta"}), 400
-
     data = request.get_json()
+    tipo_caja = data.get('tipo_caja', 'PRINCIPAL')
     monto_inicial = data.get('monto_inicial', 0)
 
-    nueva_sesion = SesionCaja(monto_inicial=monto_inicial, estado='abierta')
+    # Verificar que no haya otra caja del mismo tipo abierta
+    if SesionCaja.query.filter_by(estado='abierta', tipo_caja=tipo_caja).first():
+        return jsonify({"msg": f"Ya existe una caja abierta para {tipo_caja}"}), 400
+
+    nueva_sesion = SesionCaja(monto_inicial=monto_inicial, estado='abierta', tipo_caja=tipo_caja)
     db.session.add(nueva_sesion)
     db.session.commit()
     
-    return jsonify({"msg": "Caja abierta exitosamente"}), 201
+    return jsonify({"msg": f"Caja {tipo_caja} abierta exitosamente"}), 201
 
 # --- 3. CERRAR CAJA ---
 @bp.route('/caja/close', methods=['POST'])
 @jwt_required()
 def close_caja():
-    sesion = SesionCaja.query.filter_by(estado='abierta').first()
-    if not sesion: return jsonify({"msg": "No hay caja para cerrar"}), 400
-
     data = request.get_json()
-    total_real_usuario = float(data.get('total_real', 0))
-
-    ventas = Venta.query.filter(Venta.fecha_venta >= sesion.fecha_apertura).all()
+    tipo_caja = data.get('tipo_caja', 'PRINCIPAL')
     
-    # Calcular Efectivo Real Sistema (Soportando mixtos)
+    sesion = SesionCaja.query.filter_by(estado='abierta', tipo_caja=tipo_caja).first()
+    if not sesion: return jsonify({"msg": f"No hay caja {tipo_caja} para cerrar"}), 400
+
+    total_real_usuario = float(data.get('total_real', 0))
+    ventas = Venta.query.filter(Venta.fecha_venta >= sesion.fecha_apertura, Venta.tipo_caja == tipo_caja).all()
+    
     ventas_efectivo = 0
     total_ventas_global = 0
 
@@ -1119,8 +1118,14 @@ def checkout():
         codigo_nota = data.get('codigo_nota_credito')
         pagos_multiples = data.get('pagos', [])
         metodo_pago_id_simple = data.get('metodo_pago_id')
+        tipo_caja = data.get('tipo_caja', 'PRINCIPAL') # NUEVO: Tipo de Caja
         
         if not items: return jsonify({"msg": "Carrito vacío"}), 400
+
+        # Validamos que exista una sesión abierta para ese tipo de caja
+        sesion_activa = SesionCaja.query.filter_by(estado='abierta', tipo_caja=tipo_caja).first()
+        if not sesion_activa:
+            return jsonify({"msg": f"No se puede procesar la venta. La caja {tipo_caja} está cerrada."}), 400
 
         # Lógica de Nota de Crédito
         nota_usada = None
@@ -1140,7 +1145,8 @@ def checkout():
             fecha_venta=ahora_argentina(),
             id_cliente=cliente_id,
             id_metodo_pago=metodo_pago_id_simple,
-            observaciones=observaciones_venta
+            observaciones=observaciones_venta,
+            tipo_caja=tipo_caja # NUEVO
         )
         db.session.add(nueva_venta)
         db.session.flush() # Obtenemos ID de venta rápidamente

@@ -12,11 +12,16 @@ import toast, { Toaster } from 'react-hot-toast';
 import { useReactToPrint } from 'react-to-print';
 import CreditNoteTicket from '../components/CreditNoteTicket';
 
-const SOUNDS = {
-    beep: new Audio('https://cdn.freesound.org/previews/536/536108_12152864-lq.mp3'),
-    error: new Audio('https://cdn.freesound.org/previews/419/419023_8340785-lq.mp3'),
-    click: new Audio('https://cdn.freesound.org/previews/256/256113_3263906-lq.mp3'),
-    success: new Audio('https://cdn.freesound.org/previews/270/270404_5123851-lq.mp3')
+// =========================================================================
+// UTILERÍA: Normalizador de Estampas
+// =========================================================================
+const getRealEstampa = (estampaStr) => {
+    if (!estampaStr) return null;
+    const clean = estampaStr.toString().trim().toUpperCase();
+    if (clean === '' || clean === 'STANDARD' || clean === 'SIN ESTAMPA' || clean === '-' || clean === 'N/A' || clean === 'SIN DORSAL') {
+        return null;
+    }
+    return estampaStr;
 };
 
 // =========================================================================
@@ -28,10 +33,14 @@ const VariantSelectionModal = ({ data, onClose, onSelect }) => {
 
     const groupedVariants = product.variantes.reduce((acc, v) => {
         if (!acc[v.talle]) acc[v.talle] = [];
-        const estampaName = (!v.estampa || v.estampa === 'Standard') ? 'Sin Estampa' : v.estampa;
+        const estampaName = getRealEstampa(v.estampa) || 'Sin Estampa';
         acc[v.talle].push({ ...v, estampaName });
         return acc;
     }, {});
+
+    const targetTalles = product.preselectedTalle 
+        ? [product.preselectedTalle] 
+        : Object.keys(groupedVariants);
 
     return (
         <div className="fixed inset-0 z-[200] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
@@ -41,7 +50,7 @@ const VariantSelectionModal = ({ data, onClose, onSelect }) => {
                     <div>
                         <h3 className={`font-black text-2xl flex items-center tracking-tight ${type === 'IN' ? 'text-red-800 dark:text-red-400' : 'text-emerald-800 dark:text-emerald-400'}`}>
                             <Shirt className={`mr-3 ${type === 'IN' ? 'text-red-500' : 'text-emerald-500'}`} size={28}/> 
-                            {type === 'IN' ? 'Recibir Variante' : 'Entregar Variante'}
+                            {type === 'IN' ? 'Recibir Estampa' : 'Entregar Estampa'}
                         </h3>
                         <p className="text-sm text-slate-600 dark:text-slate-400 mt-1 font-bold">{product.nombre}</p>
                     </div>
@@ -52,7 +61,7 @@ const VariantSelectionModal = ({ data, onClose, onSelect }) => {
 
                 <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-slate-50/50 dark:bg-slate-900">
                     <div className="space-y-6">
-                        {Object.keys(groupedVariants).map(talle => {
+                        {targetTalles.map(talle => {
                             const detalles = groupedVariants[talle].sort((a, b) => 
                                 a.estampaName === 'Sin Estampa' ? -1 : b.estampaName === 'Sin Estampa' ? 1 : 0
                             );
@@ -78,11 +87,11 @@ const VariantSelectionModal = ({ data, onClose, onSelect }) => {
                                                                 : 'border-emerald-200 dark:border-emerald-800/50 bg-emerald-50/50 dark:bg-emerald-900/20 hover:bg-emerald-100 hover:border-emerald-400 dark:hover:bg-emerald-900/50 cursor-pointer') 
                                                             : 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/50 opacity-50 cursor-not-allowed grayscale'}`}
                                                 >
-                                                    <span className={`font-black text-sm mb-1.5 ${isAvailable ? (type === 'IN' ? 'text-red-900 dark:text-red-100' : 'text-emerald-900 dark:text-emerald-100') : 'text-slate-500'}`}>
+                                                    <span className={`font-bold text-sm mb-1.5 ${isAvailable ? (type === 'IN' ? 'text-red-900 dark:text-red-100' : 'text-emerald-900 dark:text-emerald-100') : 'text-slate-500 dark:text-slate-400 line-through'}`}>
                                                         {det.estampaName}
                                                     </span>
-                                                    <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${det.stock > 0 ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400' : 'bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400'}`}>
-                                                        Stock: {det.stock}
+                                                    <span className={`text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md ${isAvailable ? (type === 'IN' ? 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400') : 'bg-orange-100 text-orange-600 dark:bg-orange-900/40 dark:text-orange-400'}`}>
+                                                        {type === 'IN' ? 'SELECCIONAR' : (det.stock > 0 ? `Stock: ${det.stock}` : 'SIN STOCK')}
                                                     </span>
                                                 </button>
                                             );
@@ -154,16 +163,6 @@ const ReturnsPage = () => {
         documentTitle: `Nota_Credito_${transactionResult?.nota?.codigo || 'NC'}`,
     });
 
-    const playSound = (type) => {
-        try {
-            if (SOUNDS[type]) {
-                SOUNDS[type].currentTime = 0;
-                SOUNDS[type].volume = type === 'click' ? 0.2 : 0.4;
-                SOUNDS[type].play();
-            }
-        } catch (e) { console.error(e); }
-    };
-
     useEffect(() => {
         const fetchInitialData = async () => {
             try {
@@ -210,19 +209,35 @@ const ReturnsPage = () => {
         return () => clearTimeout(delay);
     }, [termIn, termOut, selectedCat, sortBy, activeSearchSide]);
 
+    // --- NUEVA LÓGICA DIRECTA ---
+    const handleSizeClick = (product, talle, type) => {
+        const variantsForSize = product.variantes.filter(v => v.talle === talle);
+        const hasOptions = variantsForSize.some(v => getRealEstampa(v.estampa) !== null);
+
+        if (!hasOptions) {
+            // Sin estampa real, se agrega directo
+            let variantToAdd;
+            if (type === 'IN') {
+                variantToAdd = variantsForSize[0]; // En devolución aceptamos el primero
+            } else {
+                variantToAdd = variantsForSize.find(v => v.stock > 0) || variantsForSize[0];
+            }
+            addManualItem(product, variantToAdd, type);
+        } else {
+            // Tiene opciones reales de estampas, abrimos el modal solo para este talle
+            setVariantModalData({ product: { ...product, preselectedTalle: talle }, type });
+        }
+    };
+
     const handleProductSelectClick = (product, type) => {
         if (product.variantes.length === 1) {
             const v = product.variantes[0];
             if (type === 'IN' || (type === 'OUT' && v.stock > 0)) {
                 addManualItem(product, v, type);
-                if(type === 'IN') setShowDropdownIn(false);
-                if(type === 'OUT') setShowDropdownOut(false);
                 return;
             }
         }
         setVariantModalData({ product, type });
-        if(type === 'IN') setShowDropdownIn(false);
-        if(type === 'OUT') setShowDropdownOut(false);
     };
 
     const addManualItem = (product, variant, type) => {
@@ -235,17 +250,17 @@ const ReturnsPage = () => {
         if (type === 'IN') {
             setItemsIn(prev => [...prev, item]);
             setVariantModalData(null);
-            setTermIn('');
             setTimeout(() => inputInRef.current?.focus(), 100);
         } else {
-            if (item.stock_actual <= 0) { playSound('error'); toast.error("Sin stock físico"); return; }
+            if (item.stock_actual <= 0) { toast.error("Sin stock físico"); return; }
             setItemsOut(prev => [...prev, item]);
             setVariantModalData(null);
-            setTermOut('');
             setTimeout(() => inputOutRef.current?.focus(), 100);
         }
-        playSound('click');
-        toast.success(`Agregado a ${type === 'IN' ? 'Devolución' : 'Nuevo'}`);
+        
+        const estampaReal = getRealEstampa(variant.estampa);
+        const estampaText = estampaReal ? ` - ${estampaReal}` : '';
+        toast.success(`${product.nombre} (${variant.talle}${estampaText}) agregado a ${type === 'IN' ? 'Devolución' : 'Nuevo'}`);
     };
 
     const handleScan = async (e, type) => {
@@ -263,13 +278,12 @@ const ReturnsPage = () => {
                     setItemsIn(prev => [...prev, item]); setTermIn(''); setResultsIn([]); setShowDropdownIn(false);
                     toast.success("Devolución escaneada");
                 } else {
-                    if (prod.stock_actual <= 0) { playSound('error'); toast.error("¡Sin stock!"); return; }
+                    if (prod.stock_actual <= 0) { toast.error("¡Sin stock!"); return; }
                     setItemsOut(prev => [...prev, item]); setTermOut(''); setResultsOut([]); setShowDropdownOut(false);
                     toast.success("Entrega escaneada");
                 }
-                playSound('beep');
             }
-        } catch (error) { playSound('error'); toast.error("Producto NO encontrado"); }
+        } catch (error) { toast.error("Producto NO encontrado"); }
     };
 
     const removeItemIn = (uid) => setItemsIn(prev => prev.filter(i => i.uid !== uid));
@@ -294,7 +308,7 @@ const ReturnsPage = () => {
 
     const handleProcess = async () => {
         if (itemsIn.length === 0 && itemsOut.length === 0) return;
-        if (balance > 0 && !selectedPaymentMethod) { playSound('error'); toast.error("⚠️ Selecciona un Método de Pago."); return; }
+        if (balance > 0 && !selectedPaymentMethod) { toast.error("⚠️ Selecciona un Método de Pago."); return; }
         if (!window.confirm("¿Confirmar operación?")) return;
 
         const toastId = toast.loading("Procesando transacción...");
@@ -323,8 +337,8 @@ const ReturnsPage = () => {
             setSurchargePercent(0); setDiscountPercent(0);
             localStorage.removeItem('returns_in'); localStorage.removeItem('returns_out');
 
-            playSound('success'); toast.success("¡Movimiento registrado!", { id: toastId });
-        } catch (e) { playSound('error'); toast.error(e.response?.data?.msg || "Error", { id: toastId }); }
+            toast.success("¡Movimiento registrado!", { id: toastId });
+        } catch (e) { toast.error(e.response?.data?.msg || "Error", { id: toastId }); }
     };
 
     const SearchResultsDropdown = ({ results, type, show }) => {
@@ -332,32 +346,49 @@ const ReturnsPage = () => {
         return (
             <div className={`absolute top-full left-0 right-0 bg-white dark:bg-slate-800 shadow-2xl border rounded-b-2xl mt-1 max-h-[50vh] overflow-y-auto z-[100] custom-scrollbar ${type === 'IN' ? 'border-red-200 dark:border-red-900/50' : 'border-emerald-200 dark:border-emerald-900/50'}`}>
                 {results.map(prod => {
-                    const tallesDisponibles = Array.from(new Set(prod.variantes.filter(v => type === 'IN' || v.stock > 0).map(v => v.talle)));
+                    const tallesUnicos = Array.from(new Set(prod.variantes.map(v => v.talle)));
 
                     return (
-                        <div key={prod.id} className="p-4 border-b border-slate-100 dark:border-slate-700/60 hover:bg-slate-50 dark:hover:bg-slate-700/80 flex gap-4 cursor-pointer group transition-colors" onClick={() => handleProductSelectClick(prod, type)}>
-                            <div className="w-14 h-14 bg-slate-100 dark:bg-slate-700 rounded-xl shrink-0 overflow-hidden border border-slate-200 dark:border-slate-600 relative flex items-center justify-center cursor-zoom-in" onClick={(e) => { e.stopPropagation(); if (prod.imagen) setZoomImage(`${api.defaults.baseURL}/static/uploads/${prod.imagen}`); }}>
-                                {prod.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${prod.imagen}`} className="w-full h-full object-cover group-hover:scale-110 transition-transform" /> : <Shirt className="text-slate-300 dark:text-slate-500 w-full h-full p-2" />}
+                        <div key={prod.id} className="p-4 border-b border-slate-100 dark:border-slate-700/60 hover:bg-slate-50 dark:hover:bg-slate-700/80 flex gap-4 cursor-pointer transition-colors" onClick={() => handleProductSelectClick(prod, type)}>
+                            <div className="w-16 h-16 bg-slate-100 dark:bg-slate-700 rounded-xl shrink-0 overflow-hidden border border-slate-200 dark:border-slate-600 relative flex items-center justify-center cursor-zoom-in" onClick={(e) => { e.stopPropagation(); if (prod.imagen) setZoomImage(`${api.defaults.baseURL}/static/uploads/${prod.imagen}`); }}>
+                                {prod.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${prod.imagen}`} className="w-full h-full object-cover group-hover:scale-110 transition-transform" /> : <Shirt className="text-slate-300 dark:text-slate-500 w-full h-full p-3" />}
                             </div>
                             <div className="flex-1 flex flex-col justify-center">
-                                <div className="flex justify-between items-center mb-1">
-                                    <span className="text-sm font-bold text-slate-800 dark:text-white leading-tight">{prod.nombre}</span>
-                                    <span className={`text-xs font-black px-2 py-0.5 rounded-md ${type === 'IN' ? 'bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400' : 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'}`}>${prod.precio.toLocaleString()}</span>
+                                <div className="flex justify-between items-start mb-2">
+                                    <span className="text-base font-black text-slate-800 dark:text-white leading-tight">{prod.nombre}</span>
+                                    <span className={`text-base font-black ${type === 'IN' ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>${prod.precio.toLocaleString()}</span>
                                 </div>
-                                <div className={`mt-2 flex items-center justify-between p-2 rounded-lg border transition-colors ${type === 'IN' ? 'bg-red-50/50 dark:bg-red-900/10 border-red-100 dark:border-red-900/30 group-hover:bg-red-100 dark:group-hover:bg-red-900/40' : 'bg-emerald-50/50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-900/30 group-hover:bg-emerald-100 dark:group-hover:bg-emerald-900/40'}`}>
-                                    <div className="flex flex-wrap gap-1">
-                                        {tallesDisponibles.length > 0 ? tallesDisponibles.map(t => (
-                                            <span key={t} className={`text-[10px] font-black px-1.5 py-0.5 rounded shadow-sm border bg-white dark:bg-slate-800 ${type === 'IN' ? 'text-red-700 dark:text-red-400 border-red-100 dark:border-slate-600' : 'text-emerald-700 dark:text-emerald-400 border-emerald-100 dark:border-slate-600'}`}>
+                                
+                                {/* BOTONES DE TALLES AMPLIOS DIRECTOS */}
+                                <div className="mt-1 flex flex-wrap gap-2">
+                                    {tallesUnicos.length > 0 ? tallesUnicos.map(t => {
+                                        const variantsForSize = prod.variantes.filter(v => v.talle === t);
+                                        const hasStock = type === 'IN' ? true : variantsForSize.some(v => v.stock > 0);
+                                        
+                                        return (
+                                            <button 
+                                                key={t} 
+                                                disabled={!hasStock}
+                                                onClick={(e) => {
+                                                    e.stopPropagation(); 
+                                                    handleSizeClick(prod, t, type);
+                                                }}
+                                                className={`text-sm font-black px-4 py-2 rounded-xl shadow-sm border-2 transition-all active:scale-95 ${
+                                                    hasStock 
+                                                    ? (type === 'IN'
+                                                        ? 'bg-white dark:bg-slate-800 text-red-700 dark:text-red-400 border-red-200 dark:border-slate-600 hover:bg-red-50 dark:hover:bg-red-900/50 hover:border-red-400'
+                                                        : 'bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-slate-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/50 hover:border-emerald-400')
+                                                    : 'bg-slate-50 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800 line-through opacity-70 cursor-not-allowed'
+                                                }`}
+                                            >
                                                 {t}
-                                            </span>
-                                        )) : (
-                                            <span className="text-[10px] font-bold text-red-500 bg-red-50 dark:bg-red-900/30 px-1.5 py-0.5 rounded">SIN STOCK</span>
-                                        )}
-                                    </div>
-                                    <span className={`text-[10px] font-black flex items-center ${type === 'IN' ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                                        Elegir Variante <ArrowRight size={12} className="ml-1" />
-                                    </span>
+                                            </button>
+                                        );
+                                    }) : (
+                                        <span className="text-xs font-bold text-red-500 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded">SIN VARIANTE</span>
+                                    )}
                                 </div>
+
                             </div>
                         </div>
                     );
@@ -431,11 +462,37 @@ const ReturnsPage = () => {
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                                 <div className="bg-white dark:bg-slate-800 rounded-2xl border border-red-100 dark:border-red-900/50 shadow-sm overflow-hidden">
                                     <div className="bg-red-50 dark:bg-red-900/30 p-3 border-b border-red-100 dark:border-red-900/50 flex items-center justify-center text-red-700 dark:text-red-400 font-black text-xs uppercase tracking-widest"><PackagePlus size={16} className="mr-2" /> Ingresó (+1)</div>
-                                    <div className="p-3 space-y-2 max-h-48 overflow-y-auto custom-scrollbar">{transactionResult.itemsEntraron.map(i => (<div key={i.uid} className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700"><div className="w-10 h-10 bg-white dark:bg-slate-800 rounded-lg border dark:border-slate-600 flex items-center justify-center shrink-0">{i.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${i.imagen}`} className="w-full h-full object-cover rounded-md" /> : <Shirt size={16} className="text-slate-300 dark:text-slate-500" />}</div><div className="min-w-0"><p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{i.nombre}</p><p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-0.5">Talle: {i.talle}</p></div></div>))}</div>
+                                    <div className="p-3 space-y-2 max-h-48 overflow-y-auto custom-scrollbar">{transactionResult.itemsEntraron.map(i => {
+                                        const estampaReal = getRealEstampa(i.estampa);
+                                        return (
+                                            <div key={i.uid} className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700">
+                                                <div className="w-10 h-10 bg-white dark:bg-slate-800 rounded-lg border dark:border-slate-600 flex items-center justify-center shrink-0">
+                                                    {i.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${i.imagen}`} className="w-full h-full object-cover rounded-md" /> : <Shirt size={16} className="text-slate-300 dark:text-slate-500" />}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{i.nombre}</p>
+                                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-0.5">Talle: {i.talle}{estampaReal && ` - ${estampaReal}`}</p>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}</div>
                                 </div>
                                 <div className="bg-white dark:bg-slate-800 rounded-2xl border border-emerald-100 dark:border-emerald-900/50 shadow-sm overflow-hidden">
                                     <div className="bg-emerald-50 dark:bg-emerald-900/30 p-3 border-b border-emerald-100 dark:border-emerald-900/50 flex items-center justify-center text-emerald-700 dark:text-emerald-400 font-black text-xs uppercase tracking-widest"><PackageMinus size={16} className="mr-2" /> Salió (-1)</div>
-                                    <div className="p-3 space-y-2 max-h-48 overflow-y-auto custom-scrollbar">{transactionResult.itemsSalieron.map(i => (<div key={i.uid} className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700"><div className="w-10 h-10 bg-white dark:bg-slate-800 rounded-lg border dark:border-slate-600 flex items-center justify-center shrink-0">{i.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${i.imagen}`} className="w-full h-full object-cover rounded-md" /> : <Shirt size={16} className="text-slate-300 dark:text-slate-500" />}</div><div className="min-w-0"><p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{i.nombre}</p><p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-0.5">Talle: {i.talle}</p></div></div>))}</div>
+                                    <div className="p-3 space-y-2 max-h-48 overflow-y-auto custom-scrollbar">{transactionResult.itemsSalieron.map(i => {
+                                        const estampaReal = getRealEstampa(i.estampa);
+                                        return (
+                                            <div key={i.uid} className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-100 dark:border-slate-700">
+                                                <div className="w-10 h-10 bg-white dark:bg-slate-800 rounded-lg border dark:border-slate-600 flex items-center justify-center shrink-0">
+                                                    {i.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${i.imagen}`} className="w-full h-full object-cover rounded-md" /> : <Shirt size={16} className="text-slate-300 dark:text-slate-500" />}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="text-xs font-bold text-slate-700 dark:text-slate-200 truncate">{i.nombre}</p>
+                                                    <p className="text-[10px] text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-0.5">Talle: {i.talle}{estampaReal && ` - ${estampaReal}`}</p>
+                                                </div>
+                                            </div>
+                                        )
+                                    })}</div>
                                 </div>
                             </div>
                         </div>
@@ -527,27 +584,30 @@ const ReturnsPage = () => {
                                 <ArrowLeft size={56} className="mb-3" />
                                 <p className="font-black text-sm uppercase tracking-widest">Escanea Devolución</p>
                             </div>
-                        ) : itemsIn.map((item) => (
-                            <div key={item.uid} className="bg-white dark:bg-slate-800 p-3 md:p-4 rounded-2xl shadow-sm border border-red-100 dark:border-red-900/50 flex justify-between items-center animate-fade-in-left group hover:border-red-300 dark:hover:border-red-800 transition-all">
-                                <div className="flex items-center gap-3 md:gap-4">
-                                    <div className="w-12 h-12 bg-slate-50 dark:bg-slate-700 rounded-xl border dark:border-slate-600 shrink-0 overflow-hidden cursor-zoom-in relative" onClick={() => item.imagen && setZoomImage(`${api.defaults.baseURL}/static/uploads/${item.imagen}`)}>
-                                        {item.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${item.imagen}`} className="w-full h-full object-cover" /> : <Shirt size={20} className="text-slate-300 dark:text-slate-500 m-auto mt-3" />}
-                                        {item.imagen && <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center backdrop-blur-[1px]"><Maximize2 size={16} className="text-white" /></div>}
-                                    </div>
-                                    <div className="min-w-0 pr-4">
-                                        <p className="font-bold text-slate-800 dark:text-white text-sm leading-tight truncate">{item.nombre}</p>
-                                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-600 shadow-sm">Talle {item.talle}</span>
-                                            {item.estampa && item.estampa !== 'Standard' && <span className="text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800 shadow-sm">{item.estampa}</span>}
+                        ) : itemsIn.map((item) => {
+                            const estampaReal = getRealEstampa(item.estampa);
+                            return (
+                                <div key={item.uid} className="bg-white dark:bg-slate-800 p-3 md:p-4 rounded-2xl shadow-sm border border-red-100 dark:border-red-900/50 flex justify-between items-center animate-fade-in-left group hover:border-red-300 dark:hover:border-red-800 transition-all">
+                                    <div className="flex items-center gap-3 md:gap-4">
+                                        <div className="w-12 h-12 bg-slate-50 dark:bg-slate-700 rounded-xl border dark:border-slate-600 shrink-0 overflow-hidden cursor-zoom-in relative" onClick={() => item.imagen && setZoomImage(`${api.defaults.baseURL}/static/uploads/${item.imagen}`)}>
+                                            {item.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${item.imagen}`} className="w-full h-full object-cover" /> : <Shirt size={20} className="text-slate-300 dark:text-slate-500 m-auto mt-3" />}
+                                            {item.imagen && <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center backdrop-blur-[1px]"><Maximize2 size={16} className="text-white" /></div>}
+                                        </div>
+                                        <div className="min-w-0 pr-4">
+                                            <p className="font-bold text-slate-800 dark:text-white text-sm leading-tight truncate">{item.nombre}</p>
+                                            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                                <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-600 shadow-sm">Talle {item.talle}</span>
+                                                {estampaReal && <span className="text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800 shadow-sm">{estampaReal}</span>}
+                                            </div>
                                         </div>
                                     </div>
+                                    <div className="flex flex-col items-end gap-2 shrink-0">
+                                        <button onClick={() => removeItemIn(item.uid)} className="text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors p-1"><Trash2 size={18} /></button>
+                                        <span className="font-black text-red-600 dark:text-red-400 font-mono tracking-tighter text-lg">$ {item.precio.toLocaleString()}</span>
+                                    </div>
                                 </div>
-                                <div className="flex flex-col items-end gap-2 shrink-0">
-                                    <button onClick={() => removeItemIn(item.uid)} className="text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors p-1"><Trash2 size={18} /></button>
-                                    <span className="font-black text-red-600 dark:text-red-400 font-mono tracking-tighter text-lg">$ {item.precio.toLocaleString()}</span>
-                                </div>
-                            </div>
-                        ))}
+                            )
+                        })}
                     </div>
                     
                     <div className="p-5 border-t border-red-100 dark:border-red-900/50 bg-white dark:bg-slate-900 flex justify-between items-center shrink-0">
@@ -660,27 +720,30 @@ const ReturnsPage = () => {
                                 <ArrowRight size={56} className="mb-3" />
                                 <p className="font-black text-sm uppercase tracking-widest">Escanea Nuevo Artículo</p>
                             </div>
-                        ) : itemsOut.map((item) => (
-                            <div key={item.uid} className="bg-white dark:bg-slate-800 p-3 md:p-4 rounded-2xl shadow-sm border border-emerald-100 dark:border-emerald-900/50 flex justify-between items-center animate-fade-in-right group hover:border-emerald-300 dark:hover:border-emerald-800 transition-all">
-                                <div className="flex items-center gap-3 md:gap-4">
-                                    <div className="w-12 h-12 bg-slate-50 dark:bg-slate-700 rounded-xl border dark:border-slate-600 shrink-0 overflow-hidden cursor-zoom-in relative" onClick={() => item.imagen && setZoomImage(`${api.defaults.baseURL}/static/uploads/${item.imagen}`)}>
-                                        {item.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${item.imagen}`} className="w-full h-full object-cover" /> : <Shirt size={20} className="text-slate-300 dark:text-slate-500 m-auto mt-3" />}
-                                        {item.imagen && <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center backdrop-blur-[1px]"><Maximize2 size={16} className="text-white" /></div>}
-                                    </div>
-                                    <div className="min-w-0 pr-4">
-                                        <p className="font-bold text-slate-800 dark:text-white text-sm leading-tight truncate">{item.nombre}</p>
-                                        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                            <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-600 shadow-sm">Talle {item.talle}</span>
-                                            {item.estampa && item.estampa !== 'Standard' && <span className="text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800 shadow-sm">{item.estampa}</span>}
+                        ) : itemsOut.map((item) => {
+                            const estampaReal = getRealEstampa(item.estampa);
+                            return (
+                                <div key={item.uid} className="bg-white dark:bg-slate-800 p-3 md:p-4 rounded-2xl shadow-sm border border-emerald-100 dark:border-emerald-900/50 flex justify-between items-center animate-fade-in-right group hover:border-emerald-300 dark:hover:border-emerald-800 transition-all">
+                                    <div className="flex items-center gap-3 md:gap-4">
+                                        <div className="w-12 h-12 bg-slate-50 dark:bg-slate-700 rounded-xl border dark:border-slate-600 shrink-0 overflow-hidden cursor-zoom-in relative" onClick={() => item.imagen && setZoomImage(`${api.defaults.baseURL}/static/uploads/${item.imagen}`)}>
+                                            {item.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${item.imagen}`} className="w-full h-full object-cover" /> : <Shirt size={20} className="text-slate-300 dark:text-slate-500 m-auto mt-3" />}
+                                            {item.imagen && <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center backdrop-blur-[1px]"><Maximize2 size={16} className="text-white" /></div>}
+                                        </div>
+                                        <div className="min-w-0 pr-4">
+                                            <p className="font-bold text-slate-800 dark:text-white text-sm leading-tight truncate">{item.nombre}</p>
+                                            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                                <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-600 shadow-sm">Talle {item.talle}</span>
+                                                {estampaReal && <span className="text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800 shadow-sm">{estampaReal}</span>}
+                                            </div>
                                         </div>
                                     </div>
+                                    <div className="flex flex-col items-end gap-2 shrink-0">
+                                        <button onClick={() => removeItemOut(item.uid)} className="text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors p-1"><Trash2 size={18} /></button>
+                                        <span className="font-black text-emerald-600 dark:text-emerald-400 font-mono tracking-tighter text-lg">$ {item.precio.toLocaleString()}</span>
+                                    </div>
                                 </div>
-                                <div className="flex flex-col items-end gap-2 shrink-0">
-                                    <button onClick={() => removeItemOut(item.uid)} className="text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors p-1"><Trash2 size={18} /></button>
-                                    <span className="font-black text-emerald-600 dark:text-emerald-400 font-mono tracking-tighter text-lg">$ {item.precio.toLocaleString()}</span>
-                                </div>
-                            </div>
-                        ))}
+                            )
+                        })}
                     </div>
                     
                     <div className="p-5 border-t border-emerald-100 dark:border-emerald-900/50 bg-white dark:bg-slate-900 flex justify-between items-center shrink-0">

@@ -7,14 +7,100 @@ import {
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 
+// =========================================================================
+// UTILERÍA: Normalizador de Estampas
+// =========================================================================
+const getRealEstampa = (estampaStr) => {
+    if (!estampaStr) return null;
+    const clean = estampaStr.toString().trim().toUpperCase();
+    if (clean === '' || clean === 'STANDARD' || clean === 'SIN ESTAMPA' || clean === '-' || clean === 'N/A' || clean === 'SIN DORSAL') {
+        return null;
+    }
+    return estampaStr;
+};
+
+// =========================================================================
+// SUB-COMPONENTE: Modal Seleccionador de Variante
+// =========================================================================
+const VariantSelectionModal = ({ product, isOpen, onClose, onSelect }) => {
+    if (!isOpen || !product) return null;
+
+    // Agrupamos las variantes por Talle
+    const groupedVariants = product.variantes.reduce((acc, v) => {
+        if (!acc[v.talle]) acc[v.talle] = [];
+        const estampaName = getRealEstampa(v.estampa) || 'Sin Estampa';
+        acc[v.talle].push({ ...v, estampaName });
+        return acc;
+    }, {});
+
+    // Si pasamos un talle preseleccionado, solo mostramos ese. Si no, mostramos todos.
+    const targetTalles = product.preselectedTalle 
+        ? [product.preselectedTalle] 
+        : Object.keys(groupedVariants);
+
+    return (
+        <div className="fixed inset-0 z-[200] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
+            <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
+                
+                <div className="bg-indigo-50 dark:bg-slate-900 p-5 border-b border-indigo-100 dark:border-slate-700 flex justify-between items-center shrink-0">
+                    <div>
+                        <h3 className="font-black text-xl text-indigo-900 dark:text-white flex items-center">
+                            <Shirt className="mr-2 text-indigo-500" size={24}/> Seleccionar Estampa
+                        </h3>
+                        <p className="text-sm text-indigo-700 dark:text-slate-400 mt-1 font-medium">{product.nombre}</p>
+                    </div>
+                    <button onClick={onClose} className="p-2 bg-white dark:bg-slate-800 text-slate-400 hover:text-red-500 rounded-full shadow-sm border border-slate-200 dark:border-slate-600 transition-colors">
+                        <X size={20} />
+                    </button>
+                </div>
+
+                <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-slate-50 dark:bg-slate-800/50">
+                    <div className="space-y-6">
+                        {targetTalles.map(talle => {
+                            const detalles = groupedVariants[talle].sort((a, b) => 
+                                a.estampaName === 'Sin Estampa' ? -1 : b.estampaName === 'Sin Estampa' ? 1 : 0
+                            );
+
+                            return (
+                                <div key={talle} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                                    <h4 className="font-black text-lg text-slate-800 dark:text-white mb-3 flex items-center border-b border-slate-100 dark:border-slate-700 pb-2">
+                                        Talle {talle}
+                                    </h4>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                        {detalles.map(det => (
+                                            // En Toma de Inventario NUNCA se bloquea por falta de stock
+                                            <button
+                                                key={det.id_variante}
+                                                onClick={() => onSelect(product, det)}
+                                                className="relative flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all active:scale-95 text-center border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-900/20 hover:bg-indigo-100 hover:border-indigo-400 dark:hover:bg-indigo-900/50 cursor-pointer"
+                                            >
+                                                <span className="font-bold text-sm mb-1 text-indigo-900 dark:text-indigo-100">
+                                                    {det.estampaName}
+                                                </span>
+                                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${det.stock > 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-400'}`}>
+                                                    Stock actual: {det.stock}
+                                                </span>
+                                            </button>
+                                        ))}
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const StockTakePage = () => {
     const { token } = useAuth();
 
     // --- ESTADOS DE CONTROL ---
     const [activeTab, setActiveTab] = useState('scan');
-    const [updateMode, setUpdateMode] = useState('add'); // Por defecto 'add' (Sumar)
+    const [updateMode, setUpdateMode] = useState('add'); 
     const [showReplaceWarning, setShowReplaceWarning] = useState(false);
-    const [showSaveModal, setShowSaveModal] = useState(false); // <--- NUEVO: Modal antes de guardar
+    const [showSaveModal, setShowSaveModal] = useState(false); 
 
     // --- ESTADOS DE DATOS ---
     const [scannedItems, setScannedItems] = useState(() => {
@@ -27,7 +113,7 @@ const StockTakePage = () => {
     const [manualResults, setManualResults] = useState([]);
     const [isSearching, setIsSearching] = useState(false);
 
-    // --- ESTADOS DE FILTROS Y CATEGORÍAS (NUEVOS) ---
+    // --- ESTADOS DE FILTROS Y CATEGORÍAS ---
     const [categories, setCategories] = useState([]);
     const [specificCats, setSpecificCats] = useState([]);
     const [selectedCat, setSelectedCat] = useState('');
@@ -36,6 +122,9 @@ const StockTakePage = () => {
     const [sortBy, setSortBy] = useState('mas_vendidos');
     const [zoomImage, setZoomImage] = useState(null);
     const [showDropdown, setShowDropdown] = useState(false);
+    
+    // --- ESTADO MODAL VARIANTES ---
+    const [variantModalProduct, setVariantModalProduct] = useState(null);
 
     // Refs
     const scanInputRef = useRef(null);
@@ -66,12 +155,12 @@ const StockTakePage = () => {
     // --- FOCO AUTOMÁTICO DEL ESCÁNER ---
     useEffect(() => {
         const focusInterval = setInterval(() => {
-            if (activeTab === 'scan' && document.activeElement !== scanInputRef.current && !zoomImage && !showReplaceWarning && !showSaveModal) {
+            if (activeTab === 'scan' && document.activeElement !== scanInputRef.current && !zoomImage && !showReplaceWarning && !showSaveModal && !variantModalProduct) {
                 scanInputRef.current?.focus();
             }
         }, 2000);
         return () => clearInterval(focusInterval);
-    }, [activeTab, zoomImage, showReplaceWarning, showSaveModal]);
+    }, [activeTab, zoomImage, showReplaceWarning, showSaveModal, variantModalProduct]);
 
     // --- CERRAR AL HACER CLIC AFUERA ---
     useEffect(() => {
@@ -84,7 +173,7 @@ const StockTakePage = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    // --- BÚSQUEDA MANUAL MEJORADA (CON FILTROS) ---
+    // --- BÚSQUEDA MANUAL MEJORADA ---
     useEffect(() => {
         if (!manualTerm.trim() && !selectedCat && !selectedSpec) {
             setManualResults([]);
@@ -101,7 +190,7 @@ const StockTakePage = () => {
 
                 const res = await api.get('/products', { params });
                 setManualResults(res.data.products || []);
-                setShowDropdown(true); // Mostrar resultados al llegar
+                setShowDropdown(true); 
             } catch (e) { console.error(e); }
             finally { setIsSearching(false); }
         }, 300);
@@ -157,18 +246,42 @@ const StockTakePage = () => {
         } catch (e) { toast.error("Error al buscar código"); }
     };
 
-    const handleManualSelect = (product, variant) => {
+    // --- NUEVA LÓGICA DIRECTA ---
+    const handleSizeClick = (product, talle) => {
+        const variantsForSize = product.variantes.filter(v => v.talle === talle);
+        const hasOptions = variantsForSize.some(v => getRealEstampa(v.estampa) !== null);
+
+        if (!hasOptions) {
+            // Sin estampa real, se agrega directo la primera variante
+            handleManualAdd(product, variantsForSize[0]);
+        } else {
+            // Tiene opciones reales de estampas, abrimos el modal solo para este talle
+            setVariantModalProduct({ ...product, preselectedTalle: talle });
+        }
+    };
+
+    const handleProductSelectClick = (product) => {
+        if (product.variantes.length === 1) {
+            handleManualAdd(product, product.variantes[0]);
+        } else {
+            setVariantModalProduct(product); // Abre el modal con TODOS los talles disponibles
+        }
+    };
+
+    const handleManualAdd = (product, variant) => {
+        const estampaReal = getRealEstampa(variant.estampa);
+        const talleDisplay = estampaReal ? `${variant.talle} - ${estampaReal}` : variant.talle;
+
         addOrIncrementItem({
             sku: variant.sku,
             nombre: product.nombre,
-            talle: variant.talle,
+            talle: talleDisplay,
             imagen: product.imagen,
             stock_sistema: variant.stock
         });
 
-        // CORRECCIÓN: NO cerramos el dropdown ni borramos la búsqueda
-        // Para que el usuario pueda seguir haciendo clic en otras variantes
-        searchInputRef.current?.focus();
+        setVariantModalProduct(null);
+        setTimeout(() => searchInputRef.current?.focus(), 100);
     };
 
     const handleSearchKeyDown = (e) => {
@@ -234,14 +347,13 @@ const StockTakePage = () => {
         await generatePdf(itemsToPrint);
     };
 
-    // --- NUEVA LÓGICA DE GUARDADO (CON MODAL) ---
+    // --- LÓGICA DE GUARDADO ---
     const handleSaveClick = () => {
         if (scannedItems.length === 0) return;
-        setShowSaveModal(true); // Abre el modal en lugar de guardar directo
+        setShowSaveModal(true); 
     };
 
     const executeSave = async (printFirst = false) => {
-        // 1. Si el usuario pidió imprimir primero
         if (printFirst) {
             const itemsToPrint = scannedItems.map(i => ({
                 sku: i.sku,
@@ -252,7 +364,6 @@ const StockTakePage = () => {
             await generatePdf(itemsToPrint);
         }
 
-        // 2. Proceso de guardado en Base de Datos
         const loadToast = toast.loading("Actualizando base de datos...");
         try {
             const itemsPayload = scannedItems.map(i => {
@@ -267,7 +378,7 @@ const StockTakePage = () => {
             toast.success("Inventario actualizado exitosamente", { id: loadToast });
             setScannedItems([]);
             localStorage.removeItem('stockTakeSession');
-            setShowSaveModal(false); // Cerramos el modal al finalizar
+            setShowSaveModal(false); 
         } catch (e) {
             toast.error("Error al guardar", { id: loadToast });
         }
@@ -276,6 +387,14 @@ const StockTakePage = () => {
     return (
         <div className="h-[calc(100vh-4rem)] flex flex-col p-4 max-w-[1600px] mx-auto gap-4 bg-gray-50 dark:bg-slate-950 transition-colors duration-300 relative">
             <Toaster position="top-center" />
+
+            {/* MODAL SELECTOR DE VARIANTE */}
+            <VariantSelectionModal 
+                product={variantModalProduct} 
+                isOpen={!!variantModalProduct} 
+                onClose={() => setVariantModalProduct(null)} 
+                onSelect={handleManualAdd}
+            />
 
             {/* HEADER */}
             <div className="flex flex-col md:flex-row justify-between items-center gap-4 shrink-0 bg-white dark:bg-slate-800 p-4 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-700 transition-colors">
@@ -328,11 +447,9 @@ const StockTakePage = () => {
                     </form>
                 ) : (
                     <div className="relative flex flex-col gap-3" ref={searchContainerRef}>
-                        {/* --- BÚSQUEDA MANUAL MEJORADA CON FILTROS --- */}
                         <div className="flex flex-col lg:flex-row gap-2">
-                            {/* Filtros Dropdowns */}
                             <select
-                                className="flex-1 lg:max-w-xs p-3 font-bold border-2 border-purple-200 dark:border-purple-700 bg-gray-50 dark:bg-slate-800 text-gray-700 dark:text-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-400 transition-colors text-sm"
+                                className="flex-1 lg:max-w-xs p-3 font-bold border-2 border-purple-200 dark:border-purple-700 bg-gray-50 dark:bg-slate-800 text-gray-700 dark:text-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-400 transition-colors text-sm cursor-pointer"
                                 value={selectedCat}
                                 onChange={e => setSelectedCat(e.target.value)}
                             >
@@ -341,7 +458,7 @@ const StockTakePage = () => {
                             </select>
 
                             <select
-                                className="flex-1 lg:max-w-xs p-3 font-bold border-2 border-purple-200 dark:border-purple-700 bg-gray-50 dark:bg-slate-800 text-gray-700 dark:text-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-400 transition-colors text-sm"
+                                className="flex-1 lg:max-w-xs p-3 font-bold border-2 border-purple-200 dark:border-purple-700 bg-gray-50 dark:bg-slate-800 text-gray-700 dark:text-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-400 transition-colors text-sm cursor-pointer"
                                 value={selectedSpec}
                                 onChange={e => setSelectedSpec(e.target.value)}
                             >
@@ -350,7 +467,7 @@ const StockTakePage = () => {
                             </select>
 
                             <select
-                                className="flex-1 lg:max-w-[180px] p-3 font-bold border-2 border-purple-200 dark:border-purple-700 bg-gray-50 dark:bg-slate-800 text-gray-700 dark:text-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-400 transition-colors text-sm"
+                                className="flex-1 lg:max-w-[180px] p-3 font-bold border-2 border-purple-200 dark:border-purple-700 bg-gray-50 dark:bg-slate-800 text-gray-700 dark:text-gray-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-400 transition-colors text-sm cursor-pointer"
                                 value={sortBy}
                                 onChange={e => setSortBy(e.target.value)}
                             >
@@ -360,7 +477,6 @@ const StockTakePage = () => {
                             </select>
                         </div>
 
-                        {/* Barra de Búsqueda de Texto */}
                         <div className="relative">
                             <input
                                 ref={searchInputRef}
@@ -379,7 +495,6 @@ const StockTakePage = () => {
                             />
                             <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-purple-300 dark:text-purple-500" size={28} />
 
-                            {/* Botón para limpiar TODOS los filtros a la vez */}
                             {(manualTerm || selectedCat || selectedSpec) && (
                                 <button
                                     onClick={() => {
@@ -398,45 +513,51 @@ const StockTakePage = () => {
                             )}
                         </div>
 
-                        {/* RESULTADOS FLOTANTES (Solo se ven si showDropdown es true) */}
+                        {/* RESULTADOS FLOTANTES (Con nuevos botones grandes) */}
                         {showDropdown && manualResults.length > 0 && (
                             <div className="absolute top-full left-0 right-0 bg-white dark:bg-slate-800 shadow-2xl rounded-b-xl border border-gray-200 dark:border-slate-700 max-h-[50vh] overflow-y-auto mt-1 z-[100] custom-scrollbar">
-                                {manualResults.map(prod => (
-                                    <div key={prod.id} className="p-3 border-b dark:border-slate-700 hover:bg-gray-50 dark:hover:bg-slate-700/50 flex gap-3 animate-fade-in group items-start transition-colors">
+                                {manualResults.map(prod => {
+                                    const tallesUnicos = Array.from(new Set(prod.variantes.map(v => v.talle)));
 
-                                        {/* ZOOM FOTO RESULTADO */}
-                                        <div
-                                            className="w-14 h-14 bg-gray-100 dark:bg-slate-700 rounded shrink-0 flex items-center justify-center border dark:border-slate-600 overflow-hidden cursor-zoom-in relative group/img"
-                                            onClick={(e) => { if (prod.imagen) { e.stopPropagation(); setZoomImage(getImageUrl(prod.imagen)); } }}
-                                        >
-                                            {prod.imagen ? <img src={getImageUrl(prod.imagen)} className="w-full h-full object-cover group-hover/img:scale-110 transition-transform" /> : <Shirt size={20} className="text-gray-300 dark:text-slate-500" />}
-                                        </div>
+                                    return (
+                                        <div key={prod.id} className="p-4 border-b dark:border-slate-700 hover:bg-gray-50/50 dark:hover:bg-slate-700/50 flex gap-4 cursor-pointer transition-colors" onClick={() => handleProductSelectClick(prod)}>
 
-                                        <div className="flex-1">
-                                            <div className="flex justify-between font-bold text-gray-800 dark:text-white text-sm">
-                                                <span>{prod.nombre}</span>
-                                                <span className="text-gray-400 dark:text-gray-500 font-mono text-xs">#{prod.id}</span>
+                                            <div
+                                                className="w-16 h-16 bg-gray-100 dark:bg-slate-700 rounded-xl shrink-0 flex items-center justify-center border dark:border-slate-600 overflow-hidden cursor-zoom-in relative group/img"
+                                                onClick={(e) => { if (prod.imagen) { e.stopPropagation(); setZoomImage(getImageUrl(prod.imagen)); } }}
+                                            >
+                                                {prod.imagen ? <img src={getImageUrl(prod.imagen)} className="w-full h-full object-cover group-hover/img:scale-110 transition-transform" /> : <Shirt size={32} className="text-gray-300 dark:text-slate-500" />}
                                             </div>
-                                            <div className="flex flex-wrap gap-2 mt-2">
-                                                {prod.variantes.map(v => (
-                                                    <button
-                                                        key={v.id_variante}
-                                                        onClick={() => handleManualSelect(prod, v)}
-                                                        className={`text-xs border px-2 py-1 rounded transition-colors flex items-center gap-2 group/btn ${v.stock === 0
-                                                            ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:text-red-400 dark:border-red-800/50 hover:bg-red-100 dark:hover:bg-red-900/40'
-                                                            : v.stock <= 5
-                                                                ? 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-400 dark:border-yellow-800/50 hover:bg-yellow-100 dark:hover:bg-yellow-900/40'
-                                                                : 'bg-green-50 text-green-700 border-green-200 dark:bg-green-900/20 dark:text-green-400 dark:border-green-800/50 hover:bg-green-100 dark:hover:bg-green-900/40'
-                                                            }`}
-                                                    >
-                                                        <span className="font-bold">{v.talle}</span>
-                                                        <span className="text-[10px] opacity-70 border-l dark:border-slate-500 pl-2 transition-colors">Stock: {v.stock}</span>
-                                                    </button>
-                                                ))}
+
+                                            <div className="flex-1 flex flex-col justify-center">
+                                                <div className="flex justify-between items-start mb-2">
+                                                    <span className="font-black text-base text-gray-800 dark:text-white leading-tight pr-2">{prod.nombre}</span>
+                                                    <span className="text-gray-400 dark:text-gray-500 font-mono text-xs">#{prod.id}</span>
+                                                </div>
+                                                
+                                                <div className="mt-1 flex flex-wrap gap-2">
+                                                    {tallesUnicos.length > 0 ? tallesUnicos.map(t => {
+                                                        // En Toma de Inventario NUNCA se bloquean los botones por falta de stock
+                                                        return (
+                                                            <button
+                                                                key={t}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleSizeClick(prod, t);
+                                                                }}
+                                                                className="text-sm font-black px-4 py-2 rounded-xl shadow-sm border-2 transition-all active:scale-95 bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-slate-600 hover:bg-purple-100 dark:hover:bg-purple-900/50 hover:border-purple-400"
+                                                            >
+                                                                {t}
+                                                            </button>
+                                                        );
+                                                    }) : (
+                                                        <span className="text-xs font-bold text-red-500 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded">SIN VARIANTE</span>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                         {showDropdown && (manualTerm || selectedCat || selectedSpec) && !isSearching && manualResults.length === 0 && (
@@ -484,7 +605,7 @@ const StockTakePage = () => {
                                             </td>
                                             <td className="p-3">
                                                 <p className="font-bold text-gray-800 dark:text-white leading-tight">{item.nombre}</p>
-                                                <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Talle: <b className="text-gray-700 dark:text-gray-300">{item.talle}</b></p>
+                                                <p className="text-[10px] uppercase font-bold tracking-wider text-gray-500 dark:text-gray-400 mt-0.5 border border-gray-200 dark:border-slate-600 bg-gray-50 dark:bg-slate-700 inline-block px-1.5 py-0.5 rounded shadow-sm">Talle: <b className="text-indigo-600 dark:text-indigo-300">{item.talle}</b></p>
                                             </td>
                                             <td className="p-3 font-mono text-xs text-gray-500 dark:text-gray-400 text-center">{item.sku}</td>
                                             <td className="p-3 text-center text-gray-400 dark:text-gray-500 font-mono">{item.stock_sistema}</td>

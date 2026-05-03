@@ -92,7 +92,10 @@ class Venta(db.Model):
 
     observaciones = db.Column(db.Text)
 
-    # --- NUEVO: Relación con Sesión de Caja ---
+    # NUEVO: Tipo de Caja para identificar el origen de la venta
+    tipo_caja = db.Column(db.String(20), default='PRINCIPAL')
+
+# --- NUEVO: Relación con Sesión de Caja ---
 class SesionCaja(db.Model):
     __tablename__ = 'sesiones_caja'
     __table_args__ = {'extend_existing': True}
@@ -108,6 +111,9 @@ class SesionCaja(db.Model):
     
     estado = db.Column(db.String(20), default='abierta') # 'abierta' o 'cerrada'
     usuario_id = db.Column(db.Integer, nullable=True) # Quién abrió la caja
+    
+    # NUEVO: Identificador de caja separada
+    tipo_caja = db.Column(db.String(20), default='PRINCIPAL')
 
 
 class Reserva(db.Model):
@@ -174,17 +180,12 @@ class NotaCredito(db.Model):
     estado = db.Column(db.String(20), default='activa') # 'activa' o 'usada'
     observaciones = db.Column(db.String(255))
     
-    # Opcional: Relación con cliente si la tienes
-    # id_cliente = db.Column(...)
-
     @staticmethod
     def generar_codigo():
         """Genera un código único tipo NC-A1B2C3"""
         chars = string.ascii_uppercase + string.digits
         code = ''.join(random.choice(chars) for _ in range(6))
         return f"NC-{code}"
-
-    
 
 # --- NUEVA TABLA PARA PAGOS MÚLTIPLES ---
 class VentaPago(db.Model):
