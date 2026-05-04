@@ -6,7 +6,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import {
   Calendar, DollarSign, CreditCard, ShoppingBag,
   Printer, Eye, X, Package, Search, FilterX,
-  ChevronLeft, ChevronRight, Edit, Clock, Store, Tag
+  ChevronLeft, ChevronRight, Edit, Clock, Store, Tag, Receipt
 } from 'lucide-react';
 
 const SalesHistoryPage = () => {
@@ -17,7 +17,7 @@ const SalesHistoryPage = () => {
 
   // --- IDENTIDAD DE TERMINAL (Persistente) ---
   const [tipoCajaFiltro, setTipoCajaFiltro] = useState(() => {
-      return localStorage.getItem('terminal_tipo_caja') || 'PRINCIPAL';
+    return localStorage.getItem('terminal_tipo_caja') || 'PRINCIPAL';
   });
   const isMerch = tipoCajaFiltro === 'MERCHANDISING';
 
@@ -60,7 +60,7 @@ const SalesHistoryPage = () => {
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const params = { 
+      const params = {
         limit: (dateRange.start || dateRange.end) ? 5000 : 100,
         tipo_caja: tipoCajaFiltro // NUEVO: Enviamos el tipo de caja
       };
@@ -193,10 +193,10 @@ const SalesHistoryPage = () => {
   };
 
   if (loading) return (
-      <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] text-gray-400 dark:text-gray-600 bg-slate-50 dark:bg-slate-950">
-          <Clock className={`animate-spin mb-4 ${isMerch ? 'text-purple-600' : 'text-indigo-600'}`} size={48} />
-          <p className="font-bold tracking-widest uppercase text-sm">Recuperando base de datos...</p>
-      </div>
+    <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] text-gray-400 dark:text-gray-600 bg-slate-50 dark:bg-slate-950">
+      <Clock className={`animate-spin mb-4 ${isMerch ? 'text-purple-600' : 'text-indigo-600'}`} size={48} />
+      <p className="font-bold tracking-widest uppercase text-sm">Recuperando base de datos...</p>
+    </div>
   );
 
   return (
@@ -262,13 +262,13 @@ const SalesHistoryPage = () => {
             <div className={`p-6 border-b flex justify-between items-center ${isMerch ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-100 dark:border-purple-800/50' : 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-800/50'}`}>
               <div>
                 <h3 className={`font-black text-2xl tracking-tight flex items-center ${isMerch ? 'text-purple-800 dark:text-purple-400' : 'text-indigo-800 dark:text-indigo-400'}`}>
-                    <Receipt className="mr-3" size={28}/> Venta #{viewingSale.id}
+                  <Receipt className="mr-3" size={28} /> Venta #{viewingSale.id}
                 </h3>
                 <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-1">{viewingSale.fecha} • {viewingSale.metodo}</p>
               </div>
               <button onClick={() => setViewingSale(null)} className="text-slate-400 hover:text-red-500 bg-white dark:bg-slate-800 p-2 rounded-full shadow-sm"><X size={24} /></button>
             </div>
-            
+
             <div className="p-0 overflow-y-auto flex-1 custom-scrollbar bg-slate-50 dark:bg-slate-900">
               <table className="w-full text-sm text-left">
                 <thead className="bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 uppercase text-[10px] font-black tracking-widest sticky top-0 shadow-sm z-10">
@@ -294,7 +294,7 @@ const SalesHistoryPage = () => {
                 </tbody>
               </table>
             </div>
-            
+
             <div className="p-6 bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center shadow-[0_-10px_40px_rgba(0,0,0,0.05)] z-20">
               <button onClick={() => prepareAndPrint(viewingSale)} className={`flex items-center px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-colors shadow-sm border ${isMerch ? 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800' : 'bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800'}`}>
                 <Printer size={18} className="mr-2" /> Reimprimir
@@ -319,32 +319,32 @@ const SalesHistoryPage = () => {
             </h1>
 
             <div className="flex flex-col md:flex-row items-center gap-3 w-full md:w-auto">
-                <div className="relative flex-1 w-full md:max-w-xs">
-                  <Search className="absolute left-4 top-3.5 text-slate-400" size={18} />
-                  <input
-                    type="text"
-                    placeholder="Buscar ticket o producto..."
-                    value={searchTerm}
-                    onChange={e => setSearchTerm(e.target.value)}
-                    className="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-900 rounded-xl outline-none transition-all font-bold text-slate-700 dark:text-white placeholder-slate-400 text-sm shadow-inner"
-                  />
-                </div>
+              <div className="relative flex-1 w-full md:max-w-xs">
+                <Search className="absolute left-4 top-3.5 text-slate-400" size={18} />
+                <input
+                  type="text"
+                  placeholder="Buscar ticket o producto..."
+                  value={searchTerm}
+                  onChange={e => setSearchTerm(e.target.value)}
+                  className="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-900 rounded-xl outline-none transition-all font-bold text-slate-700 dark:text-white placeholder-slate-400 text-sm shadow-inner"
+                />
+              </div>
 
-                {/* SELECTOR DE TERMINAL */}
-                <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner w-full md:w-auto overflow-x-auto">
-                    <button 
-                        onClick={() => setTipoCajaFiltro('PRINCIPAL')}
-                        className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${!isMerch ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-slate-600' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
-                    >
-                        <Store size={14} /> Campeones
-                    </button>
-                    <button 
-                        onClick={() => setTipoCajaFiltro('MERCHANDISING')}
-                        className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${isMerch ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-400 shadow-sm border border-slate-200 dark:border-slate-600' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
-                    >
-                        <Tag size={14} /> Merch
-                    </button>
-                </div>
+              {/* SELECTOR DE TERMINAL */}
+              <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner w-full md:w-auto overflow-x-auto">
+                <button
+                  onClick={() => setTipoCajaFiltro('PRINCIPAL')}
+                  className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${!isMerch ? 'bg-white dark:bg-slate-700 text-indigo-700 dark:text-indigo-400 shadow-sm border border-slate-200 dark:border-slate-600' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+                >
+                  <Store size={14} /> Campeones
+                </button>
+                <button
+                  onClick={() => setTipoCajaFiltro('MERCHANDISING')}
+                  className={`flex-1 md:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all ${isMerch ? 'bg-white dark:bg-slate-700 text-purple-700 dark:text-purple-400 shadow-sm border border-slate-200 dark:border-slate-600' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
+                >
+                  <Tag size={14} /> Merch
+                </button>
+              </div>
             </div>
           </div>
 
@@ -419,7 +419,7 @@ const SalesHistoryPage = () => {
 
       {/* --- CONTENIDO PRINCIPAL --- */}
       <div className="flex-1 overflow-hidden flex flex-col max-w-[1600px] mx-auto w-full p-4 md:p-6 gap-6">
-        
+
         {/* TARJETAS KPI */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
           <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center relative overflow-hidden transition-colors">
@@ -480,9 +480,9 @@ const SalesHistoryPage = () => {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border shadow-sm inline-block
                             ${(venta.metodo || '').includes('Efectivo') ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50' :
-                          (venta.metodo || '').includes('Tarjeta') ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/50' :
-                          (venta.metodo || '').includes('Nube') || (venta.metodo || '').includes('Tienda') ? 'bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-800/50' :
-                            'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600'
+                            (venta.metodo || '').includes('Tarjeta') ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/50' :
+                              (venta.metodo || '').includes('Nube') || (venta.metodo || '').includes('Tienda') ? 'bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-800/50' :
+                                'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600'
                           }`}>
                           {venta.metodo}
                         </span>

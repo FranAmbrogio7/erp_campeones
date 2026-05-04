@@ -39,7 +39,7 @@ const VariantSelectionModal = ({ product, isOpen, onClose, onSelect }) => {
       : Object.keys(groupedVariants);
 
   return (
-      <div className="fixed inset-0 z-[200] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
+      <div className="fixed inset-0 z-[400] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
           <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
               
               <div className="bg-indigo-50 dark:bg-slate-900 p-5 border-b border-indigo-100 dark:border-slate-700 flex justify-between items-center shrink-0">
@@ -105,7 +105,7 @@ const POSPage = () => {
   const isMerch = tipoCaja === 'MERCHANDISING';
 
   const [appliedNote, setAppliedNote] = useState(null);
-  const [viewingSale, setViewingSale] = useState(null);
+  const [viewingSale, setViewingSale] = useState(null); // EL ESTADO DEL OJITO
 
   const [isRegisterOpen, setIsRegisterOpen] = useState(null);
   const [skuInput, setSkuInput] = useState('');
@@ -254,12 +254,12 @@ const POSPage = () => {
   };
 
   useEffect(() => {
-    if (!isRegisterOpen || isEditingPrice || editingItemId || isConfirmModalOpen || isReservationModalOpen || zoomImage || isCustomModalOpen || variantModalProduct || isTerminalModalOpen) return;
+    if (!isRegisterOpen || isEditingPrice || editingItemId || isConfirmModalOpen || isReservationModalOpen || zoomImage || isCustomModalOpen || variantModalProduct || isTerminalModalOpen || viewingSale) return;
     if (!isMerch) {
         if (isSearchMode) searchInputRef.current?.focus();
         else if (document.activeElement !== creditNoteInputRef.current) inputRef.current?.focus();
     }
-  }, [cart, isRegisterOpen, isEditingPrice, editingItemId, isConfirmModalOpen, isReservationModalOpen, isSearchMode, zoomImage, isCustomModalOpen, variantModalProduct, isMerch, isTerminalModalOpen]);
+  }, [cart, isRegisterOpen, isEditingPrice, editingItemId, isConfirmModalOpen, isReservationModalOpen, isSearchMode, zoomImage, isCustomModalOpen, variantModalProduct, isMerch, isTerminalModalOpen, viewingSale]);
 
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -272,7 +272,7 @@ const POSPage = () => {
   }, []);
 
   useEffect(() => {
-    if (isMerch) return; // Si es Merch, no busca productos
+    if (isMerch) return; 
     if (!manualTerm.trim() && !selectedCat && !selectedSpec) {
       setManualResults([]);
       setShowDropdown(false);
@@ -556,7 +556,7 @@ const POSPage = () => {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] gap-3 p-3 bg-gray-50 dark:bg-slate-950 transition-colors duration-300">
+    <div className="flex flex-col h-[calc(100vh-4rem)] gap-3 p-3 bg-gray-50 dark:bg-slate-950 transition-colors duration-300 relative">
       <Toaster position="top-center" />
       <div style={{ display: 'none' }}><div ref={ticketRef}><Ticket saleData={ticketData} /></div></div>
       <ConfirmModal isOpen={isConfirmModalOpen} onClose={() => setIsConfirmModalOpen(false)} onConfirm={processSale} title="Cobrar" message={`Total: $${totalFinal.toLocaleString()}`} confirmText="Confirmar" />
@@ -568,6 +568,59 @@ const POSPage = () => {
           onClose={() => setVariantModalProduct(null)} 
           onSelect={handleManualAdd} 
       />
+
+      {/* --- EL FAMOSO MODAL DE DETALLE DE VENTA RESTAURADO --- */}
+      {viewingSale && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[300] flex items-center justify-center p-4 animate-fade-in" onClick={() => setViewingSale(null)}>
+            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] transition-colors border border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
+                <div className={`p-6 border-b flex justify-between items-center ${isMerch ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-100 dark:border-purple-800/50' : 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-800/50'}`}>
+                    <div>
+                        <h3 className={`font-black text-2xl tracking-tight flex items-center ${isMerch ? 'text-purple-800 dark:text-purple-400' : 'text-indigo-800 dark:text-indigo-400'}`}>
+                            <Receipt className="mr-3" size={28}/> Venta #{viewingSale.id}
+                        </h3>
+                        <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-1">{viewingSale.fecha} • {viewingSale.metodo}</p>
+                    </div>
+                    <button onClick={() => setViewingSale(null)} className="text-slate-400 hover:text-red-500 bg-white dark:bg-slate-800 p-2 rounded-full shadow-sm"><X size={24} /></button>
+                </div>
+                
+                <div className="p-0 overflow-y-auto flex-1 custom-scrollbar bg-slate-50 dark:bg-slate-900">
+                    <table className="w-full text-sm text-left">
+                        <thead className="bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 uppercase text-[10px] font-black tracking-widest sticky top-0 shadow-sm z-10">
+                            <tr>
+                                <th className="p-4 pl-6">Producto / Talle</th>
+                                <th className="p-4 text-center">Cant.</th>
+                                <th className="p-4 text-right">Precio</th>
+                                <th className="p-4 text-right pr-6">Subtotal</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {viewingSale.items_detail?.map((item, idx) => (
+                                <tr key={idx} className={`transition-colors group ${isMerch ? 'hover:bg-purple-50/50 dark:hover:bg-purple-900/10' : 'hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10'}`}>
+                                    <td className="p-4 pl-6">
+                                        <p className="font-bold text-slate-800 dark:text-white leading-tight">{item.nombre}</p>
+                                        <span className="text-[10px] bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded shadow-sm border border-slate-200 dark:border-slate-600 font-bold uppercase tracking-widest mt-1 inline-block">Talle: {item.talle}</span>
+                                    </td>
+                                    <td className="p-4 text-center font-bold dark:text-slate-300">{item.cantidad}</td>
+                                    <td className="p-4 text-right text-slate-500 dark:text-slate-400 font-mono text-xs">$ {item.precio.toLocaleString()}</td>
+                                    <td className="p-4 text-right font-black text-slate-800 dark:text-white font-mono text-base pr-6">$ {item.subtotal.toLocaleString()}</td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div className="p-6 bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center shadow-[0_-10px_40px_rgba(0,0,0,0.05)] z-20">
+                    <button onClick={() => prepareAndPrint(viewingSale)} className={`flex items-center px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-colors shadow-sm border ${isMerch ? 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800' : 'bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800'}`}>
+                        <Printer size={18} className="mr-2" /> Reimprimir
+                    </button>
+                    <div className="text-right">
+                        <span className="text-slate-400 dark:text-slate-500 text-[10px] uppercase font-black tracking-widest block mb-0.5">Total Venta</span>
+                        <span className={`text-3xl font-black tracking-tighter font-mono ${isMerch ? 'text-purple-600 dark:text-purple-400' : 'text-indigo-600 dark:text-indigo-400'}`}>$ {viewingSale.total.toLocaleString()}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
 
       {/* --- BOTÓN FLOTANTE CAMBIO DE TERMINAL --- */}
       <button
@@ -716,6 +769,7 @@ const POSPage = () => {
                               className="w-full p-4 border-2 border-indigo-200 dark:border-indigo-700 bg-white dark:bg-slate-900 text-gray-800 dark:text-white rounded-xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-900/20 transition-all text-lg placeholder-indigo-300 dark:placeholder-slate-600"
                               autoFocus
                             />
+                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-300 dark:text-indigo-500" size={28} />
 
                             {showDropdown && (manualResults.length > 0 || (isSearchMode && (selectedCat || selectedSpec))) && (
                               <div className="absolute top-full left-0 right-0 bg-white dark:bg-slate-800 border dark:border-slate-700 shadow-2xl rounded-b-xl mt-1 max-h-[60vh] overflow-y-auto z-[100] custom-scrollbar">
