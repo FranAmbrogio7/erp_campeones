@@ -769,7 +769,6 @@ const POSPage = () => {
                               className="w-full p-4 border-2 border-indigo-200 dark:border-indigo-700 bg-white dark:bg-slate-900 text-gray-800 dark:text-white rounded-xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-900/20 transition-all text-lg placeholder-indigo-300 dark:placeholder-slate-600"
                               autoFocus
                             />
-                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-indigo-300 dark:text-indigo-500" size={28} />
 
                             {showDropdown && (manualResults.length > 0 || (isSearchMode && (selectedCat || selectedSpec))) && (
                               <div className="absolute top-full left-0 right-0 bg-white dark:bg-slate-800 border dark:border-slate-700 shadow-2xl rounded-b-xl mt-1 max-h-[60vh] overflow-y-auto z-[100] custom-scrollbar">
@@ -803,23 +802,33 @@ const POSPage = () => {
                                           <div className="mt-1 flex flex-wrap gap-2">
                                               {tallesUnicos.length > 0 ? tallesUnicos.map(t => {
                                                   const variantsForSize = p.variantes.filter(v => v.talle === t);
-                                                  const hasStock = variantsForSize.some(v => v.stock > 0);
+                                                  
+                                                  // ACÁ CALCULAMOS EL STOCK REAL PARA PINTAR EL BOTÓN
+                                                  const totalStockForSize = variantsForSize.reduce((sum, v) => sum + v.stock, 0);
+                                                  
+                                                  let badgeColor = 'bg-slate-50 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800 line-through opacity-70 cursor-not-allowed';
+                                                  if (totalStockForSize > 2) {
+                                                      badgeColor = 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50 hover:bg-emerald-100 hover:border-emerald-400';
+                                                  } else if (totalStockForSize > 0) {
+                                                      badgeColor = 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/50 hover:bg-amber-100 hover:border-amber-400';
+                                                  }
                                                   
                                                   return (
                                                     <button 
                                                         key={t} 
-                                                        disabled={!hasStock}
+                                                        disabled={totalStockForSize <= 0}
                                                         onClick={(e) => {
                                                             e.stopPropagation(); 
                                                             handleSizeClick(p, t);
                                                         }}
-                                                        className={`text-sm font-black px-4 py-2 rounded-xl shadow-sm border-2 transition-all active:scale-95 ${
-                                                            hasStock 
-                                                            ? 'bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-slate-600 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 hover:border-indigo-400'
-                                                            : 'bg-slate-50 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800 line-through opacity-70 cursor-not-allowed'
-                                                        }`}
+                                                        className={`text-sm font-black px-4 py-2 rounded-xl shadow-sm border-2 transition-all active:scale-95 flex items-center gap-1.5 ${badgeColor}`}
                                                     >
                                                         {t}
+                                                        {totalStockForSize > 0 && (
+                                                            <span className="text-[10px] bg-white/60 dark:bg-black/30 px-1.5 py-0.5 rounded-md font-bold ml-1">
+                                                                {totalStockForSize}
+                                                            </span>
+                                                        )}
                                                     </button>
                                                   );
                                               }) : (
