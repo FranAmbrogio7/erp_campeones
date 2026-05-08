@@ -6,7 +6,7 @@ import toast, { Toaster } from 'react-hot-toast';
 import {
   Calendar, DollarSign, CreditCard, ShoppingBag,
   Printer, Eye, X, Package, Search, FilterX,
-  ChevronLeft, ChevronRight, Edit, Clock, Store, Tag, Receipt
+  ChevronLeft, ChevronRight, Edit, Clock, Store, Tag, Receipt, Trash2
 } from 'lucide-react';
 
 const SalesHistoryPage = () => {
@@ -62,7 +62,7 @@ const SalesHistoryPage = () => {
     try {
       const params = {
         limit: (dateRange.start || dateRange.end) ? 5000 : 100,
-        tipo_caja: tipoCajaFiltro // NUEVO: Enviamos el tipo de caja
+        tipo_caja: tipoCajaFiltro // Enviamos el tipo de caja
       };
 
       if (dateRange.start) params.start_date = dateRange.start;
@@ -139,6 +139,20 @@ const SalesHistoryPage = () => {
       fetchData();
     } catch (error) {
       toast.error(error.response?.data?.msg || "Error al actualizar la venta", { id: toastId });
+    }
+  };
+
+  // --- LÓGICA DE ANULACIÓN ---
+  const handleVoidSale = async (vid) => {
+    if (!window.confirm("¿ANULAR VENTA? El stock de los artículos volverá al inventario.")) return;
+    
+    const toastId = toast.loading("Anulando venta y restaurando stock...");
+    try {
+      await api.delete(`/sales/${vid}/anular`);
+      toast.success("Venta anulada correctamente", { id: toastId });
+      fetchData(); // Recargamos el historial
+    } catch (error) {
+      toast.error(error.response?.data?.msg || "Error al anular la venta", { id: toastId });
     }
   };
 
@@ -419,7 +433,7 @@ const SalesHistoryPage = () => {
 
       {/* --- CONTENIDO PRINCIPAL --- */}
       <div className="flex-1 overflow-hidden flex flex-col max-w-[1600px] mx-auto w-full p-4 md:p-6 gap-6">
-
+        
         {/* TARJETAS KPI */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
           <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center relative overflow-hidden transition-colors">
@@ -459,7 +473,7 @@ const SalesHistoryPage = () => {
                   <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Resumen Items</th>
                   <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-48">Método Pago</th>
                   <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-36">Total Bruto</th>
-                  <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest w-40">Acciones</th>
+                  <th className="px-6 py-4 text-right text-[10px] font-black text-slate-400 uppercase tracking-widest w-48">Acciones</th>
                 </tr>
               </thead>
 
@@ -480,9 +494,9 @@ const SalesHistoryPage = () => {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border shadow-sm inline-block
                             ${(venta.metodo || '').includes('Efectivo') ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50' :
-                            (venta.metodo || '').includes('Tarjeta') ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/50' :
-                              (venta.metodo || '').includes('Nube') || (venta.metodo || '').includes('Tienda') ? 'bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-800/50' :
-                                'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600'
+                          (venta.metodo || '').includes('Tarjeta') ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/50' :
+                          (venta.metodo || '').includes('Nube') || (venta.metodo || '').includes('Tienda') ? 'bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-800/50' :
+                            'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600'
                           }`}>
                           {venta.metodo}
                         </span>
@@ -497,8 +511,11 @@ const SalesHistoryPage = () => {
                         <button onClick={() => setViewingSale(venta)} className={`text-slate-400 dark:text-slate-500 p-2 rounded-xl transition-all mr-1 shadow-sm border border-transparent ${isMerch ? 'hover:text-purple-600 dark:hover:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 hover:border-purple-200 dark:hover:border-purple-800/50' : 'hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-200 dark:hover:border-indigo-800/50'}`} title="Ver detalle">
                           <Eye size={18} />
                         </button>
-                        <button onClick={() => prepareAndPrint(venta)} className="text-slate-400 hover:text-emerald-600 dark:text-slate-500 dark:hover:text-emerald-400 p-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition-all shadow-sm border border-transparent hover:border-emerald-200 dark:hover:border-emerald-800/50" title="Reimprimir Ticket">
+                        <button onClick={() => prepareAndPrint(venta)} className="text-slate-400 hover:text-emerald-600 dark:text-slate-500 dark:hover:text-emerald-400 p-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-xl transition-all mr-1 shadow-sm border border-transparent hover:border-emerald-200 dark:hover:border-emerald-800/50" title="Reimprimir Ticket">
                           <Printer size={18} />
+                        </button>
+                        <button onClick={() => handleVoidSale(venta.id)} className="text-slate-400 hover:text-red-600 dark:text-slate-500 dark:hover:text-red-400 p-2 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-xl transition-all shadow-sm border border-transparent hover:border-red-200 dark:hover:border-red-800/50" title="Anular Venta">
+                          <Trash2 size={18} />
                         </button>
                       </td>
 
