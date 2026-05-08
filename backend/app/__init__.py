@@ -38,8 +38,7 @@ def create_app(config_class=Config):
     # Ventas (Sales)
     app.register_blueprint(sales_bp, url_prefix='/api/sales')   
 
-    # Webhooks (Tienda Nube) - ESTA ES LA CORRECCIÓN CLAVE
-    # Usamos el blueprint que importamos arriba (app.sales.webhooks)
+    # Webhooks (Tienda Nube) 
     app.register_blueprint(bp_webhooks, url_prefix='/api/webhooks')
 
     # Notas (Si existe el módulo)

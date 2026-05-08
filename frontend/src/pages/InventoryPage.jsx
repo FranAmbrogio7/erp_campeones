@@ -8,7 +8,7 @@ import {
     AlertTriangle, CheckCircle2, ArrowUpRight,
     Archive, ArchiveRestore, Eye, EyeOff, Tags, TrendingUp,
     CheckSquare, Square, Trash2, Copy, ListFilter, ImageOff,
-    DownloadCloud, Sparkles, Box, ChevronDown
+    DownloadCloud, Sparkles, Box, ChevronDown, Link2
 } from 'lucide-react';
 import ModalBarcode from '../components/ModalBarcode';
 import EditProductModal from '../components/EditProductModal';
@@ -425,6 +425,28 @@ const InventoryPage = () => {
             playSound('error');
             toast.error(error.response?.data?.msg || "Error al descargar foto", { id: toastId });
         }
+    };
+
+    // --- NUEVA FUNCIÓN: Copiar Link de Tienda Nube ---
+    const handleCopyStoreLink = (product) => {
+        if (!product.tiendanube_id) return toast.error("El producto no está publicado en la tienda");
+        
+        // Convierte el nombre al formato slug (ej: "Camiseta Boca" -> "camiseta-boca")
+        const slug = product.nombre
+            .toLowerCase()
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "") 
+            .replace(/[^a-z0-9]+/g, '-')     
+            .replace(/(^-|-$)+/g, '');       
+            
+        const url = `https://www.campeonesindumentaria.com.ar/productos/${slug}/`;
+        
+        navigator.clipboard.writeText(url)
+            .then(() => {
+                playSound('success');
+                toast.success("¡Link copiado al portapapeles!", { icon: '🔗' });
+            })
+            .catch(() => toast.error("Error al copiar link"));
     };
 
     const handleDuplicate = (product) => {
@@ -859,11 +881,18 @@ const InventoryPage = () => {
                                             {viewMode === 'active' ? (
                                                 <>
                                                     {p.tiendanube_id && (
-                                                        <button onClick={() => handleImportImage(p)} className="text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/30 p-2 rounded-lg transition-colors"><DownloadCloud size={18} /></button>
+                                                        <>
+                                                            <button onClick={() => handleCopyStoreLink(p)} className="text-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 p-2 rounded-lg transition-colors" title="Copiar Link de la Tienda">
+                                                                <Link2 size={18} />
+                                                            </button>
+                                                            <button onClick={() => handleImportImage(p)} className="text-sky-500 hover:bg-sky-50 dark:hover:bg-sky-900/30 p-2 rounded-lg transition-colors" title="Importar Imagen Nube">
+                                                                <DownloadCloud size={18} />
+                                                            </button>
+                                                        </>
                                                     )}
-                                                    <button onClick={() => handleDuplicate(p)} className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 p-2 rounded-lg transition-colors"><Copy size={18} /></button>
-                                                    <button onClick={() => handleToggleStatus(p)} className="text-slate-400 hover:text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/30 p-2 rounded-lg transition-colors"><Archive size={18} /></button>
-                                                    <button onClick={() => { setEditingProduct(p); setIsEditModalOpen(true); }} className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 p-2 rounded-lg transition-colors"><Edit size={18} /></button>
+                                                    <button onClick={() => handleDuplicate(p)} className="text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 p-2 rounded-lg transition-colors" title="Duplicar Producto"><Copy size={18} /></button>
+                                                    <button onClick={() => handleToggleStatus(p)} className="text-slate-400 hover:text-orange-600 hover:bg-orange-50 dark:hover:bg-orange-900/30 p-2 rounded-lg transition-colors" title="Archivar Producto"><Archive size={18} /></button>
+                                                    <button onClick={() => { setEditingProduct(p); setIsEditModalOpen(true); }} className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 p-2 rounded-lg transition-colors" title="Editar Detalles"><Edit size={18} /></button>
                                                 </>
                                             ) : (
                                                 <>
