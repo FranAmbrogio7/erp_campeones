@@ -32,7 +32,7 @@ const SOUNDS = {
 };
 
 // =========================================================================
-// SUB-COMPONENTE 1: Agrupador de Variantes (Más grandes y en 1 fila)
+// SUB-COMPONENTE 1: Agrupador de Variantes
 // =========================================================================
 const VariantStockGroup = ({ variants, onOpenDetails }) => {
     const groupedVariants = variants.reduce((acc, v) => {
@@ -291,7 +291,6 @@ const InventoryPage = () => {
                 const res = await api.get('/products/tiendanube/margen/status');
 
                 setMarginProgress(prev => {
-                    // Si terminó el proceso
                     if (prev && prev.is_running && !res.data.is_running) {
                         if (res.data.errores > 0) {
                             playSound('error');
@@ -304,7 +303,6 @@ const InventoryPage = () => {
                         return res.data;
                     }
 
-                    // Si está corriendo o acaba de iniciar
                     if (res.data.is_running || (prev && prev.is_running)) {
                         return res.data;
                     }
@@ -427,26 +425,19 @@ const InventoryPage = () => {
         }
     };
 
-    // --- NUEVA FUNCIÓN: Copiar Link de Tienda Nube ---
+    // Copiar Link de Tienda Nube
     const handleCopyStoreLink = (product) => {
         if (!product.tiendanube_id) return toast.error("El producto no está publicado en la tienda");
-        
-        // Convierte el nombre al formato slug (ej: "Camiseta Boca" -> "camiseta-boca")
         const slug = product.nombre
             .toLowerCase()
-            .normalize("NFD")
-            .replace(/[\u0300-\u036f]/g, "") 
-            .replace(/[^a-z0-9]+/g, '-')     
-            .replace(/(^-|-$)+/g, '');       
-            
+            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/(^-|-$)+/g, '');
         const url = `https://www.campeonesindumentaria.com.ar/productos/${slug}/`;
-        
-        navigator.clipboard.writeText(url)
-            .then(() => {
-                playSound('success');
-                toast.success("¡Link copiado al portapapeles!", { icon: '🔗' });
-            })
-            .catch(() => toast.error("Error al copiar link"));
+        navigator.clipboard.writeText(url).then(() => {
+            playSound('success');
+            toast.success("¡Link copiado al portapapeles!", { icon: '🔗' });
+        }).catch(() => toast.error("Error al copiar link"));
     };
 
     const handleDuplicate = (product) => {
@@ -510,18 +501,11 @@ const InventoryPage = () => {
             } else if (newProduct.tipo_articulo === 'estandar') {
                 finalEstampa = '';
             } else if (newProduct.tipo_articulo === 'personalizable') {
-                // Si es personalizable y dejaron el campo vacío, asignamos por defecto
-                if (finalEstampa.trim() === '') {
-                    finalEstampa = 'SIN DORSAL';
-                }
+                if (finalEstampa.trim() === '') finalEstampa = 'SIN DORSAL';
             }
 
             fd.append('talle', finalTalle);
-
-            if (finalEstampa.trim() !== '') {
-                fd.append('estampa', finalEstampa.toUpperCase());
-            }
-
+            if (finalEstampa.trim() !== '') fd.append('estampa', finalEstampa.toUpperCase());
             if (selectedFile) fd.append('imagen', selectedFile);
 
             await api.post('/products', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
@@ -636,6 +620,10 @@ const InventoryPage = () => {
                             <div className="flex items-center gap-1.5 bg-indigo-50/50 dark:bg-indigo-900/10 border border-indigo-100 dark:border-indigo-900/30 p-1 rounded-lg animate-fade-in mr-1 shadow-sm">
                                 <span className="text-[11px] font-black text-indigo-700 dark:text-indigo-300 px-2">{selectedItems.size} sel.</span>
                                 <button onClick={() => setIsSelectedPriceModalOpen(true)} className="bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm border border-emerald-100 dark:border-emerald-900/50 px-2 py-1 rounded-md text-[11px] font-bold flex items-center hover:bg-emerald-50 transition-colors"><TrendingUp size={12} className="mr-1" /> Precios</button>
+
+                                {/* NUEVO BOTÓN MARGEN TN PARA SELECCIONADOS */}
+                                <button onClick={() => setIsTNModalOpen(true)} className="bg-white dark:bg-slate-800 text-sky-600 dark:text-sky-400 shadow-sm border border-sky-100 dark:border-sky-900/50 px-2 py-1 rounded-md text-[11px] font-bold flex items-center hover:bg-sky-50 transition-colors"><Cloud size={12} className="mr-1" /> Margen TN</button>
+
                                 <button onClick={handlePrintLabelsSelected} className="bg-slate-800 dark:bg-slate-700 text-white shadow-sm px-2 py-1 rounded-md text-[11px] font-bold flex items-center hover:bg-slate-900 transition-colors"><Printer size={12} className="mr-1" /> Imprimir</button>
                                 <button onClick={handleBulkToggleStatus} className="bg-white dark:bg-slate-800 text-red-600 dark:text-red-400 shadow-sm border border-red-100 dark:border-red-900/50 px-2 py-1 rounded-md text-[11px] font-bold flex items-center hover:bg-red-50 transition-colors"><Archive size={12} className="mr-1" /> Archivar</button>
                             </div>
@@ -822,7 +810,7 @@ const InventoryPage = () => {
                 </div>
             )}
 
-            {/* TABLA PRINCIPAL - TAMAÑOS RESTAURADOS Y 1 FILA PARA TALLES */}
+            {/* TABLA PRINCIPAL */}
             <div className={`bg-white dark:bg-slate-900 rounded-3xl shadow-xl shadow-slate-200/50 dark:shadow-none border flex-1 flex flex-col overflow-hidden relative transition-colors z-0 ${viewMode === 'active' ? 'border-slate-100 dark:border-slate-800' : 'border-red-200 dark:border-red-900'}`}>
                 {viewMode === 'archived' && <div className="bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-300 text-xs font-black p-2.5 text-center border-b border-red-100 dark:border-red-900/50 tracking-widest uppercase shadow-inner">VISTA DE ARCHIVO (SOLO LECTURA)</div>}
 
@@ -1020,10 +1008,17 @@ const InventoryPage = () => {
                 </div>
             )}
 
+            <TNPriceModal
+                isOpen={isTNModalOpen}
+                onClose={() => setIsTNModalOpen(false)}
+                selectedItems={Array.from(selectedItems)}
+                onComplete={() => { setSelectedItems(new Set()); fetchProducts(page); }}
+            />
+
             <ModalBarcode isOpen={isBarcodeModalOpen} onClose={() => setIsBarcodeModalOpen(false)} productData={selectedVariantForBarcode} />
             <EditProductModal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} product={editingProduct} categories={categories} specificCategories={specificCategories} onUpdate={() => { fetchProducts(page, true); playSound('success'); }} />
             <BulkPriceModal isOpen={isBulkModalOpen} onClose={() => setIsBulkModalOpen(false)} onUpdate={() => fetchProducts(page)} categories={categories} specificCategories={specificCategories} />
-            <TNPriceModal isOpen={isTNModalOpen} onClose={() => setIsTNModalOpen(false)} />
+
 
             {imageModalSrc && (
                 <div className="fixed inset-0 bg-slate-900/90 z-[300] flex items-center justify-center p-4 cursor-zoom-out backdrop-blur-sm animate-fade-in" onClick={() => setImageModalSrc(null)}>

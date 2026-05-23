@@ -1193,7 +1193,7 @@ def get_tn_margen_status():
                 return jsonify(json.load(f)), 200
     except Exception:
         pass
-    return jsonify({"is_running": False, "current": 0, "total": 0, "message": "", "errores": 0}), 200 # <-- Agregamos errores al payload base
+    return jsonify({"is_running": False, "current": 0, "total": 0, "message": "", "errores": 0}), 200
 
 @bp.route('/tiendanube/margen', methods=['GET', 'POST'])
 @jwt_required()
@@ -1211,7 +1211,7 @@ def manage_tn_margen():
                     "current": current, 
                     "total": total, 
                     "message": message,
-                    "errores": errores # <-- Registramos los errores
+                    "errores": errores
                 }, f)
         except Exception:
             pass
@@ -1221,6 +1221,10 @@ def manage_tn_margen():
     
     data = request.get_json()
     nuevo_margen = data.get('margen')
+    
+    # NUEVO: Atrapamos los IDs seleccionados desde el Frontend
+    product_ids = data.get('product_ids', []) 
+    
     if not nuevo_margen:
         return jsonify({'msg': 'Falta el margen'}), 400
         
@@ -1233,15 +1237,32 @@ def manage_tn_margen():
     except Exception:
         pass
         
+    # Establecemos el margen configurado
     tn_service.set_margen_web(nuevo_margen)
     
     app = current_app._get_current_object()
-    def background_price_update(app_context):
+    
+    # NUEVO: Le pasamos los IDs al hilo secundario
+    def background_price_update(app_context, ids_a_sincronizar):
         update_status(True, 0, 0, "Preparando productos...", 0)
         with app_context.app_context():
-            productos_en_nube = Producto.query.filter(Producto.tiendanube_id != None).all()
+            
+            # NUEVO: Lógica de filtrado dinámico
+            query = Producto.query.filter(Producto.tiendanube_id != None)
+            
+            # Si el frontend mandó IDs, filtramos solo esos. Si no, tomamos todos.
+            if ids_a_sincronizar and len(ids_a_sincronizar) > 0:
+                query = query.filter(Producto.id_producto.in_(ids_a_sincronizar))
+                
+            productos_en_nube = query.all()
             
             total_variantes = sum(1 for p in productos_en_nube for v in p.variantes if v.tiendanube_variant_id)
+            
+            # Validación por si la selección no tiene variantes vinculadas
+            if total_variantes == 0:
+                update_status(False, 0, 0, "No hay productos vinculados en la selección para actualizar.", 0)
+                return
+
             update_status(True, 0, total_variantes, "Iniciando subida a Tienda Nube...", 0)
             
             procesados = 0
@@ -1252,14 +1273,8 @@ def manage_tn_margen():
                     if var.tiendanube_variant_id:
                         update_status(True, procesados, total_variantes, f"Actualizando: {prod.nombre[:25]}...", errores)
                         
-                        # --- NUEVO: CAPTURA DE ERRORES INDIVIDUALES ---
                         try:
-                            # Tu función actual no devuelve el status code directamente, pero si falla, 
-                            # puedes hacer que arroje una excepción, o simplemente asumir que si falla
-                            # la red, lo contaremos como error.
                             tn_service.update_variant_price(prod.tiendanube_id, var.tiendanube_variant_id, prod.precio)
-                            
-                            # Pequeña pausa para no enojar al firewall de Tienda Nube (Rate Limiting)
                             time.sleep(0.1) 
                             
                         except Exception as e:
@@ -1268,12 +1283,12 @@ def manage_tn_margen():
                             
                         procesados += 1
                         
-            # Mensaje final inteligente
             mensaje_final = "¡Precios actualizados con éxito!"
             if errores > 0:
                 mensaje_final = f"Terminado. Fallaron {errores} variantes por red. Intenta de nuevo más tarde."
                 
             update_status(False, procesados, total_variantes, mensaje_final, errores)
             
-    Thread(target=background_price_update, args=(app,)).start()
+    # Lanzamos el proceso enviando la variable "product_ids"
+    Thread(target=background_price_update, args=(app, product_ids)).start()
     return jsonify({'msg': 'Proceso iniciado en segundo plano'}), 200
