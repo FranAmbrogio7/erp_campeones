@@ -23,7 +23,10 @@ const SIZE_GRIDS = {
     'BEBÉ': ['0', '1', '2', '3', '4', '5'],
     'ÚNICO': ['U'],
     'CALZADO': ['NIÑO', 'JUVENIL', 'ADULTO'],
-    'TALLES ESPECIALES': ['6', '7', '8', '9', '10']
+    'TALLES ESPECIALES': ['6', '7', '8', '9', '10'],
+    'GUANTES ADULTO': ['7', '8', '9', '10', '11'],
+    'GUANTES NIÑOS': ['4', '5', '6', '7'],
+    'CANILLERAS': ['ÚNICA']
 };
 
 const SOUNDS = {
