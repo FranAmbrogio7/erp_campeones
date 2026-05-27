@@ -26,7 +26,7 @@ const SIZE_GRIDS = {
     'TALLES ESPECIALES': ['6', '7', '8', '9', '10'],
     'GUANTES ADULTO': ['7', '8', '9', '10', '11'],
     'GUANTES NIÑOS': ['4', '5', '6', '7'],
-    'CANILLERAS': ['ÚNICA']
+    'CANILLERAS': ['XS', 'S', 'M']
 };
 
 const SOUNDS = {
