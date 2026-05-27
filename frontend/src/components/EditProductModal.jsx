@@ -336,7 +336,7 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                                         <option value="0,1,2,3,4,5">BEBÉS (0 al 5)</option>
                                     </optgroup>
                                     <optgroup label="👕 Talles Individuales">
-                                        {['S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL', '6', '8', '10', '12', '14', '16', 'U'].map(s => <option key={s} value={s}>{s}</option>)}
+                                        {['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL', '6', '8', '10', '12', '14', '16', 'U'].map(s => <option key={s} value={s}>{s}</option>)}
                                     </optgroup>
                                 </select>
                             </div>
