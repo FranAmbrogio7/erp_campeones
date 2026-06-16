@@ -47,7 +47,7 @@ const SalesHistoryPage = () => {
   // --- REFS PARA IMPRESIÓN ---
   const ticketRef = useRef(null);
   const reactToPrintFn = useReactToPrint({ contentRef: ticketRef });
-  
+
   const pickingListRef = useRef(null);
   const pickingListPrintFn = useReactToPrint({ contentRef: pickingListRef, documentTitle: 'Lista_de_Armado' });
 
@@ -70,7 +70,7 @@ const SalesHistoryPage = () => {
     try {
       const params = {
         limit: (dateRange.start || dateRange.end) ? 5000 : 100,
-        tipo_caja: tipoCajaFiltro 
+        tipo_caja: tipoCajaFiltro
       };
 
       if (dateRange.start) params.start_date = dateRange.start;
@@ -155,12 +155,12 @@ const SalesHistoryPage = () => {
   // --- LÓGICA DE ANULACIÓN ---
   const handleVoidSale = async (vid) => {
     if (!window.confirm("¿ANULAR VENTA? El stock de los artículos volverá al inventario.")) return;
-    
+
     const toastId = toast.loading("Anulando venta y restaurando stock...");
     try {
       await api.delete(`/sales/${vid}/anular`);
       toast.success("Venta anulada correctamente", { id: toastId });
-      fetchData(); 
+      fetchData();
     } catch (error) {
       toast.error(error.response?.data?.msg || "Error al anular la venta", { id: toastId });
     }
@@ -178,31 +178,31 @@ const SalesHistoryPage = () => {
   const handleGeneratePickingList = () => {
     const selected = sales.filter(s => selectedSales.has(s.id));
     const aggregated = {};
-    
+
     selected.forEach(sale => {
-        sale.items_detail?.forEach(item => {
-            // Creamos una clave única juntando nombre y talle para sumarificar si se repiten
-            const key = `${item.nombre}-${item.talle}`;
-            
-            if (!aggregated[key]) {
-                aggregated[key] = {
-                    nombre: item.nombre,
-                    talle: item.talle,
-                    cantidad: 0,
-                    imagen: item.imagen || null
-                };
-            }
-            aggregated[key].cantidad += item.cantidad;
-        });
+      sale.items_detail?.forEach(item => {
+        // Creamos una clave única juntando nombre y talle para sumarificar si se repiten
+        const key = `${item.nombre}-${item.talle}`;
+
+        if (!aggregated[key]) {
+          aggregated[key] = {
+            nombre: item.nombre,
+            talle: item.talle,
+            cantidad: 0,
+            imagen: item.imagen || null
+          };
+        }
+        aggregated[key].cantidad += item.cantidad;
+      });
     });
 
     // Convertimos el objeto en array y lo ordenamos por cantidad mayor a menor
-    const sortedList = Object.values(aggregated).sort((a,b) => b.cantidad - a.cantidad);
+    const sortedList = Object.values(aggregated).sort((a, b) => b.cantidad - a.cantidad);
     setPickingListData(sortedList);
-    
+
     // Disparamos la impresión tras cargar el estado
     setTimeout(() => {
-        if (pickingListPrintFn) pickingListPrintFn();
+      if (pickingListPrintFn) pickingListPrintFn();
     }, 250);
   };
 
@@ -232,11 +232,11 @@ const SalesHistoryPage = () => {
   const paginatedSales = filteredSales.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
   const toggleSelectAll = () => {
-      if (selectedSales.size === paginatedSales.length && paginatedSales.length > 0) {
-          setSelectedSales(new Set()); // Deseleccionar todo
-      } else {
-          setSelectedSales(new Set(paginatedSales.map(v => v.id))); // Seleccionar página actual
-      }
+    if (selectedSales.size === paginatedSales.length && paginatedSales.length > 0) {
+      setSelectedSales(new Set()); // Deseleccionar todo
+    } else {
+      setSelectedSales(new Set(paginatedSales.map(v => v.id))); // Seleccionar página actual
+    }
   };
 
   const summary = useMemo(() => {
@@ -275,62 +275,62 @@ const SalesHistoryPage = () => {
   return (
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950 transition-colors duration-300 overflow-hidden">
       <Toaster position="top-center" />
-      
-      {/* OCULTO: PLANTILLA DE TICKET Y LISTA DE ARMADO */}
-      <div style={{ display: 'none' }}>
+
+      {/* OCULTO: PLANTILLA DE TICKET Y LISTA DE ARMADO (CORREGIDO: Fuera de pantalla, no display none) */}
+      <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
         <div ref={ticketRef}><Ticket saleData={ticketData} /></div>
-        
+
         {/* REPORTE: LISTA DE ARMADO PDF */}
         <div ref={pickingListRef} className="bg-white text-black font-sans" style={{ width: '210mm', minHeight: '297mm', margin: '0 auto', padding: '15mm' }}>
-            <div className="flex justify-between items-end border-b-4 border-black pb-4 mb-6">
-                <div>
-                    <h2 className="text-3xl font-black uppercase tracking-tighter">Lista de Armado (Picking)</h2>
-                    <p className="text-sm font-bold text-gray-500 uppercase tracking-widest mt-1">Órdenes Agrupadas: {selectedSales.size}</p>
-                </div>
-                <div className="text-right">
-                    <p className="text-xl font-black">{new Date().toLocaleDateString('es-AR')}</p>
-                    <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Generado desde ERP</p>
-                </div>
+          <div className="flex justify-between items-end border-b-4 border-black pb-4 mb-6">
+            <div>
+              <h2 className="text-3xl font-black uppercase tracking-tighter">Lista de Armado (Picking)</h2>
+              <p className="text-sm font-bold text-gray-500 uppercase tracking-widest mt-1">Órdenes Agrupadas: {selectedSales.size}</p>
             </div>
-            
-            <table className="w-full text-left border-collapse">
-                <thead>
-                    <tr className="bg-gray-100 border-y-2 border-black">
-                        <th className="p-3 w-20 text-center font-black uppercase text-[10px] tracking-widest">Cant.</th>
-                        <th className="p-3 w-24 text-center font-black uppercase text-[10px] tracking-widest">Foto</th>
-                        <th className="p-3 font-black uppercase text-[10px] tracking-widest">Producto / Descripción</th>
-                        <th className="p-3 w-48 font-black uppercase text-[10px] tracking-widest">Variante / Talle</th>
-                        <th className="p-3 w-20 text-center font-black uppercase text-[10px] tracking-widest">Check</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-300">
-                    {pickingListData.map((item, idx) => (
-                        <tr key={idx}>
-                            <td className="p-3 text-center align-middle">
-                                <span className="text-3xl font-black">{item.cantidad}</span>
-                            </td>
-                            <td className="p-3 text-center align-middle">
-                                {item.imagen ? (
-                                    <img src={`${api.defaults.baseURL}/static/uploads/${item.imagen}`} className="w-16 h-16 object-cover rounded-lg shadow-sm mx-auto border border-gray-200" />
-                                ) : (
-                                    <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center text-[8px] font-bold text-gray-400 mx-auto border border-gray-200">SIN FOTO</div>
-                                )}
-                            </td>
-                            <td className="p-3 align-middle">
-                                <p className="font-black text-sm uppercase leading-tight">{item.nombre}</p>
-                            </td>
-                            <td className="p-3 align-middle">
-                                <span className="inline-block px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-md font-black text-xs uppercase tracking-widest">
-                                    {item.talle}
-                                </span>
-                            </td>
-                            <td className="p-3 text-center align-middle">
-                                <div className="w-8 h-8 border-2 border-gray-400 rounded-lg mx-auto"></div>
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
+            <div className="text-right">
+              <p className="text-xl font-black">{new Date().toLocaleDateString('es-AR')}</p>
+              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Generado desde ERP</p>
+            </div>
+          </div>
+
+          <table className="w-full text-left border-collapse">
+            <thead>
+              <tr className="bg-gray-100 border-y-2 border-black">
+                <th className="p-3 w-20 text-center font-black uppercase text-[10px] tracking-widest">Cant.</th>
+                <th className="p-3 w-24 text-center font-black uppercase text-[10px] tracking-widest">Foto</th>
+                <th className="p-3 font-black uppercase text-[10px] tracking-widest">Producto / Descripción</th>
+                <th className="p-3 w-48 font-black uppercase text-[10px] tracking-widest">Variante / Talle</th>
+                <th className="p-3 w-20 text-center font-black uppercase text-[10px] tracking-widest">Check</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-300">
+              {pickingListData.map((item, idx) => (
+                <tr key={idx}>
+                  <td className="p-3 text-center align-middle">
+                    <span className="text-3xl font-black">{item.cantidad}</span>
+                  </td>
+                  <td className="p-3 text-center align-middle">
+                    {item.imagen ? (
+                      <img src={`${api.defaults.baseURL}/static/uploads/${item.imagen}`} className="w-16 h-16 object-cover rounded-lg shadow-sm mx-auto border border-gray-200" />
+                    ) : (
+                      <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center text-[8px] font-bold text-gray-400 mx-auto border border-gray-200">SIN FOTO</div>
+                    )}
+                  </td>
+                  <td className="p-3 align-middle">
+                    <p className="font-black text-sm uppercase leading-tight">{item.nombre}</p>
+                  </td>
+                  <td className="p-3 align-middle">
+                    <span className="inline-block px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-md font-black text-xs uppercase tracking-widest">
+                      {item.talle}
+                    </span>
+                  </td>
+                  <td className="p-3 text-center align-middle">
+                    <div className="w-8 h-8 border-2 border-gray-400 rounded-lg mx-auto"></div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -412,9 +412,9 @@ const SalesHistoryPage = () => {
                   {viewingSale.items_detail?.map((item, idx) => (
                     <tr key={idx} className={`transition-colors group ${isMerch ? 'hover:bg-purple-50/50 dark:hover:bg-purple-900/10' : 'hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10'}`}>
                       <td className="p-4 pl-6 text-center">
-                          <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center overflow-hidden mx-auto shadow-sm border border-slate-200 dark:border-slate-600">
-                              {item.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${item.imagen}`} className="w-full h-full object-cover" /> : <Package size={16} className="text-slate-400" />}
-                          </div>
+                        <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center overflow-hidden mx-auto shadow-sm border border-slate-200 dark:border-slate-600">
+                          {item.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${item.imagen}`} className="w-full h-full object-cover" /> : <Package size={16} className="text-slate-400" />}
+                        </div>
                       </td>
                       <td className="p-4">
                         <p className="font-bold text-slate-800 dark:text-white leading-tight">{item.nombre}</p>
@@ -521,22 +521,22 @@ const SalesHistoryPage = () => {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto items-center">
-                {/* NUEVO: BOTÓN LISTA DE ARMADO */}
-                {selectedSales.size > 0 && (
-                    <div className="flex items-center w-full sm:w-auto gap-2 bg-indigo-50 dark:bg-indigo-900/30 p-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 animate-fade-in shadow-inner">
-                        <span className="text-[10px] font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-widest px-2 whitespace-nowrap">{selectedSales.size} sel.</span>
-                        <button onClick={handleGeneratePickingList} className="flex-1 sm:flex-none bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white px-4 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center shadow-md transition-all active:scale-95">
-                            <ListChecks size={14} className="mr-1.5" /> Lista Armado
-                        </button>
-                    </div>
-                )}
+              {/* BOTÓN LISTA DE ARMADO */}
+              {selectedSales.size > 0 && (
+                <div className="flex items-center w-full sm:w-auto gap-2 bg-indigo-50 dark:bg-indigo-900/30 p-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 animate-fade-in shadow-inner">
+                  <span className="text-[10px] font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-widest px-2 whitespace-nowrap">{selectedSales.size} sel.</span>
+                  <button onClick={handleGeneratePickingList} className="flex-1 sm:flex-none bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white px-4 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center shadow-md transition-all active:scale-95">
+                    <ListChecks size={14} className="mr-1.5" /> Lista Armado
+                  </button>
+                </div>
+              )}
 
-                {/* Limpiar Filtros */}
-                {(searchTerm || dateRange.start || dateRange.end || filterMethod) && (
+              {/* Limpiar Filtros */}
+              {(searchTerm || dateRange.start || dateRange.end || filterMethod) && (
                 <button onClick={clearFilters} className="shrink-0 w-full sm:w-auto bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-5 py-3 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors flex items-center justify-center font-black text-[10px] uppercase tracking-widest border border-red-100 dark:border-red-800/50 shadow-sm">
-                    <FilterX size={16} className="mr-2" /> Limpiar Filtros
+                  <FilterX size={16} className="mr-2" /> Limpiar Filtros
                 </button>
-                )}
+              )}
             </div>
           </div>
 
@@ -565,7 +565,7 @@ const SalesHistoryPage = () => {
 
       {/* --- CONTENIDO PRINCIPAL --- */}
       <div className="flex-1 overflow-hidden flex flex-col max-w-[1600px] mx-auto w-full p-4 md:p-6 gap-6">
-        
+
         {/* TARJETAS KPI */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 shrink-0">
           <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 flex items-center relative overflow-hidden transition-colors">
@@ -601,9 +601,9 @@ const SalesHistoryPage = () => {
               <thead className="bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-md sticky top-0 z-10">
                 <tr>
                   <th className="px-6 py-4 text-center text-[10px] font-black text-slate-400 uppercase tracking-widest w-16">
-                      <button onClick={toggleSelectAll} className="text-slate-400 hover:text-indigo-600 transition-colors">
-                          {selectedSales.size > 0 && selectedSales.size === paginatedSales.length ? <CheckSquare size={18} /> : <Square size={18} />}
-                      </button>
+                    <button onClick={toggleSelectAll} className="text-slate-400 hover:text-indigo-600 transition-colors">
+                      {selectedSales.size > 0 && selectedSales.size === paginatedSales.length ? <CheckSquare size={18} /> : <Square size={18} />}
+                    </button>
                   </th>
                   <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-24">Ticket</th>
                   <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-40">Fecha</th>
@@ -621,9 +621,9 @@ const SalesHistoryPage = () => {
                   paginatedSales.map(venta => (
                     <tr key={venta.id} className={`transition-colors group ${isMerch ? 'hover:bg-purple-50/40 dark:hover:bg-purple-900/10' : 'hover:bg-indigo-50/40 dark:hover:bg-slate-700/50'}`}>
                       <td className="px-6 py-4 text-center">
-                          <button onClick={() => toggleSelectSale(venta.id)} className={`transition-transform active:scale-90 ${selectedSales.has(venta.id) ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'}`}>
-                              {selectedSales.has(venta.id) ? <CheckSquare size={18} /> : <Square size={18} />}
-                          </button>
+                        <button onClick={() => toggleSelectSale(venta.id)} className={`transition-transform active:scale-90 ${selectedSales.has(venta.id) ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'}`}>
+                          {selectedSales.has(venta.id) ? <CheckSquare size={18} /> : <Square size={18} />}
+                        </button>
                       </td>
                       <td className="px-6 py-4 font-black text-slate-800 dark:text-white font-mono text-sm">#{venta.id}</td>
                       <td className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">{venta.fecha}</td>
@@ -636,9 +636,9 @@ const SalesHistoryPage = () => {
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border shadow-sm inline-block
                             ${(venta.metodo || '').includes('Efectivo') ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50' :
-                          (venta.metodo || '').includes('Tarjeta') ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/50' :
-                          (venta.metodo || '').includes('Nube') || (venta.metodo || '').includes('Tienda') ? 'bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-800/50' :
-                            'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600'
+                            (venta.metodo || '').includes('Tarjeta') ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/50' :
+                              (venta.metodo || '').includes('Nube') || (venta.metodo || '').includes('Tienda') ? 'bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-800/50' :
+                                'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600'
                           }`}>
                           {venta.metodo}
                         </span>
