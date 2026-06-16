@@ -59,7 +59,7 @@ def get_sales_history():
         start_date = request.args.get('start_date')
         end_date = request.args.get('end_date')
         
-        # NUEVO: Atrapamos el tipo de caja que pide el frontend
+        # Atrapamos el tipo de caja que pide el frontend
         tipo_caja_req = request.args.get('tipo_caja', 'PRINCIPAL')
         
         query = Venta.query.options(
@@ -74,7 +74,7 @@ def get_sales_history():
             else:
                 return jsonify({"history": [], "today_summary": {"total": 0, "count": 0}}), 200
         else:
-            # NUEVO: Filtramos por tipo de caja en el historial general
+            # Filtramos por tipo de caja en el historial general
             query = query.filter(Venta.tipo_caja == tipo_caja_req)
             
             if start_date:
@@ -98,13 +98,26 @@ def get_sales_history():
 
                     if d.variante.color and d.variante.color != 'Standard':
                         talle += f" - {d.variante.color}"
+                        
+                    # NUEVO: Capturamos el nombre del archivo de la imagen
+                    imagen = d.variante.producto.imagen if d.variante.producto else None
                 else:
                     nombre = getattr(d, 'producto_nombre', 'Ítem Manual') or 'Ítem Manual'
                     talle = "-"
+                    imagen = None # Los ítems manuales no tienen imagen en DB
                 
                 txt = f"{nombre} ({talle}) x{d.cantidad}" if talle != "-" else f"{nombre} x{d.cantidad}"
                 items_summary.append(txt)
-                items_detail.append({"nombre": nombre, "talle": talle, "cantidad": d.cantidad, "precio": float(d.precio_unitario), "subtotal": float(d.subtotal)})
+                
+                # NUEVO: Agregamos la clave "imagen" al diccionario que viaja al Frontend
+                items_detail.append({
+                    "nombre": nombre, 
+                    "talle": talle, 
+                    "cantidad": d.cantidad, 
+                    "precio": float(d.precio_unitario), 
+                    "subtotal": float(d.subtotal),
+                    "imagen": imagen
+                })
 
             # --- LÓGICA VISUAL (TEXTO) ---
             metodo_visual = "N/A"
@@ -141,8 +154,9 @@ def get_sales_history():
             })
 
         hoy = date.today()
-        total_hoy = db.session.query(func.sum(Venta.total)).filter(func.date(Venta.fecha_venta) == hoy).scalar() or 0
-        cantidad_ventas_hoy = db.session.query(func.count(Venta.id_venta)).filter(func.date(Venta.fecha_venta) == hoy).scalar() or 0
+        # SE AÑADIÓ: Filtro de tipo_caja_req para que la estadística de "hoy" sea exacta a la terminal
+        total_hoy = db.session.query(func.sum(Venta.total)).filter(func.date(Venta.fecha_venta) == hoy, Venta.tipo_caja == tipo_caja_req).scalar() or 0
+        cantidad_ventas_hoy = db.session.query(func.count(Venta.id_venta)).filter(func.date(Venta.fecha_venta) == hoy, Venta.tipo_caja == tipo_caja_req).scalar() or 0
 
         return jsonify({
             "history": lista_ventas,
