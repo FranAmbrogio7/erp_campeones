@@ -12,93 +12,93 @@ import {
   CreditCard, Smartphone, ArrowRight, Printer, Clock,
   Search, Shirt, CalendarClock, X, AlertTriangle, Receipt, Edit3,
   ChevronDown, Users, TrendingUp, TrendingDown, Eye, Tag, Store, Lock,
-  MonitorSmartphone
+  MonitorSmartphone, Package
 } from 'lucide-react';
 
 const getRealEstampa = (estampaStr) => {
-    if (!estampaStr) return null;
-    const clean = estampaStr.toString().trim().toUpperCase();
-    if (clean === '' || clean === 'STANDARD' || clean === 'SIN ESTAMPA' || clean === '-' || clean === 'N/A' || clean === 'SIN DORSAL') {
-        return null;
-    }
-    return estampaStr;
+  if (!estampaStr) return null;
+  const clean = estampaStr.toString().trim().toUpperCase();
+  if (clean === '' || clean === 'STANDARD' || clean === 'SIN ESTAMPA' || clean === '-' || clean === 'N/A' || clean === 'SIN DORSAL') {
+    return null;
+  }
+  return estampaStr;
 };
 
 const VariantSelectionModal = ({ product, isOpen, onClose, onSelect }) => {
   if (!isOpen || !product) return null;
 
   const groupedVariants = product.variantes.reduce((acc, v) => {
-      if (!acc[v.talle]) acc[v.talle] = [];
-      const estampaName = getRealEstampa(v.estampa) || 'Sin Estampa';
-      acc[v.talle].push({ ...v, estampaName });
-      return acc;
+    if (!acc[v.talle]) acc[v.talle] = [];
+    const estampaName = getRealEstampa(v.estampa) || 'Sin Estampa';
+    acc[v.talle].push({ ...v, estampaName });
+    return acc;
   }, {});
 
-  const targetTalles = product.preselectedTalle 
-      ? [product.preselectedTalle] 
-      : Object.keys(groupedVariants);
+  const targetTalles = product.preselectedTalle
+    ? [product.preselectedTalle]
+    : Object.keys(groupedVariants);
 
   return (
-      <div className="fixed inset-0 z-[400] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
-              
-              <div className="bg-indigo-50 dark:bg-slate-900 p-5 border-b border-indigo-100 dark:border-slate-700 flex justify-between items-center shrink-0">
-                  <div>
-                      <h3 className="font-black text-xl text-indigo-900 dark:text-white flex items-center">
-                          <Shirt className="mr-2 text-indigo-500" size={24}/> Seleccionar Estampa
-                      </h3>
-                      <p className="text-sm text-indigo-700 dark:text-slate-400 mt-1 font-medium">{product.nombre}</p>
-                  </div>
-                  <button onClick={onClose} className="p-2 bg-white dark:bg-slate-800 text-slate-400 hover:text-red-500 rounded-full shadow-sm border border-slate-200 dark:border-slate-600 transition-colors">
-                      <X size={20} />
-                  </button>
-              </div>
+    <div className="fixed inset-0 z-[400] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
 
-              <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-slate-50 dark:bg-slate-800/50">
-                  <div className="space-y-6">
-                      {targetTalles.map(talle => {
-                          const detalles = groupedVariants[talle].sort((a, b) => 
-                              a.estampaName === 'Sin Estampa' ? -1 : b.estampaName === 'Sin Estampa' ? 1 : 0
-                          );
-
-                          return (
-                              <div key={talle} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                                  <h4 className="font-black text-lg text-slate-800 dark:text-white mb-3 flex items-center border-b border-slate-100 dark:border-slate-700 pb-2">
-                                      Talle {talle}
-                                  </h4>
-                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                      {detalles.map(det => (
-                                          <button
-                                              key={det.id_variante}
-                                              disabled={det.stock === 0}
-                                              onClick={() => onSelect(product, det)}
-                                              className={`relative flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all active:scale-95 text-center
-                                                  ${det.stock > 0 
-                                                      ? 'border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-900/20 hover:bg-indigo-100 hover:border-indigo-400 dark:hover:bg-indigo-900/50 cursor-pointer' 
-                                                      : 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 opacity-50 cursor-not-allowed grayscale'}`}
-                                          >
-                                              <span className={`font-bold text-sm mb-1 ${det.stock > 0 ? 'text-indigo-900 dark:text-indigo-100' : 'text-slate-500 dark:text-slate-400 line-through'}`}>
-                                                  {det.estampaName}
-                                              </span>
-                                              <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${det.stock > 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400'}`}>
-                                                  {det.stock > 0 ? `Stock: ${det.stock}` : 'SIN STOCK'}
-                                              </span>
-                                          </button>
-                                      ))}
-                                  </div>
-                              </div>
-                          );
-                      })}
-                  </div>
-              </div>
+        <div className="bg-indigo-50 dark:bg-slate-900 p-5 border-b border-indigo-100 dark:border-slate-700 flex justify-between items-center shrink-0">
+          <div>
+            <h3 className="font-black text-xl text-indigo-900 dark:text-white flex items-center">
+              <Shirt className="mr-2 text-indigo-500" size={24} /> Seleccionar Estampa
+            </h3>
+            <p className="text-sm text-indigo-700 dark:text-slate-400 mt-1 font-medium">{product.nombre}</p>
           </div>
+          <button onClick={onClose} className="p-2 bg-white dark:bg-slate-800 text-slate-400 hover:text-red-500 rounded-full shadow-sm border border-slate-200 dark:border-slate-600 transition-colors">
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-slate-50 dark:bg-slate-800/50">
+          <div className="space-y-6">
+            {targetTalles.map(talle => {
+              const detalles = groupedVariants[talle].sort((a, b) =>
+                a.estampaName === 'Sin Estampa' ? -1 : b.estampaName === 'Sin Estampa' ? 1 : 0
+              );
+
+              return (
+                <div key={talle} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+                  <h4 className="font-black text-lg text-slate-800 dark:text-white mb-3 flex items-center border-b border-slate-100 dark:border-slate-700 pb-2">
+                    Talle {talle}
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {detalles.map(det => (
+                      <button
+                        key={det.id_variante}
+                        disabled={det.stock === 0}
+                        onClick={() => onSelect(product, det)}
+                        className={`relative flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all active:scale-95 text-center
+                                                  ${det.stock > 0
+                            ? 'border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-900/20 hover:bg-indigo-100 hover:border-indigo-400 dark:hover:bg-indigo-900/50 cursor-pointer'
+                            : 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 opacity-50 cursor-not-allowed grayscale'}`}
+                      >
+                        <span className={`font-bold text-sm mb-1 ${det.stock > 0 ? 'text-indigo-900 dark:text-indigo-100' : 'text-slate-500 dark:text-slate-400 line-through'}`}>
+                          {det.estampaName}
+                        </span>
+                        <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-md ${det.stock > 0 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400' : 'bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400'}`}>
+                          {det.stock > 0 ? `Stock: ${det.stock}` : 'SIN STOCK'}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
       </div>
+    </div>
   );
 };
 
 const POSPage = () => {
   const { token } = useAuth();
-  
+
   // --- IDENTIDAD DE TERMINAL Y MODAL ---
   const [tipoCaja, setTipoCaja] = useState(() => localStorage.getItem('terminal_tipo_caja') || 'PRINCIPAL');
   const [isTerminalModalOpen, setIsTerminalModalOpen] = useState(false);
@@ -229,36 +229,37 @@ const POSPage = () => {
 
   // --- LÓGICA DE CAMBIO DE TERMINAL (MODAL) ---
   const changeTerminal = (newTipo) => {
-      if (newTipo === tipoCaja) {
-          setIsTerminalModalOpen(false);
-          return;
-      }
-
-      const hasItems = allCarts.some(c => c.length > 0);
-      
-      if (hasItems) {
-          if (!window.confirm(`⚠️ ¡ALERTA!\nTienes ventas en curso.\nSi cambias a la terminal ${newTipo === 'MERCHANDISING' ? 'MERCH' : 'CAMPEONES'}, SE BORRARÁN TODOS LOS CARRITOS ACTUALES.\n\n¿Estás completamente seguro de querer cambiar y perder estos datos?`)) {
-              return; 
-          }
-          setAllCarts([[], [], [], []]);
-          setCustomTotal(null);
-          setSurchargePercent(0);
-          setDiscountPercent(0);
-          setSplitPayments([{ id_metodo: '', monto: '' }]);
-      }
-      
-      setTipoCaja(newTipo);
-      localStorage.setItem('terminal_tipo_caja', newTipo);
-      toast.success(`Cambiando a Terminal ${newTipo === 'MERCHANDISING' ? 'Merch' : 'Campeones'}`);
+    if (newTipo === tipoCaja) {
       setIsTerminalModalOpen(false);
+      return;
+    }
+
+    const hasItems = allCarts.some(c => c.length > 0);
+
+    if (hasItems) {
+      if (!window.confirm(`⚠️ ¡ALERTA!\nTienes ventas en curso.\nSi cambias a la terminal ${newTipo === 'MERCHANDISING' ? 'MERCH' : 'CAMPEONES'}, SE BORRARÁN TODOS LOS CARRITOS ACTUALES.\n\n¿Estás completamente seguro de querer cambiar y perder estos datos?`)) {
+        return;
+      }
+      setAllCarts([[], [], [], []]);
+      setCustomTotal(null);
+      setSurchargePercent(0);
+      setDiscountPercent(0);
+      setSplitPayments([{ id_metodo: '', monto: '' }]);
+    }
+
+    setTipoCaja(newTipo);
+    localStorage.setItem('terminal_tipo_caja', newTipo);
+    toast.success(`Cambiando a Terminal ${newTipo === 'MERCHANDISING' ? 'Merch' : 'Campeones'}`);
+    setIsTerminalModalOpen(false);
   };
 
   useEffect(() => {
     if (!isRegisterOpen || isEditingPrice || editingItemId || isConfirmModalOpen || isReservationModalOpen || zoomImage || isCustomModalOpen || variantModalProduct || isTerminalModalOpen || viewingSale) return;
-    if (!isMerch) {
-        if (isSearchMode) searchInputRef.current?.focus();
-        else if (document.activeElement !== creditNoteInputRef.current) inputRef.current?.focus();
-    }
+
+    // Eliminado el if (!isMerch) para permitir auto-focus en ambas cajas
+    if (isSearchMode) searchInputRef.current?.focus();
+    else if (document.activeElement !== creditNoteInputRef.current) inputRef.current?.focus();
+
   }, [cart, isRegisterOpen, isEditingPrice, editingItemId, isConfirmModalOpen, isReservationModalOpen, isSearchMode, zoomImage, isCustomModalOpen, variantModalProduct, isMerch, isTerminalModalOpen, viewingSale]);
 
   useEffect(() => {
@@ -272,7 +273,6 @@ const POSPage = () => {
   }, []);
 
   useEffect(() => {
-    if (isMerch) return; 
     if (!manualTerm.trim() && !selectedCat && !selectedSpec) {
       setManualResults([]);
       setShowDropdown(false);
@@ -304,28 +304,28 @@ const POSPage = () => {
     const hasOptions = variantsForSize.some(v => getRealEstampa(v.estampa) !== null);
 
     if (!hasOptions) {
-        const variantToAdd = variantsForSize.find(v => v.stock > 0) || variantsForSize[0];
-        handleManualAdd(product, variantToAdd);
+      const variantToAdd = variantsForSize.find(v => v.stock > 0) || variantsForSize[0];
+      handleManualAdd(product, variantToAdd);
     } else {
-        setVariantModalProduct({ ...product, preselectedTalle: talle });
-        setShowDropdown(false);
+      setVariantModalProduct({ ...product, preselectedTalle: talle });
+      setShowDropdown(false);
     }
   };
 
   const handleProductSelectClick = (product) => {
     if (product.variantes.length === 1 && product.variantes[0].stock > 0) {
-        handleManualAdd(product, product.variantes[0]);
-        setShowDropdown(false);
+      handleManualAdd(product, product.variantes[0]);
+      setShowDropdown(false);
     } else {
-        setVariantModalProduct(product); 
-        setShowDropdown(false);
+      setVariantModalProduct(product);
+      setShowDropdown(false);
     }
   };
 
   const handleManualAdd = (product, variant) => {
     if (variant.stock <= 0) {
-        toast.error("Variante sin stock");
-        return;
+      toast.error("Variante sin stock");
+      return;
     }
 
     const itemFormatted = {
@@ -343,13 +343,13 @@ const POSPage = () => {
     const estampaText = estampaReal ? ` - ${estampaReal}` : '';
     toast.success(`${product.nombre} (${variant.talle}${estampaText}) agregado`);
 
-    setVariantModalProduct(null); 
+    setVariantModalProduct(null);
     setTimeout(() => searchInputRef.current?.focus(), 100);
   };
 
   const handleScan = async (e) => {
     e.preventDefault();
-    if (!skuInput.trim() || isMerch) return;
+    if (!skuInput.trim()) return;
     try {
       const res = await api.get(`/sales/scan/${skuInput}`);
       if (res.data.found) {
@@ -473,7 +473,7 @@ const POSPage = () => {
         subtotal_calculado: subtotalCalculado,
         total_final: totalFinal,
         codigo_nota_credito: notaEnv,
-        tipo_caja: tipoCaja 
+        tipo_caja: tipoCaja
       };
 
       if (isSplitPayment) {
@@ -504,7 +504,7 @@ const POSPage = () => {
         total: totalFinal,
         cliente: "Consumidor Final",
         metodo: metodoNombre,
-        logo_alt: isMerch ? "MERCHANDISING" : null 
+        logo_alt: isMerch ? "MERCHANDISING" : null
       });
 
       toast.success(`Venta #${res.data.id} OK`, { id: toastId });
@@ -562,296 +562,309 @@ const POSPage = () => {
       <ConfirmModal isOpen={isConfirmModalOpen} onClose={() => setIsConfirmModalOpen(false)} onConfirm={processSale} title="Cobrar" message={`Total: $${totalFinal.toLocaleString()}`} confirmText="Confirmar" />
       <ReservationModal isOpen={isReservationModalOpen} onClose={() => setIsReservationModalOpen(false)} onConfirm={processReservation} total={totalFinal} paymentMethods={paymentMethods} />
 
-      <VariantSelectionModal 
-          product={variantModalProduct} 
-          isOpen={!!variantModalProduct} 
-          onClose={() => setVariantModalProduct(null)} 
-          onSelect={handleManualAdd} 
+      <VariantSelectionModal
+        product={variantModalProduct}
+        isOpen={!!variantModalProduct}
+        onClose={() => setVariantModalProduct(null)}
+        onSelect={handleManualAdd}
       />
 
       {/* --- EL FAMOSO MODAL DE DETALLE DE VENTA RESTAURADO --- */}
       {viewingSale && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[300] flex items-center justify-center p-4 animate-fade-in" onClick={() => setViewingSale(null)}>
-            <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] transition-colors border border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
-                <div className={`p-6 border-b flex justify-between items-center ${isMerch ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-100 dark:border-purple-800/50' : 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-800/50'}`}>
-                    <div>
-                        <h3 className={`font-black text-2xl tracking-tight flex items-center ${isMerch ? 'text-purple-800 dark:text-purple-400' : 'text-indigo-800 dark:text-indigo-400'}`}>
-                            <Receipt className="mr-3" size={28}/> Venta #{viewingSale.id}
-                        </h3>
-                        <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-1">{viewingSale.fecha} • {viewingSale.metodo}</p>
-                    </div>
-                    <button onClick={() => setViewingSale(null)} className="text-slate-400 hover:text-red-500 bg-white dark:bg-slate-800 p-2 rounded-full shadow-sm"><X size={24} /></button>
-                </div>
-                
-                <div className="p-0 overflow-y-auto flex-1 custom-scrollbar bg-slate-50 dark:bg-slate-900">
-                    <table className="w-full text-sm text-left">
-                        <thead className="bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 uppercase text-[10px] font-black tracking-widest sticky top-0 shadow-sm z-10">
-                            <tr>
-                                <th className="p-4 pl-6">Producto / Talle</th>
-                                <th className="p-4 text-center">Cant.</th>
-                                <th className="p-4 text-right">Precio</th>
-                                <th className="p-4 text-right pr-6">Subtotal</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                            {viewingSale.items_detail?.map((item, idx) => (
-                                <tr key={idx} className={`transition-colors group ${isMerch ? 'hover:bg-purple-50/50 dark:hover:bg-purple-900/10' : 'hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10'}`}>
-                                    <td className="p-4 pl-6">
-                                        <p className="font-bold text-slate-800 dark:text-white leading-tight">{item.nombre}</p>
-                                        <span className="text-[10px] bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded shadow-sm border border-slate-200 dark:border-slate-600 font-bold uppercase tracking-widest mt-1 inline-block">Talle: {item.talle}</span>
-                                    </td>
-                                    <td className="p-4 text-center font-bold dark:text-slate-300">{item.cantidad}</td>
-                                    <td className="p-4 text-right text-slate-500 dark:text-slate-400 font-mono text-xs">$ {item.precio.toLocaleString()}</td>
-                                    <td className="p-4 text-right font-black text-slate-800 dark:text-white font-mono text-base pr-6">$ {item.subtotal.toLocaleString()}</td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
-                </div>
-                
-                <div className="p-6 bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center shadow-[0_-10px_40px_rgba(0,0,0,0.05)] z-20">
-                    <button onClick={() => prepareAndPrint(viewingSale)} className={`flex items-center px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-colors shadow-sm border ${isMerch ? 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800' : 'bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800'}`}>
-                        <Printer size={18} className="mr-2" /> Reimprimir
-                    </button>
-                    <div className="text-right">
-                        <span className="text-slate-400 dark:text-slate-500 text-[10px] uppercase font-black tracking-widest block mb-0.5">Total Venta</span>
-                        <span className={`text-3xl font-black tracking-tighter font-mono ${isMerch ? 'text-purple-600 dark:text-purple-400' : 'text-indigo-600 dark:text-indigo-400'}`}>$ {viewingSale.total.toLocaleString()}</span>
-                    </div>
-                </div>
+          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] transition-colors border border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
+            <div className={`p-6 border-b flex justify-between items-center ${isMerch ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-100 dark:border-purple-800/50' : 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-100 dark:border-indigo-800/50'}`}>
+              <div>
+                <h3 className={`font-black text-2xl tracking-tight flex items-center ${isMerch ? 'text-purple-800 dark:text-purple-400' : 'text-indigo-800 dark:text-indigo-400'}`}>
+                  <Receipt className="mr-3" size={28} /> Venta #{viewingSale.id}
+                </h3>
+                <p className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-widest mt-1">{viewingSale.fecha} • {viewingSale.metodo}</p>
+              </div>
+              <button onClick={() => setViewingSale(null)} className="text-slate-400 hover:text-red-500 bg-white dark:bg-slate-800 p-2 rounded-full shadow-sm"><X size={24} /></button>
             </div>
+
+            <div className="p-0 overflow-y-auto flex-1 custom-scrollbar bg-slate-50 dark:bg-slate-900">
+              <table className="w-full text-sm text-left">
+                <thead className="bg-white dark:bg-slate-800 text-slate-400 dark:text-slate-500 uppercase text-[10px] font-black tracking-widest sticky top-0 shadow-sm z-10">
+                  <tr>
+                    {/* NUEVA COLUMNA DE IMAGEN REPLICADA DEL HISTORY */}
+                    <th className="p-4 pl-6 text-center w-16">Foto</th>
+                    <th className="p-4">Producto / Talle</th>
+                    <th className="p-4 text-center">Cant.</th>
+                    <th className="p-4 text-right">Precio</th>
+                    <th className="p-4 text-right pr-6">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                  {viewingSale.items_detail?.map((item, idx) => (
+                    <tr key={idx} className={`transition-colors group ${isMerch ? 'hover:bg-purple-50/50 dark:hover:bg-purple-900/10' : 'hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10'}`}>
+                      <td className="p-4 pl-6 text-center">
+                        <div className="w-10 h-10 rounded-lg bg-slate-100 dark:bg-slate-700 flex items-center justify-center overflow-hidden mx-auto shadow-sm border border-slate-200 dark:border-slate-600">
+                          {item.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${item.imagen}`} className="w-full h-full object-cover" /> : <Package size={16} className="text-slate-400" />}
+                        </div>
+                      </td>
+                      <td className="p-4">
+                        <p className="font-bold text-slate-800 dark:text-white leading-tight">{item.nombre}</p>
+                        <span className="text-[10px] bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded shadow-sm border border-slate-200 dark:border-slate-600 font-bold uppercase tracking-widest mt-1 inline-block">Talle: {item.talle}</span>
+                      </td>
+                      <td className="p-4 text-center font-bold dark:text-slate-300">{item.cantidad}</td>
+                      <td className="p-4 text-right text-slate-500 dark:text-slate-400 font-mono text-xs">$ {item.precio.toLocaleString()}</td>
+                      <td className="p-4 text-right font-black text-slate-800 dark:text-white font-mono text-base pr-6">$ {item.subtotal.toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="p-6 bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center shadow-[0_-10px_40px_rgba(0,0,0,0.05)] z-20">
+              <button onClick={() => prepareAndPrint(viewingSale)} className={`flex items-center px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-colors shadow-sm border ${isMerch ? 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800' : 'bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800'}`}>
+                <Printer size={18} className="mr-2" /> Reimprimir
+              </button>
+              <div className="text-right">
+                <span className="text-slate-400 dark:text-slate-500 text-[10px] uppercase font-black tracking-widest block mb-0.5">Total Venta</span>
+                <span className={`text-3xl font-black tracking-tighter font-mono ${isMerch ? 'text-purple-600 dark:text-purple-400' : 'text-indigo-600 dark:text-indigo-400'}`}>$ {viewingSale.total.toLocaleString()}</span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
       {/* --- BOTÓN FLOTANTE CAMBIO DE TERMINAL --- */}
       <button
-          onClick={() => setIsTerminalModalOpen(true)}
-          className={`fixed bottom-6 left-6 z-[150] px-5 py-3.5 rounded-full flex items-center justify-center gap-2.5 shadow-2xl transition-all hover:scale-105 active:scale-95 border-2 ${
-              isMerch 
-              ? 'bg-purple-600 text-white border-purple-400 shadow-purple-500/50' 
-              : 'bg-indigo-600 text-white border-indigo-400 shadow-indigo-500/50'
+        onClick={() => setIsTerminalModalOpen(true)}
+        className={`fixed bottom-6 left-6 z-[150] px-5 py-3.5 rounded-full flex items-center justify-center gap-2.5 shadow-2xl transition-all hover:scale-105 active:scale-95 border-2 ${isMerch
+            ? 'bg-purple-600 text-white border-purple-400 shadow-purple-500/50'
+            : 'bg-indigo-600 text-white border-indigo-400 shadow-indigo-500/50'
           }`}
-          title="Cambiar de Terminal"
+        title="Cambiar de Terminal"
       >
-          {isMerch ? <Tag size={20} /> : <Store size={20} />}
-          <span className="font-black text-[11px] uppercase tracking-widest leading-none mt-0.5">
-              {isMerch ? 'MERCH' : 'CAMPEONES'}
-          </span>
+        {isMerch ? <Tag size={20} /> : <Store size={20} />}
+        <span className="font-black text-[11px] uppercase tracking-widest leading-none mt-0.5">
+          {isMerch ? 'MERCH' : 'CAMPEONES'}
+        </span>
       </button>
 
       {/* --- MODAL CAMBIO DE TERMINAL --- */}
       {isTerminalModalOpen && (
-          <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[300] flex items-center justify-center p-4 animate-fade-in" onClick={() => setIsTerminalModalOpen(false)}>
-              <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col transition-colors border border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
-                  <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
-                      <h3 className="font-black text-xl text-slate-800 dark:text-white flex items-center">
-                          <MonitorSmartphone className="mr-3 text-blue-500" size={24} /> Cambiar Terminal
-                      </h3>
-                      <button onClick={() => setIsTerminalModalOpen(false)} className="text-slate-400 hover:text-red-500 bg-white dark:bg-slate-800 p-2 rounded-full shadow-sm"><X size={20} /></button>
-                  </div>
-                  <div className="p-6 flex flex-col gap-4">
-                      <button 
-                          onClick={() => changeTerminal('PRINCIPAL')}
-                          className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${!isMerch ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 shadow-sm' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-indigo-300 dark:hover:border-indigo-600'}`}
-                      >
-                          <Store size={32} />
-                          <span className="font-black uppercase tracking-widest text-sm">Caja Campeones</span>
-                      </button>
-                      <button 
-                          onClick={() => changeTerminal('MERCHANDISING')}
-                          className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${isMerch ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 shadow-sm' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-purple-300 dark:hover:border-purple-600'}`}
-                      >
-                          <Tag size={32} />
-                          <span className="font-black uppercase tracking-widest text-sm">Caja Merchandising</span>
-                      </button>
-                  </div>
-              </div>
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[300] flex items-center justify-center p-4 animate-fade-in" onClick={() => setIsTerminalModalOpen(false)}>
+          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col transition-colors border border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
+            <div className="p-6 border-b border-slate-100 dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900">
+              <h3 className="font-black text-xl text-slate-800 dark:text-white flex items-center">
+                <MonitorSmartphone className="mr-3 text-blue-500" size={24} /> Cambiar Terminal
+              </h3>
+              <button onClick={() => setIsTerminalModalOpen(false)} className="text-slate-400 hover:text-red-500 bg-white dark:bg-slate-800 p-2 rounded-full shadow-sm"><X size={20} /></button>
+            </div>
+            <div className="p-6 flex flex-col gap-4">
+              <button
+                onClick={() => changeTerminal('PRINCIPAL')}
+                className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${!isMerch ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-400 shadow-sm' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-indigo-300 dark:hover:border-indigo-600'}`}
+              >
+                <Store size={32} />
+                <span className="font-black uppercase tracking-widest text-sm">Caja Campeones</span>
+              </button>
+              <button
+                onClick={() => changeTerminal('MERCHANDISING')}
+                className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center justify-center gap-2 ${isMerch ? 'border-purple-500 bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-400 shadow-sm' : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:border-purple-300 dark:hover:border-purple-600'}`}
+              >
+                <Tag size={32} />
+                <span className="font-black uppercase tracking-widest text-sm">Caja Merchandising</span>
+              </button>
+            </div>
           </div>
+        </div>
       )}
 
       {/* PANTALLA DE BLOQUEO SI LA CAJA ELEGIDA ESTÁ CERRADA */}
       {isRegisterOpen === false ? (
-          <div className={`flex-1 flex flex-col items-center justify-center rounded-3xl border shadow-sm transition-colors ${isMerch ? 'bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900/50' : 'bg-indigo-50 dark:bg-slate-900/50 border-indigo-200 dark:border-slate-800'}`}>
-              <div className={`p-6 rounded-full mb-6 border shadow-inner ${isMerch ? 'bg-purple-100 dark:bg-purple-900/50 text-purple-500 border-purple-200 dark:border-purple-800' : 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-500 border-indigo-200 dark:border-indigo-800'}`}>
-                  <Lock size={64} />
-              </div>
-              <h2 className="text-3xl font-black text-slate-800 dark:text-white mb-2 tracking-tight">Caja Cerrada</h2>
-              <p className="text-slate-500 dark:text-slate-400 mb-8 font-medium">Debes abrir el turno operativo para la Terminal {isMerch ? 'Merch' : 'Principal'}</p>
-              <Link to="/caja-control" className={`px-8 py-4 rounded-2xl font-black text-white shadow-lg uppercase tracking-widest transition-all active:scale-95 flex items-center ${isMerch ? 'bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-700 shadow-purple-500/30' : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 shadow-indigo-500/30'}`}>
-                  Ir a Control de Caja <ArrowRight size={18} className="ml-2" />
-              </Link>
+        <div className={`flex-1 flex flex-col items-center justify-center rounded-3xl border shadow-sm transition-colors ${isMerch ? 'bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900/50' : 'bg-indigo-50 dark:bg-slate-900/50 border-indigo-200 dark:border-slate-800'}`}>
+          <div className={`p-6 rounded-full mb-6 border shadow-inner ${isMerch ? 'bg-purple-100 dark:bg-purple-900/50 text-purple-500 border-purple-200 dark:border-purple-800' : 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-500 border-indigo-200 dark:border-indigo-800'}`}>
+            <Lock size={64} />
           </div>
+          <h2 className="text-3xl font-black text-slate-800 dark:text-white mb-2 tracking-tight">Caja Cerrada</h2>
+          <p className="text-slate-500 dark:text-slate-400 mb-8 font-medium">Debes abrir el turno operativo para la Terminal {isMerch ? 'Merch' : 'Principal'}</p>
+          <Link to="/caja-control" className={`px-8 py-4 rounded-2xl font-black text-white shadow-lg uppercase tracking-widest transition-all active:scale-95 flex items-center ${isMerch ? 'bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-700 shadow-purple-500/30' : 'bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 shadow-indigo-500/30'}`}>
+            Ir a Control de Caja <ArrowRight size={18} className="ml-2" />
+          </Link>
+        </div>
       ) : (
 
-      /* --- ZONA OPERATIVA (SOLO SI LA CAJA ESTÁ ABIERTA) --- */
-      <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-0">
+        /* --- ZONA OPERATIVA (SOLO SI LA CAJA ESTÁ ABIERTA) --- */
+        <div className="flex-1 flex flex-col md:flex-row gap-4 min-h-0">
           {/* --- COLUMNA IZQUIERDA --- */}
           <div className="w-full md:w-[55%] xl:w-[60%] flex flex-col gap-4 h-full min-h-0">
             <div className={`p-5 rounded-2xl shadow-sm border relative z-[60] transition-all duration-300 shrink-0 ${isMerch ? 'bg-purple-50 dark:bg-purple-900/10 border-purple-200 dark:border-purple-800/50' : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700'}`}>
-              {isMerch ? (
-                  <div className="flex flex-col items-center justify-center text-center p-6 md:p-10">
-                      <p className="text-purple-600 dark:text-purple-300 mb-6 font-medium">Usa este botón para registrar artículos físicos de merchandising.</p>
-                      <button onClick={() => { setCustomItemData({ description: '', price: '' }); setIsCustomModalOpen(true); }} className="bg-gradient-to-r from-purple-600 to-fuchsia-600 hover:from-purple-700 hover:to-fuchsia-700 text-white px-8 md:px-12 py-6 rounded-3xl font-black text-xl md:text-2xl shadow-xl hover:scale-105 transition-all flex items-center active:scale-95 shadow-purple-500/30">
-                          <Plus size={36} className="mr-4" /> AGREGAR ÍTEM MERCH
+
+              <div className="flex justify-between items-center mb-3">
+                <h2 className={`text-lg font-bold flex items-center gap-2 ${isMerch ? 'text-purple-800 dark:text-purple-300' : 'text-gray-700 dark:text-white'}`}>
+                  {isSearchMode
+                    ? <Search className={isMerch ? "text-purple-600 dark:text-purple-400" : "text-indigo-600 dark:text-indigo-400"} />
+                    : <ScanBarcode className={isMerch ? "text-purple-600 dark:text-purple-400" : "text-blue-600 dark:text-blue-400"} />}
+                  {isSearchMode ? "Búsqueda Manual & Filtros" : "Modo Escáner"}
+                </h2>
+
+                <div className="flex gap-2">
+                  <button onClick={() => setIsCustomModalOpen(true)} className="text-xs px-3 py-1.5 rounded-lg border font-bold flex items-center bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800 hover:bg-yellow-100 dark:hover:bg-yellow-900/40">
+                    <Plus size={14} className="mr-1" /> Libre
+                  </button>
+                  <button
+                    onClick={() => { setIsSearchMode(!isSearchMode); setManualTerm(''); setManualResults([]); setSelectedCat(''); setSelectedSpec(''); }}
+                    className={`text-xs px-3 py-1.5 rounded-lg border font-bold flex items-center transition-all ${isSearchMode ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-800' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'}`}
+                  >
+                    {isSearchMode ? "Usar Escáner" : "Buscar Manual"}
+                  </button>
+                </div>
+              </div>
+
+              {isSearchMode ? (
+                <div className="flex flex-col gap-3">
+                  <div className="flex gap-2">
+                    <div className="relative flex-1">
+                      <select
+                        value={selectedCat}
+                        onChange={(e) => setSelectedCat(e.target.value)}
+                        className="w-full p-2 pl-3 pr-8 bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-sm font-bold text-gray-700 dark:text-white appearance-none focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-900/50 outline-none cursor-pointer"
+                      >
+                        <option value="">Todas las Categorías</option>
+                        {categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                      </select>
+                      <ChevronDown size={16} className="absolute right-3 top-2.5 text-gray-400 pointer-events-none" />
+                    </div>
+
+                    <div className="relative flex-1">
+                      <select
+                        value={selectedSpec}
+                        onChange={(e) => setSelectedSpec(e.target.value)}
+                        className="w-full p-2 pl-3 pr-8 bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-sm font-bold text-gray-700 dark:text-white appearance-none focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-900/50 outline-none cursor-pointer"
+                      >
+                        <option value="">Todas las Ligas</option>
+                        {specificCats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                      </select>
+                      <ChevronDown size={16} className="absolute right-3 top-2.5 text-gray-400 pointer-events-none" />
+                    </div>
+
+                    {(selectedCat || selectedSpec || manualTerm) && (
+                      <button
+                        onClick={() => { setSelectedCat(''); setSelectedSpec(''); setManualTerm(''); }}
+                        className="bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 p-2 rounded-lg border border-red-100 dark:border-red-900/50 hover:bg-red-100 dark:hover:bg-red-900/40"
+                        title="Limpiar filtros"
+                      >
+                        <X size={18} />
                       </button>
+                    )}
                   </div>
-              ) : (
-                  <>
-                      <div className="flex justify-between items-center mb-3">
-                        <h2 className="text-lg font-bold text-gray-700 dark:text-white flex items-center gap-2">
-                          {isSearchMode ? <Search className="text-indigo-600 dark:text-indigo-400" /> : <ScanBarcode className="text-blue-600 dark:text-blue-400" />}
-                          {isSearchMode ? "Búsqueda Manual & Filtros" : "Modo Escáner"}
-                        </h2>
 
-                        <div className="flex gap-2">
-                          <button onClick={() => setIsCustomModalOpen(true)} className="text-xs px-3 py-1.5 rounded-lg border font-bold flex items-center bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800 hover:bg-yellow-100 dark:hover:bg-yellow-900/40">
-                            <Plus size={14} className="mr-1" /> Libre
-                          </button>
-                          <button
-                            onClick={() => { setIsSearchMode(!isSearchMode); setManualTerm(''); setManualResults([]); setSelectedCat(''); setSelectedSpec(''); }}
-                            className={`text-xs px-3 py-1.5 rounded-lg border font-bold flex items-center transition-all ${isSearchMode ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-300 border-blue-200 dark:border-blue-800' : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800'}`}
-                          >
-                            {isSearchMode ? "Usar Escáner" : "Buscar Manual"}
-                          </button>
-                        </div>
-                      </div>
+                  <div className="relative" ref={searchContainerRef}>
+                    <input
+                      ref={searchInputRef}
+                      value={manualTerm}
+                      onChange={e => {
+                        setManualTerm(e.target.value);
+                        setShowDropdown(true);
+                      }}
+                      onFocus={() => {
+                        if (manualTerm.trim() || selectedCat || selectedSpec) setShowDropdown(true);
+                      }}
+                      onKeyDown={handleSearchKeyDown}
+                      placeholder="Escribe para refinar (ej: Boca, XL)... (ESC para cerrar)"
+                      className={`w-full p-4 border-2 bg-white dark:bg-slate-900 text-gray-800 dark:text-white rounded-xl outline-none focus:ring-4 transition-all text-lg ${isMerch
+                          ? 'border-purple-200 dark:border-purple-700 focus:border-purple-500 focus:ring-purple-50 dark:focus:ring-purple-900/20 placeholder-purple-300 dark:placeholder-slate-600'
+                          : 'border-indigo-200 dark:border-indigo-700 focus:border-indigo-500 focus:ring-indigo-50 dark:focus:ring-indigo-900/20 placeholder-indigo-300 dark:placeholder-slate-600'
+                        }`}
+                      autoFocus
+                    />
+                    <button className={`absolute left-4 top-1/2 -translate-y-1/2 ${isMerch ? 'text-purple-300 dark:text-purple-500' : 'text-indigo-300 dark:text-indigo-500'}`} size={28} />
 
-                      {isSearchMode ? (
-                        <div className="flex flex-col gap-3">
-                          <div className="flex gap-2">
-                            <div className="relative flex-1">
-                              <select
-                                value={selectedCat}
-                                onChange={(e) => setSelectedCat(e.target.value)}
-                                className="w-full p-2 pl-3 pr-8 bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-sm font-bold text-gray-700 dark:text-white appearance-none focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-900/50 outline-none cursor-pointer"
+                    {showDropdown && (manualResults.length > 0 || (isSearchMode && (selectedCat || selectedSpec))) && (
+                      <div className="absolute top-full left-0 right-0 bg-white dark:bg-slate-800 border dark:border-slate-700 shadow-2xl rounded-b-xl mt-1 max-h-[60vh] overflow-y-auto z-[100] custom-scrollbar">
+                        {manualResults.length === 0 ? (
+                          <div className="p-8 text-center text-gray-400 italic font-medium">No se encontraron productos con estos filtros.</div>
+                        ) : (
+                          manualResults.map(p => {
+                            const tallesUnicos = Array.from(new Set(p.variantes.map(v => v.talle)));
+
+                            return (
+                              <div
+                                key={p.id}
+                                className={`p-4 border-b dark:border-slate-700 flex gap-4 cursor-pointer transition-colors ${isMerch ? 'hover:bg-purple-50 dark:hover:bg-slate-700/80' : 'hover:bg-indigo-50 dark:hover:bg-slate-700/80'
+                                  }`}
+                                onClick={() => handleProductSelectClick(p)}
                               >
-                                <option value="">Todas las Categorías</option>
-                                {categories.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                              </select>
-                              <ChevronDown size={16} className="absolute right-3 top-2.5 text-gray-400 pointer-events-none" />
-                            </div>
+                                <div className="w-20 h-20 bg-gray-100 dark:bg-slate-700 rounded-xl shrink-0 flex items-center justify-center border dark:border-slate-600 overflow-hidden cursor-zoom-in relative"
+                                  onClick={(e) => { if (p.imagen) { e.stopPropagation(); setZoomImage(`${api.defaults.baseURL}/static/uploads/${p.imagen}`); } }}
+                                >
+                                  {p.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${p.imagen}`} className="w-full h-full object-cover" /> : <Shirt size={32} className="text-gray-300 dark:text-slate-500" />}
+                                </div>
 
-                            <div className="relative flex-1">
-                              <select
-                                value={selectedSpec}
-                                onChange={(e) => setSelectedSpec(e.target.value)}
-                                className="w-full p-2 pl-3 pr-8 bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-lg text-sm font-bold text-gray-700 dark:text-white appearance-none focus:ring-2 focus:ring-indigo-200 dark:focus:ring-indigo-900/50 outline-none cursor-pointer"
-                              >
-                                <option value="">Todas las Ligas</option>
-                                {specificCats.map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                              </select>
-                              <ChevronDown size={16} className="absolute right-3 top-2.5 text-gray-400 pointer-events-none" />
-                            </div>
+                                <div className="flex-1 flex flex-col justify-center">
+                                  <div className="flex justify-between items-start mb-2">
+                                    <div>
+                                      <span className="font-black text-base text-gray-800 dark:text-white leading-tight">{p.nombre}</span>
+                                      {p.categoria && <span className="block text-[10px] text-gray-500 dark:text-slate-400 uppercase mt-0.5 tracking-wider">{p.categoria}</span>}
+                                    </div>
+                                    <span className={`font-black text-lg ${isMerch ? 'text-purple-600 dark:text-purple-400' : 'text-indigo-600 dark:text-indigo-400'}`}>${p.precio}</span>
+                                  </div>
 
-                            {(selectedCat || selectedSpec || manualTerm) && (
-                              <button
-                                onClick={() => { setSelectedCat(''); setSelectedSpec(''); setManualTerm(''); }}
-                                className="bg-red-50 dark:bg-red-900/20 text-red-500 dark:text-red-400 p-2 rounded-lg border border-red-100 dark:border-red-900/50 hover:bg-red-100 dark:hover:bg-red-900/40"
-                                title="Limpiar filtros"
-                              >
-                                <X size={18} />
-                              </button>
-                            )}
-                          </div>
+                                  <div className="mt-1 flex flex-wrap gap-2">
+                                    {tallesUnicos.length > 0 ? tallesUnicos.map(t => {
+                                      const variantsForSize = p.variantes.filter(v => v.talle === t);
 
-                          <div className="relative" ref={searchContainerRef}>
-                            <input
-                              ref={searchInputRef}
-                              value={manualTerm}
-                              onChange={e => {
-                                setManualTerm(e.target.value);
-                                setShowDropdown(true);
-                              }}
-                              onFocus={() => {
-                                if (manualTerm.trim() || selectedCat || selectedSpec) setShowDropdown(true);
-                              }}
-                              onKeyDown={handleSearchKeyDown}
-                              placeholder="Escribe para refinar (ej: Boca, XL)... (ESC para cerrar)"
-                              className="w-full p-4 border-2 border-indigo-200 dark:border-indigo-700 bg-white dark:bg-slate-900 text-gray-800 dark:text-white rounded-xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-50 dark:focus:ring-indigo-900/20 transition-all text-lg placeholder-indigo-300 dark:placeholder-slate-600"
-                              autoFocus
-                            />
+                                      const totalStockForSize = variantsForSize.reduce((sum, v) => sum + v.stock, 0);
 
-                            {showDropdown && (manualResults.length > 0 || (isSearchMode && (selectedCat || selectedSpec))) && (
-                              <div className="absolute top-full left-0 right-0 bg-white dark:bg-slate-800 border dark:border-slate-700 shadow-2xl rounded-b-xl mt-1 max-h-[60vh] overflow-y-auto z-[100] custom-scrollbar">
-                                {manualResults.length === 0 ? (
-                                  <div className="p-8 text-center text-gray-400 italic font-medium">No se encontraron productos con estos filtros.</div>
-                                ) : (
-                                  manualResults.map(p => {
-                                    const tallesUnicos = Array.from(new Set(p.variantes.map(v => v.talle)));
+                                      let badgeColor = 'bg-slate-50 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800 line-through opacity-70 cursor-not-allowed';
+                                      if (totalStockForSize > 2) {
+                                        badgeColor = 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50 hover:bg-emerald-100 hover:border-emerald-400';
+                                      } else if (totalStockForSize > 0) {
+                                        badgeColor = 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/50 hover:bg-amber-100 hover:border-amber-400';
+                                      }
 
-                                    return (
-                                      <div 
-                                        key={p.id} 
-                                        className="p-4 border-b dark:border-slate-700 hover:bg-indigo-50 dark:hover:bg-slate-700/80 flex gap-4 cursor-pointer transition-colors"
-                                        onClick={() => handleProductSelectClick(p)}
-                                      >
-                                        <div className="w-20 h-20 bg-gray-100 dark:bg-slate-700 rounded-xl shrink-0 flex items-center justify-center border dark:border-slate-600 overflow-hidden cursor-zoom-in relative"
-                                          onClick={(e) => { if (p.imagen) { e.stopPropagation(); setZoomImage(`${api.defaults.baseURL}/static/uploads/${p.imagen}`); } }}
+                                      return (
+                                        <button
+                                          key={t}
+                                          disabled={totalStockForSize <= 0}
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleSizeClick(p, t);
+                                          }}
+                                          className={`text-sm font-black px-4 py-2 rounded-xl shadow-sm border-2 transition-all active:scale-95 flex items-center gap-1.5 ${badgeColor}`}
                                         >
-                                          {p.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${p.imagen}`} className="w-full h-full object-cover" /> : <Shirt size={32} className="text-gray-300 dark:text-slate-500" />}
-                                        </div>
-                                        
-                                        <div className="flex-1 flex flex-col justify-center">
-                                          <div className="flex justify-between items-start mb-2">
-                                            <div>
-                                                <span className="font-black text-base text-gray-800 dark:text-white leading-tight">{p.nombre}</span>
-                                                {p.categoria && <span className="block text-[10px] text-gray-500 dark:text-slate-400 uppercase mt-0.5 tracking-wider">{p.categoria}</span>}
-                                            </div>
-                                            <span className="text-indigo-600 dark:text-indigo-400 font-black text-lg">${p.precio}</span>
-                                          </div>
-                                          
-                                          <div className="mt-1 flex flex-wrap gap-2">
-                                              {tallesUnicos.length > 0 ? tallesUnicos.map(t => {
-                                                  const variantsForSize = p.variantes.filter(v => v.talle === t);
-                                                  
-                                                  // ACÁ CALCULAMOS EL STOCK REAL PARA PINTAR EL BOTÓN
-                                                  const totalStockForSize = variantsForSize.reduce((sum, v) => sum + v.stock, 0);
-                                                  
-                                                  let badgeColor = 'bg-slate-50 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800 line-through opacity-70 cursor-not-allowed';
-                                                  if (totalStockForSize > 2) {
-                                                      badgeColor = 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50 hover:bg-emerald-100 hover:border-emerald-400';
-                                                  } else if (totalStockForSize > 0) {
-                                                      badgeColor = 'bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800/50 hover:bg-amber-100 hover:border-amber-400';
-                                                  }
-                                                  
-                                                  return (
-                                                    <button 
-                                                        key={t} 
-                                                        disabled={totalStockForSize <= 0}
-                                                        onClick={(e) => {
-                                                            e.stopPropagation(); 
-                                                            handleSizeClick(p, t);
-                                                        }}
-                                                        className={`text-sm font-black px-4 py-2 rounded-xl shadow-sm border-2 transition-all active:scale-95 flex items-center gap-1.5 ${badgeColor}`}
-                                                    >
-                                                        {t}
-                                                        {totalStockForSize > 0 && (
-                                                            <span className="text-[10px] bg-white/60 dark:bg-black/30 px-1.5 py-0.5 rounded-md font-bold ml-1">
-                                                                {totalStockForSize}
-                                                            </span>
-                                                        )}
-                                                    </button>
-                                                  );
-                                              }) : (
-                                                  <span className="text-xs font-bold text-red-500 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded">SIN STOCK</span>
-                                              )}
-                                          </div>
+                                          {t}
+                                          {totalStockForSize > 0 && (
+                                            <span className="text-[10px] bg-white/60 dark:bg-black/30 px-1.5 py-0.5 rounded-md font-bold ml-1">
+                                              {totalStockForSize}
+                                            </span>
+                                          )}
+                                        </button>
+                                      );
+                                    }) : (
+                                      <span className="text-xs font-bold text-red-500 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded">SIN STOCK</span>
+                                    )}
+                                  </div>
 
-                                        </div>
-                                      </div>
-                                    );
-                                  })
-                                )}
+                                </div>
                               </div>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
-                        <form onSubmit={handleScan} className="relative flex gap-2">
-                          <input ref={inputRef} value={skuInput} onChange={e => setSkuInput(e.target.value)} placeholder="CÓDIGO DE BARRAS..." className="flex-1 text-2xl p-4 border-2 border-blue-500 dark:border-blue-600 bg-white dark:bg-slate-900 text-gray-800 dark:text-white rounded-xl outline-none focus:ring-4 focus:ring-blue-100 dark:focus:ring-blue-900/30 uppercase font-mono tracking-wider transition-all placeholder-gray-300 dark:placeholder-slate-600" autoFocus />
-                          <button type="submit" className="px-6 text-xl font-bold bg-blue-500 text-white rounded-xl hover:bg-blue-600 active:scale-95 transition-all">ENTER</button>
-                        </form>
-                      )}
-                  </>
+                            );
+                          })
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <form onSubmit={handleScan} className="relative flex gap-2">
+                  <input
+                    ref={inputRef}
+                    value={skuInput}
+                    onChange={e => setSkuInput(e.target.value)}
+                    placeholder="CÓDIGO DE BARRAS..."
+                    className={`flex-1 text-2xl p-4 border-2 bg-white dark:bg-slate-900 text-gray-800 dark:text-white rounded-xl outline-none focus:ring-4 uppercase font-mono tracking-wider transition-all placeholder-gray-300 dark:placeholder-slate-600 ${isMerch
+                        ? 'border-purple-500 dark:border-purple-600 focus:ring-purple-100 dark:focus:ring-purple-900/30'
+                        : 'border-blue-500 dark:border-blue-600 focus:ring-blue-100 dark:focus:ring-blue-900/30'
+                      }`}
+                    autoFocus
+                  />
+                  <button type="submit" className={`px-6 text-xl font-bold text-white rounded-xl active:scale-95 transition-all ${isMerch ? 'bg-purple-500 hover:bg-purple-600' : 'bg-blue-500 hover:bg-blue-600'
+                    }`}>ENTER</button>
+                </form>
               )}
             </div>
 
@@ -863,7 +876,7 @@ const POSPage = () => {
               <div className="flex-1 overflow-y-auto p-0 custom-scrollbar">
                 <table className="w-full text-xs text-left">
                   <thead className="bg-slate-50 dark:bg-slate-800 text-gray-400 dark:text-slate-500 font-bold sticky top-0 shadow-sm z-10 text-[10px] uppercase tracking-widest">
-                      <tr><th className="p-3">Hora</th><th className="p-3">Items</th><th className="p-3 text-center">Pago</th><th className="p-3 text-right">Total</th><th className="p-3 text-center">Acciones</th></tr>
+                    <tr><th className="p-3">Hora</th><th className="p-3">Items</th><th className="p-3 text-center">Pago</th><th className="p-3 text-right">Total</th><th className="p-3 text-center">Acciones</th></tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100 dark:divide-slate-700">
                     {recentSales.map(v => (
@@ -1040,7 +1053,7 @@ const POSPage = () => {
                 <div className="mb-5">
                   <div className="grid grid-cols-3 gap-2.5">
                     {paymentMethods.map(m => (
-                      <button key={m.id} onClick={() => { setSelectedMethod(m); setCreditNoteCode(''); }} className={`flex flex-col items-center justify-center p-2.5 rounded-xl border-2 transition-all active:scale-95 shadow-sm ${selectedMethod?.id === m.id ? (isMerch ? 'bg-purple-600 text-white border-purple-500 shadow-purple-500/30' : 'bg-indigo-600 text-white border-indigo-500 shadow-indigo-500/30') : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600'}`}>{getPaymentIcon(m.nombre)}<span className="text-[9px] font-black mt-1.5 uppercase tracking-widest">{m.nombre.slice(0,8)}</span></button>
+                      <button key={m.id} onClick={() => { setSelectedMethod(m); setCreditNoteCode(''); }} className={`flex flex-col items-center justify-center p-2.5 rounded-xl border-2 transition-all active:scale-95 shadow-sm ${selectedMethod?.id === m.id ? (isMerch ? 'bg-purple-600 text-white border-purple-500 shadow-purple-500/30' : 'bg-indigo-600 text-white border-indigo-500 shadow-indigo-500/30') : 'bg-white dark:bg-slate-700 text-slate-500 dark:text-slate-300 border-slate-200 dark:border-slate-600 hover:border-slate-300 hover:bg-slate-50 dark:hover:bg-slate-600'}`}>{getPaymentIcon(m.nombre)}<span className="text-[9px] font-black mt-1.5 uppercase tracking-widest">{m.nombre.slice(0, 8)}</span></button>
                     ))}
                   </div>
                   {selectedMethod && (selectedMethod.nombre.toLowerCase().includes('credito') || selectedMethod.nombre.toLowerCase().includes('crédito')) && (<div className="mt-4 bg-amber-50 dark:bg-amber-900/20 p-4 rounded-xl border border-amber-200 dark:border-amber-800 animate-fade-in shadow-sm"><label className="text-[10px] font-black text-amber-800 dark:text-amber-500 uppercase tracking-widest block mb-2 flex items-center"><AlertTriangle size={14} className="mr-1.5" /> Código de la Nota</label><input ref={creditNoteInputRef} value={creditNoteCode} onChange={e => setCreditNoteCode(e.target.value.toUpperCase())} placeholder="NC-XXXXXX" className="w-full p-3 border-2 border-amber-300 dark:border-amber-700 rounded-xl font-mono text-center uppercase focus:border-amber-500 outline-none bg-white dark:bg-slate-900 text-lg font-black text-slate-800 dark:text-white placeholder-slate-300 shadow-inner" /></div>)}
@@ -1106,7 +1119,7 @@ const POSPage = () => {
               {/* AQUÍ ESTÁ LA CONDICIÓN: SI ES MERCH, EL BOTÓN COBRAR OCUPA EL 100% */}
               <div className={`grid ${isMerch ? 'grid-cols-1' : 'grid-cols-2'} gap-4`}>
                 {!isMerch && (
-                    <button onClick={() => setIsReservationModalOpen(true)} disabled={cart.length === 0} className="bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] flex items-center justify-center transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-200 dark:border-slate-600 shadow-sm"><CalendarClock className="mr-2" size={18} /> Reservar</button>
+                  <button onClick={() => setIsReservationModalOpen(true)} disabled={cart.length === 0} className="bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 py-4 rounded-2xl font-black uppercase tracking-widest text-[11px] flex items-center justify-center transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed border border-slate-200 dark:border-slate-600 shadow-sm"><CalendarClock className="mr-2" size={18} /> Reservar</button>
                 )}
                 <button
                   onClick={handleCheckoutClick}
@@ -1118,7 +1131,7 @@ const POSPage = () => {
               </div>
             </div>
           </div>
-      </div>
+        </div>
       )}
 
       {/* --- MODAL ITEM LIBRE --- */}
@@ -1127,8 +1140,8 @@ const POSPage = () => {
           <div className={`bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col transition-colors border-2 ${isMerch ? 'border-purple-300 dark:border-purple-700' : 'border-indigo-200 dark:border-indigo-800/50'}`}>
             <div className={`p-6 flex justify-between items-center ${isMerch ? 'bg-purple-50 dark:bg-purple-900/20' : 'bg-indigo-50 dark:bg-indigo-900/20'}`}>
               <h3 className={`text-xl font-black flex items-center tracking-tight ${isMerch ? 'text-purple-800 dark:text-purple-300' : 'text-indigo-800 dark:text-indigo-300'}`}>
-                  {isMerch ? <Tag className="mr-3 text-purple-500" size={24} /> : <Edit3 className="mr-3 text-indigo-500" size={24} />} 
-                  {isMerch ? 'Artículo Merchandising' : 'Anotador Libre'}
+                {isMerch ? <Tag className="mr-3 text-purple-500" size={24} /> : <Edit3 className="mr-3 text-indigo-500" size={24} />}
+                {isMerch ? 'Artículo Merchandising' : 'Anotador Libre'}
               </h3>
               <button onClick={() => setIsCustomModalOpen(false)} className="text-slate-400 hover:text-red-500 bg-white dark:bg-slate-800 p-2 rounded-full shadow-sm"><X size={20} /></button>
             </div>
