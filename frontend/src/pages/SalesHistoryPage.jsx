@@ -43,6 +43,7 @@ const SalesHistoryPage = () => {
   // --- ESTADOS DE LISTA DE ARMADO (PICKING LIST) ---
   const [selectedSales, setSelectedSales] = useState(new Set());
   const [pickingListData, setPickingListData] = useState([]);
+  const [isPrintingList, setIsPrintingList] = useState(false); // NUEVO ESTADO DE CONTROL
 
   // --- REFS PARA IMPRESIÓN ---
   const ticketRef = useRef(null);
@@ -82,7 +83,7 @@ const SalesHistoryPage = () => {
       ]);
       setSales(resSales.data.history);
       setPaymentMethods(resMethods.data);
-      setSelectedSales(new Set()); // Limpiar selección al recargar
+      setSelectedSales(new Set());
     } catch (error) {
       toast.error('Error al cargar historial');
     } finally {
@@ -98,6 +99,20 @@ const SalesHistoryPage = () => {
     setCurrentPage(1);
     setSelectedSales(new Set());
   }, [filterMethod, searchTerm, sales, tipoCajaFiltro]);
+
+  // --- EFECTO GATILLO PARA LA LISTA DE ARMADO (BLINDADO) ---
+  useEffect(() => {
+    if (isPrintingList && pickingListData.length > 0) {
+      const toastId = toast.loading("Maquetando documento para imprimir...");
+      // Le damos 800ms al DOM para que dibuje las imágenes antes de imprimir
+      const timer = setTimeout(() => {
+        toast.dismiss(toastId);
+        if (pickingListPrintFn) pickingListPrintFn();
+        setIsPrintingList(false); // Reseteamos el estado
+      }, 800);
+      return () => clearTimeout(timer);
+    }
+  }, [isPrintingList, pickingListData, pickingListPrintFn]);
 
   // --- LÓGICA DE FECHAS RÁPIDAS ---
   const setQuickDate = (type) => {
@@ -174,16 +189,14 @@ const SalesHistoryPage = () => {
     setSelectedSales(newSet);
   };
 
-  // --- GENERACIÓN DE LISTA DE ARMADO (PICKING LIST) ---
+  // --- GENERACIÓN DE LISTA DE ARMADO ---
   const handleGeneratePickingList = () => {
     const selected = sales.filter(s => selectedSales.has(s.id));
     const aggregated = {};
 
     selected.forEach(sale => {
       sale.items_detail?.forEach(item => {
-        // Creamos una clave única juntando nombre y talle para sumarificar si se repiten
         const key = `${item.nombre}-${item.talle}`;
-
         if (!aggregated[key]) {
           aggregated[key] = {
             nombre: item.nombre,
@@ -196,14 +209,9 @@ const SalesHistoryPage = () => {
       });
     });
 
-    // Convertimos el objeto en array y lo ordenamos por cantidad mayor a menor
     const sortedList = Object.values(aggregated).sort((a, b) => b.cantidad - a.cantidad);
     setPickingListData(sortedList);
-
-    // Disparamos la impresión tras cargar el estado
-    setTimeout(() => {
-      if (pickingListPrintFn) pickingListPrintFn();
-    }, 250);
+    setIsPrintingList(true); // Disparamos el Effect
   };
 
   // --- LÓGICA DE FILTRADO LOCAL ---
@@ -233,9 +241,9 @@ const SalesHistoryPage = () => {
 
   const toggleSelectAll = () => {
     if (selectedSales.size === paginatedSales.length && paginatedSales.length > 0) {
-      setSelectedSales(new Set()); // Deseleccionar todo
+      setSelectedSales(new Set());
     } else {
-      setSelectedSales(new Set(paginatedSales.map(v => v.id))); // Seleccionar página actual
+      setSelectedSales(new Set(paginatedSales.map(v => v.id)));
     }
   };
 
@@ -273,59 +281,63 @@ const SalesHistoryPage = () => {
   );
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950 transition-colors duration-300 overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950 transition-colors duration-300 overflow-hidden relative">
       <Toaster position="top-center" />
 
-      {/* OCULTO: PLANTILLA DE TICKET Y LISTA DE ARMADO (CORREGIDO: Fuera de pantalla, no display none) */}
-      <div style={{ position: 'absolute', left: '-9999px', top: 0 }}>
+      {/* OCULTO: PLANTILLA DE TICKET Y LISTA DE ARMADO */}
+      <div style={{ position: 'absolute', left: '-9999px', top: '0', zIndex: -10 }}>
         <div ref={ticketRef}><Ticket saleData={ticketData} /></div>
 
-        {/* REPORTE: LISTA DE ARMADO PDF */}
-        <div ref={pickingListRef} className="bg-white text-black font-sans" style={{ width: '210mm', minHeight: '297mm', margin: '0 auto', padding: '15mm' }}>
-          <div className="flex justify-between items-end border-b-4 border-black pb-4 mb-6">
+        {/* REPORTE: LISTA DE ARMADO PDF - Construido con estilos inline seguros */}
+        <div ref={pickingListRef} style={{ padding: '20px 40px', backgroundColor: '#ffffff', color: '#000000', width: '210mm', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '3px solid #000000', paddingBottom: '15px', marginBottom: '20px' }}>
             <div>
-              <h2 className="text-3xl font-black uppercase tracking-tighter">Lista de Armado (Picking)</h2>
-              <p className="text-sm font-bold text-gray-500 uppercase tracking-widest mt-1">Órdenes Agrupadas: {selectedSales.size}</p>
+              <h2 style={{ margin: '0', fontSize: '26px', fontWeight: '900', textTransform: 'uppercase', color: '#000000' }}>Lista de Armado (Picking)</h2>
+              <p style={{ margin: '5px 0 0 0', fontSize: '13px', fontWeight: 'bold', color: '#555555', textTransform: 'uppercase' }}>Órdenes Agrupadas: {selectedSales.size}</p>
             </div>
-            <div className="text-right">
-              <p className="text-xl font-black">{new Date().toLocaleDateString('es-AR')}</p>
-              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Generado desde ERP</p>
+            <div style={{ textAlign: 'right' }}>
+              <p style={{ margin: '0', fontSize: '18px', fontWeight: '900', color: '#000000' }}>{new Date().toLocaleDateString('es-AR')}</p>
+              <p style={{ margin: '5px 0 0 0', fontSize: '11px', fontWeight: 'bold', color: '#777777', textTransform: 'uppercase' }}>Generado desde ERP</p>
             </div>
           </div>
 
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-gray-100 border-y-2 border-black">
-                <th className="p-3 w-20 text-center font-black uppercase text-[10px] tracking-widest">Cant.</th>
-                <th className="p-3 w-24 text-center font-black uppercase text-[10px] tracking-widest">Foto</th>
-                <th className="p-3 font-black uppercase text-[10px] tracking-widest">Producto / Descripción</th>
-                <th className="p-3 w-48 font-black uppercase text-[10px] tracking-widest">Variante / Talle</th>
-                <th className="p-3 w-20 text-center font-black uppercase text-[10px] tracking-widest">Check</th>
+          <table border="1" cellPadding="10" style={{ width: '100%', borderCollapse: 'collapse', borderColor: '#dddddd', textAlign: 'left' }}>
+            <thead style={{ backgroundColor: '#f3f4f6' }}>
+              <tr>
+                <th style={{ width: '60px', textAlign: 'center', fontWeight: '900', fontSize: '12px', color: '#000000' }}>CANT</th>
+                <th style={{ width: '80px', textAlign: 'center', fontWeight: '900', fontSize: '12px', color: '#000000' }}>FOTO</th>
+                <th style={{ fontWeight: '900', fontSize: '12px', color: '#000000' }}>PRODUCTO / DESCRIPCIÓN</th>
+                <th style={{ width: '160px', fontWeight: '900', fontSize: '12px', color: '#000000' }}>VARIANTE / TALLE</th>
+                <th style={{ width: '60px', textAlign: 'center', fontWeight: '900', fontSize: '12px', color: '#000000' }}>CHECK</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-300">
+            <tbody>
               {pickingListData.map((item, idx) => (
                 <tr key={idx}>
-                  <td className="p-3 text-center align-middle">
-                    <span className="text-3xl font-black">{item.cantidad}</span>
+                  <td style={{ textAlign: 'center', verticalAlign: 'middle', fontSize: '28px', fontWeight: '900', color: '#000000' }}>
+                    {item.cantidad}
                   </td>
-                  <td className="p-3 text-center align-middle">
+                  <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
                     {item.imagen ? (
-                      <img src={`${api.defaults.baseURL}/static/uploads/${item.imagen}`} className="w-16 h-16 object-cover rounded-lg shadow-sm mx-auto border border-gray-200" />
+                      <img
+                        src={`${api.defaults.baseURL || ''}/static/uploads/${item.imagen}`}
+                        style={{ width: '65px', height: '65px', objectFit: 'cover', borderRadius: '4px', display: 'block', margin: '0 auto' }}
+                        alt="prod"
+                      />
                     ) : (
-                      <div className="w-16 h-16 bg-gray-100 rounded-lg flex items-center justify-center text-[8px] font-bold text-gray-400 mx-auto border border-gray-200">SIN FOTO</div>
+                      <div style={{ width: '65px', height: '65px', backgroundColor: '#eeeeee', color: '#999999', fontSize: '10px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', margin: '0 auto' }}>SIN FOTO</div>
                     )}
                   </td>
-                  <td className="p-3 align-middle">
-                    <p className="font-black text-sm uppercase leading-tight">{item.nombre}</p>
+                  <td style={{ verticalAlign: 'middle' }}>
+                    <p style={{ margin: '0', fontWeight: '900', fontSize: '15px', textTransform: 'uppercase', color: '#000000' }}>{item.nombre}</p>
                   </td>
-                  <td className="p-3 align-middle">
-                    <span className="inline-block px-3 py-1.5 bg-gray-100 border border-gray-300 rounded-md font-black text-xs uppercase tracking-widest">
+                  <td style={{ verticalAlign: 'middle' }}>
+                    <span style={{ padding: '4px 8px', backgroundColor: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: '4px', fontWeight: 'bold', fontSize: '12px', textTransform: 'uppercase', color: '#000000' }}>
                       {item.talle}
                     </span>
                   </td>
-                  <td className="p-3 text-center align-middle">
-                    <div className="w-8 h-8 border-2 border-gray-400 rounded-lg mx-auto"></div>
+                  <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                    <div style={{ width: '25px', height: '25px', border: '2px solid #999999', borderRadius: '4px', margin: '0 auto' }}></div>
                   </td>
                 </tr>
               ))}
@@ -525,7 +537,7 @@ const SalesHistoryPage = () => {
               {selectedSales.size > 0 && (
                 <div className="flex items-center w-full sm:w-auto gap-2 bg-indigo-50 dark:bg-indigo-900/30 p-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 animate-fade-in shadow-inner">
                   <span className="text-[10px] font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-widest px-2 whitespace-nowrap">{selectedSales.size} sel.</span>
-                  <button onClick={handleGeneratePickingList} className="flex-1 sm:flex-none bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white px-4 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center shadow-md transition-all active:scale-95">
+                  <button onClick={handleGeneratePickingList} disabled={isPrintingList} className="flex-1 sm:flex-none bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white px-4 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center shadow-md transition-all active:scale-95 disabled:opacity-50">
                     <ListChecks size={14} className="mr-1.5" /> Lista Armado
                   </button>
                 </div>
