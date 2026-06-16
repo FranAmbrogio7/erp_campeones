@@ -13,10 +13,7 @@ export const Ticket = React.forwardRef(({ saleData }, ref) => {
       <style>
         {`
           @media print {
-            @page { margin: 0; size: auto; }
-            body * { visibility: hidden; }
-            .ticket-content, .ticket-content * { visibility: visible; }
-            .ticket-content { position: absolute; left: 0; top: 0; width: 100%; }
+            @page { margin: 0; size: 80mm auto; }
           }
         `}
       </style>

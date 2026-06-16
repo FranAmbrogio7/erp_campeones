@@ -43,7 +43,6 @@ const SalesHistoryPage = () => {
   // --- ESTADOS DE LISTA DE ARMADO (PICKING LIST) ---
   const [selectedSales, setSelectedSales] = useState(new Set());
   const [pickingListData, setPickingListData] = useState([]);
-  const [isPrintingList, setIsPrintingList] = useState(false); // NUEVO ESTADO DE CONTROL
 
   // --- REFS PARA IMPRESIÓN ---
   const ticketRef = useRef(null);
@@ -99,20 +98,6 @@ const SalesHistoryPage = () => {
     setCurrentPage(1);
     setSelectedSales(new Set());
   }, [filterMethod, searchTerm, sales, tipoCajaFiltro]);
-
-  // --- EFECTO GATILLO PARA LA LISTA DE ARMADO (BLINDADO) ---
-  useEffect(() => {
-    if (isPrintingList && pickingListData.length > 0) {
-      const toastId = toast.loading("Maquetando documento para imprimir...");
-      // Le damos 800ms al DOM para que dibuje las imágenes antes de imprimir
-      const timer = setTimeout(() => {
-        toast.dismiss(toastId);
-        if (pickingListPrintFn) pickingListPrintFn();
-        setIsPrintingList(false); // Reseteamos el estado
-      }, 800);
-      return () => clearTimeout(timer);
-    }
-  }, [isPrintingList, pickingListData, pickingListPrintFn]);
 
   // --- LÓGICA DE FECHAS RÁPIDAS ---
   const setQuickDate = (type) => {
@@ -189,7 +174,7 @@ const SalesHistoryPage = () => {
     setSelectedSales(newSet);
   };
 
-  // --- GENERACIÓN DE LISTA DE ARMADO ---
+  // --- GENERACIÓN DE LISTA DE ARMADO (PICKING LIST) BLINDADA ---
   const handleGeneratePickingList = () => {
     const selected = sales.filter(s => selectedSales.has(s.id));
     const aggregated = {};
@@ -211,7 +196,14 @@ const SalesHistoryPage = () => {
 
     const sortedList = Object.values(aggregated).sort((a, b) => b.cantidad - a.cantidad);
     setPickingListData(sortedList);
-    setIsPrintingList(true); // Disparamos el Effect
+
+    const toastId = toast.loading("Generando y acomodando lista...");
+
+    // Le damos casi un segundo al navegador para que dibuje todo el HTML en el fondo
+    setTimeout(() => {
+      toast.dismiss(toastId);
+      if (pickingListPrintFn) pickingListPrintFn();
+    }, 800);
   };
 
   // --- LÓGICA DE FILTRADO LOCAL ---
@@ -281,63 +273,66 @@ const SalesHistoryPage = () => {
   );
 
   return (
-    <div className="flex flex-col h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950 transition-colors duration-300 overflow-hidden relative">
+    <div className="flex flex-col h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950 transition-colors duration-300 overflow-hidden">
       <Toaster position="top-center" />
 
-      {/* OCULTO: PLANTILLA DE TICKET Y LISTA DE ARMADO */}
-      <div style={{ position: 'absolute', left: '-9999px', top: '0', zIndex: -10 }}>
-        <div ref={ticketRef}><Ticket saleData={ticketData} /></div>
+      {/* 
+        OCULTO: PLANTILLA DE TICKET Y LISTA DE ARMADO 
+        Usamos overflow-hidden y height-0 para esconderlo sin usar display:none,
+        así react-to-print lo puede "ver" perfectamente.
+      */}
+      <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', width: '80mm' }}>
 
-        {/* REPORTE: LISTA DE ARMADO PDF - Construido con estilos inline seguros */}
-        <div ref={pickingListRef} style={{ padding: '20px 40px', backgroundColor: '#ffffff', color: '#000000', width: '210mm', fontFamily: 'Arial, sans-serif', boxSizing: 'border-box' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '3px solid #000000', paddingBottom: '15px', marginBottom: '20px' }}>
+        {/* Ticket normal */}
+        <Ticket ref={ticketRef} saleData={ticketData} />
+
+        {/* REPORTE: LISTA DE ARMADO PDF - Con anchos y colores estrictos para evitar colapsos */}
+        <div ref={pickingListRef} className="font-sans" style={{ backgroundColor: '#ffffff', color: '#000000', width: '210mm', padding: '15mm', boxSizing: 'border-box' }}>
+
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '3px solid #000', paddingBottom: '16px', marginBottom: '24px' }}>
             <div>
-              <h2 style={{ margin: '0', fontSize: '26px', fontWeight: '900', textTransform: 'uppercase', color: '#000000' }}>Lista de Armado (Picking)</h2>
-              <p style={{ margin: '5px 0 0 0', fontSize: '13px', fontWeight: 'bold', color: '#555555', textTransform: 'uppercase' }}>Órdenes Agrupadas: {selectedSales.size}</p>
+              <h2 style={{ fontSize: '24px', fontWeight: '900', textTransform: 'uppercase', margin: 0 }}>Lista de Armado (Picking)</h2>
+              <p style={{ fontSize: '12px', fontWeight: 'bold', color: '#4b5563', textTransform: 'uppercase', margin: '4px 0 0 0' }}>Órdenes Agrupadas: {selectedSales.size}</p>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <p style={{ margin: '0', fontSize: '18px', fontWeight: '900', color: '#000000' }}>{new Date().toLocaleDateString('es-AR')}</p>
-              <p style={{ margin: '5px 0 0 0', fontSize: '11px', fontWeight: 'bold', color: '#777777', textTransform: 'uppercase' }}>Generado desde ERP</p>
+              <p style={{ fontSize: '18px', fontWeight: '900', margin: 0 }}>{new Date().toLocaleDateString('es-AR')}</p>
+              <p style={{ fontSize: '10px', fontWeight: 'bold', color: '#6b7280', textTransform: 'uppercase', margin: '4px 0 0 0' }}>Generado desde ERP</p>
             </div>
           </div>
 
-          <table border="1" cellPadding="10" style={{ width: '100%', borderCollapse: 'collapse', borderColor: '#dddddd', textAlign: 'left' }}>
-            <thead style={{ backgroundColor: '#f3f4f6' }}>
-              <tr>
-                <th style={{ width: '60px', textAlign: 'center', fontWeight: '900', fontSize: '12px', color: '#000000' }}>CANT</th>
-                <th style={{ width: '80px', textAlign: 'center', fontWeight: '900', fontSize: '12px', color: '#000000' }}>FOTO</th>
-                <th style={{ fontWeight: '900', fontSize: '12px', color: '#000000' }}>PRODUCTO / DESCRIPCIÓN</th>
-                <th style={{ width: '160px', fontWeight: '900', fontSize: '12px', color: '#000000' }}>VARIANTE / TALLE</th>
-                <th style={{ width: '60px', textAlign: 'center', fontWeight: '900', fontSize: '12px', color: '#000000' }}>CHECK</th>
+          <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr style={{ borderBottom: '2px solid #000', borderTop: '2px solid #000', backgroundColor: '#f3f4f6' }}>
+                <th style={{ width: '60px', textAlign: 'center', padding: '12px', fontWeight: '900', textTransform: 'uppercase', fontSize: '11px' }}>Cant.</th>
+                <th style={{ width: '80px', textAlign: 'center', padding: '12px', fontWeight: '900', textTransform: 'uppercase', fontSize: '11px' }}>Foto</th>
+                <th style={{ padding: '12px', fontWeight: '900', textTransform: 'uppercase', fontSize: '11px' }}>Producto / Descripción</th>
+                <th style={{ width: '150px', padding: '12px', fontWeight: '900', textTransform: 'uppercase', fontSize: '11px' }}>Variante / Talle</th>
+                <th style={{ width: '60px', textAlign: 'center', padding: '12px', fontWeight: '900', textTransform: 'uppercase', fontSize: '11px' }}>Check</th>
               </tr>
             </thead>
             <tbody>
               {pickingListData.map((item, idx) => (
-                <tr key={idx}>
-                  <td style={{ textAlign: 'center', verticalAlign: 'middle', fontSize: '28px', fontWeight: '900', color: '#000000' }}>
-                    {item.cantidad}
+                <tr key={idx} style={{ borderBottom: '1px solid #d1d5db' }}>
+                  <td style={{ textAlign: 'center', padding: '12px', verticalAlign: 'middle' }}>
+                    <span style={{ fontSize: '28px', fontWeight: '900' }}>{item.cantidad}</span>
                   </td>
-                  <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
+                  <td style={{ textAlign: 'center', padding: '12px', verticalAlign: 'middle' }}>
                     {item.imagen ? (
-                      <img
-                        src={`${api.defaults.baseURL || ''}/static/uploads/${item.imagen}`}
-                        style={{ width: '65px', height: '65px', objectFit: 'cover', borderRadius: '4px', display: 'block', margin: '0 auto' }}
-                        alt="prod"
-                      />
+                      <img src={`${api.defaults.baseURL}/static/uploads/${item.imagen}`} style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e5e7eb', margin: '0 auto' }} />
                     ) : (
-                      <div style={{ width: '65px', height: '65px', backgroundColor: '#eeeeee', color: '#999999', fontSize: '10px', fontWeight: 'bold', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '4px', margin: '0 auto' }}>SIN FOTO</div>
+                      <div style={{ width: '60px', height: '60px', backgroundColor: '#f3f4f6', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: 'bold', color: '#9ca3af', border: '1px solid #e5e7eb', margin: '0 auto' }}>SIN FOTO</div>
                     )}
                   </td>
-                  <td style={{ verticalAlign: 'middle' }}>
-                    <p style={{ margin: '0', fontWeight: '900', fontSize: '15px', textTransform: 'uppercase', color: '#000000' }}>{item.nombre}</p>
+                  <td style={{ padding: '12px', verticalAlign: 'middle' }}>
+                    <p style={{ fontWeight: '900', fontSize: '14px', textTransform: 'uppercase', margin: 0, lineHeight: '1.2' }}>{item.nombre}</p>
                   </td>
-                  <td style={{ verticalAlign: 'middle' }}>
-                    <span style={{ padding: '4px 8px', backgroundColor: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: '4px', fontWeight: 'bold', fontSize: '12px', textTransform: 'uppercase', color: '#000000' }}>
+                  <td style={{ padding: '12px', verticalAlign: 'middle' }}>
+                    <span style={{ display: 'inline-block', padding: '4px 8px', backgroundColor: '#f3f4f6', border: '1px solid #d1d5db', borderRadius: '4px', fontWeight: '900', fontSize: '11px', textTransform: 'uppercase' }}>
                       {item.talle}
                     </span>
                   </td>
-                  <td style={{ textAlign: 'center', verticalAlign: 'middle' }}>
-                    <div style={{ width: '25px', height: '25px', border: '2px solid #999999', borderRadius: '4px', margin: '0 auto' }}></div>
+                  <td style={{ textAlign: 'center', padding: '12px', verticalAlign: 'middle' }}>
+                    <div style={{ width: '24px', height: '24px', border: '2px solid #9ca3af', borderRadius: '6px', margin: '0 auto' }}></div>
                   </td>
                 </tr>
               ))}
@@ -537,7 +532,7 @@ const SalesHistoryPage = () => {
               {selectedSales.size > 0 && (
                 <div className="flex items-center w-full sm:w-auto gap-2 bg-indigo-50 dark:bg-indigo-900/30 p-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 animate-fade-in shadow-inner">
                   <span className="text-[10px] font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-widest px-2 whitespace-nowrap">{selectedSales.size} sel.</span>
-                  <button onClick={handleGeneratePickingList} disabled={isPrintingList} className="flex-1 sm:flex-none bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white px-4 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center shadow-md transition-all active:scale-95 disabled:opacity-50">
+                  <button onClick={handleGeneratePickingList} className="flex-1 sm:flex-none bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white px-4 py-2.5 rounded-lg text-[10px] font-black uppercase tracking-widest flex items-center justify-center shadow-md transition-all active:scale-95">
                     <ListChecks size={14} className="mr-1.5" /> Lista Armado
                   </button>
                 </div>
