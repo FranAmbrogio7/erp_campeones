@@ -6,7 +6,7 @@ import {
     ArrowLeft, Trash2, Calculator, Search, X, Plus, Shirt,
     PackagePlus, PackageMinus, ArrowRight, FileCheck,
     Banknote, CreditCard, Smartphone, Maximize2, FilterX,
-    TrendingUp, TrendingDown, Lock
+    TrendingUp, TrendingDown, Lock, Edit3, Tag
 } from 'lucide-react';
 import toast, { Toaster } from 'react-hot-toast';
 import { useReactToPrint } from 'react-to-print';
@@ -148,6 +148,12 @@ const ReturnsPage = () => {
     const [resultsOut, setResultsOut] = useState([]);
     const [showDropdownOut, setShowDropdownOut] = useState(false);
 
+    // --- NUEVO: ESTADOS PARA ITEM LIBRE E ÍTEM EN EDICIÓN ---
+    const [isCustomModalOpen, setIsCustomModalOpen] = useState(false);
+    const [customModalType, setCustomModalType] = useState('IN'); // 'IN' o 'OUT'
+    const [customItemData, setCustomItemData] = useState({ description: '', price: '' });
+    const [editingItemId, setEditingItemId] = useState(null);
+
     const [variantModalData, setVariantModalData] = useState(null);
     const [transactionResult, setTransactionResult] = useState(null);
     const [zoomImage, setZoomImage] = useState(null);
@@ -209,22 +215,19 @@ const ReturnsPage = () => {
         return () => clearTimeout(delay);
     }, [termIn, termOut, selectedCat, sortBy, activeSearchSide]);
 
-    // --- NUEVA LÓGICA DIRECTA ---
     const handleSizeClick = (product, talle, type) => {
         const variantsForSize = product.variantes.filter(v => v.talle === talle);
         const hasOptions = variantsForSize.some(v => getRealEstampa(v.estampa) !== null);
 
         if (!hasOptions) {
-            // Sin estampa real, se agrega directo
             let variantToAdd;
             if (type === 'IN') {
-                variantToAdd = variantsForSize[0]; // En devolución aceptamos el primero
+                variantToAdd = variantsForSize[0]; 
             } else {
                 variantToAdd = variantsForSize.find(v => v.stock > 0) || variantsForSize[0];
             }
             addManualItem(product, variantToAdd, type);
         } else {
-            // Tiene opciones reales de estampas, abrimos el modal solo para este talle
             setVariantModalData({ product: { ...product, preselectedTalle: talle }, type });
         }
     };
@@ -250,11 +253,13 @@ const ReturnsPage = () => {
         if (type === 'IN') {
             setItemsIn(prev => [...prev, item]);
             setVariantModalData(null);
+            setShowDropdownIn(false);
             setTimeout(() => inputInRef.current?.focus(), 100);
         } else {
             if (item.stock_actual <= 0) { toast.error("Sin stock físico"); return; }
             setItemsOut(prev => [...prev, item]);
             setVariantModalData(null);
+            setShowDropdownOut(false);
             setTimeout(() => inputOutRef.current?.focus(), 100);
         }
         
@@ -288,6 +293,58 @@ const ReturnsPage = () => {
 
     const removeItemIn = (uid) => setItemsIn(prev => prev.filter(i => i.uid !== uid));
     const removeItemOut = (uid) => setItemsOut(prev => prev.filter(i => i.uid !== uid));
+
+    // --- NUEVO: FUNCIÓN PARA AGREGAR ÍTEM LIBRE ---
+    const handleAddCustomItem = (e) => {
+        e.preventDefault();
+        if (!customItemData.description || !customItemData.price) return;
+        
+        const item = {
+            id_variante: `custom-${Date.now()}`,
+            uid: Date.now() + Math.random(),
+            sku: 'MANUAL',
+            nombre: customItemData.description.toUpperCase(),
+            talle: '-',
+            precio: parseFloat(customItemData.price),
+            cantidad: 1,
+            stock_actual: 9999,
+            is_custom: true
+        };
+
+        if (customModalType === 'IN') {
+            setItemsIn(prev => [...prev, item]);
+            toast.success(`Artículo libre ingresado a Devolución`);
+        } else {
+            setItemsOut(prev => [...prev, item]);
+            toast.success(`Artículo libre ingresado a Nuevo`);
+        }
+        
+        setCustomItemData({ description: '', price: '' });
+        setIsCustomModalOpen(false);
+    };
+
+    // --- NUEVO: FUNCIÓN PARA MODIFICAR EL PRECIO DEL ÍTEM EN VIVO ---
+    const updateItemPrice = (uid, type, newPrice) => {
+        const parsedPrice = parseFloat(newPrice);
+        
+        if (type === 'IN') {
+            setItemsIn(prev => prev.map(item => {
+                if (item.uid === uid) {
+                    const validPrice = isNaN(parsedPrice) ? item.precio : parsedPrice;
+                    return { ...item, precio: validPrice };
+                }
+                return item;
+            }));
+        } else {
+            setItemsOut(prev => prev.map(item => {
+                if (item.uid === uid) {
+                    const validPrice = isNaN(parsedPrice) ? item.precio : parsedPrice;
+                    return { ...item, precio: validPrice };
+                }
+                return item;
+            }));
+        }
+    };
 
     // --- CALCULOS MATEMÁTICOS ---
     const totalIn = itemsIn.reduce((acc, i) => acc + i.precio, 0);
@@ -359,7 +416,6 @@ const ReturnsPage = () => {
                                     <span className={`text-base font-black ${type === 'IN' ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>${prod.precio.toLocaleString()}</span>
                                 </div>
                                 
-                                {/* BOTONES DE TALLES AMPLIOS DIRECTOS */}
                                 <div className="mt-1 flex flex-wrap gap-2">
                                     {tallesUnicos.length > 0 ? tallesUnicos.map(t => {
                                         const variantsForSize = prod.variantes.filter(v => v.talle === t);
@@ -397,7 +453,6 @@ const ReturnsPage = () => {
         );
     };
 
-    // PROTECCIÓN: SI LA CAJA ESTÁ CERRADA
     if (isRegisterOpen === false) {
         return (
             <div className="h-[calc(100vh-4rem)] flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
@@ -423,6 +478,38 @@ const ReturnsPage = () => {
 
             {/* MODALES */}
             <VariantSelectionModal data={variantModalData} onClose={() => setVariantModalData(null)} onSelect={addManualItem} />
+
+            {/* MODAL ARTÍCULO LIBRE */}
+            {isCustomModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-fade-in">
+                    <div className={`bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col transition-colors border-2 ${customModalType === 'IN' ? 'border-red-300 dark:border-red-700' : 'border-emerald-300 dark:border-emerald-700'}`}>
+                        <div className={`p-6 flex justify-between items-center ${customModalType === 'IN' ? 'bg-red-50 dark:bg-red-900/20' : 'bg-emerald-50 dark:bg-emerald-900/20'}`}>
+                        <h3 className={`text-xl font-black flex items-center tracking-tight ${customModalType === 'IN' ? 'text-red-800 dark:text-red-300' : 'text-emerald-800 dark:text-emerald-300'}`}>
+                            {customModalType === 'IN' ? <PackagePlus className="mr-3 text-red-500" size={24} /> : <PackageMinus className="mr-3 text-emerald-500" size={24} />} 
+                            {customModalType === 'IN' ? 'Anotador Libre: Recibir' : 'Anotador Libre: Entregar'}
+                        </h3>
+                        <button onClick={() => setIsCustomModalOpen(false)} className="text-slate-400 hover:text-red-500 bg-white dark:bg-slate-800 p-2 rounded-full shadow-sm"><X size={20} /></button>
+                        </div>
+                        <form onSubmit={handleAddCustomItem} className="p-6 space-y-5">
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Nombre / Descripción</label>
+                            <input autoFocus required value={customItemData.description} onChange={e => setCustomItemData({ ...customItemData, description: e.target.value })} className={`w-full p-4 border-2 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 rounded-2xl outline-none font-bold text-slate-800 dark:text-white placeholder-slate-300 transition-all ${customModalType === 'IN' ? 'focus:border-red-500' : 'focus:border-emerald-500'}`} placeholder="Ej: Playera Básica Negra..." />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Valor</label>
+                            <div className="relative">
+                            <span className={`absolute left-4 top-4 font-black text-xl ${customModalType === 'IN' ? 'text-red-400' : 'text-emerald-400'}`}>$</span>
+                            <input type="number" required min="0" step="0.01" value={customItemData.price} onChange={e => setCustomItemData({ ...customItemData, price: e.target.value })} className={`w-full pl-10 p-4 border-2 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 rounded-2xl outline-none font-black text-2xl text-slate-800 dark:text-white placeholder-slate-300 transition-all ${customModalType === 'IN' ? 'focus:border-red-500' : 'focus:border-emerald-500'}`} placeholder="0.00" />
+                            </div>
+                        </div>
+                        <div className="flex gap-4 mt-8 pt-4 border-t border-slate-100 dark:border-slate-700">
+                            <button type="button" onClick={() => setIsCustomModalOpen(false)} className="flex-1 py-4 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-black text-xs uppercase tracking-widest hover:bg-slate-200 dark:hover:bg-slate-600 rounded-2xl transition-colors">Cancelar</button>
+                            <button type="submit" className={`flex-1 py-4 text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-lg transition-all active:scale-95 ${customModalType === 'IN' ? 'bg-gradient-to-r from-red-500 to-rose-600 hover:from-red-600 hover:to-rose-700 shadow-red-500/30' : 'bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 shadow-emerald-500/30'}`}>AGREGAR AL TICKET</button>
+                        </div>
+                        </form>
+                    </div>
+                </div>
+            )}
 
             {zoomImage && (
                 <div className="fixed inset-0 z-[300] bg-slate-900/90 flex items-center justify-center p-4 backdrop-blur-md animate-fade-in cursor-zoom-out" onClick={() => setZoomImage(null)}>
@@ -559,7 +646,12 @@ const ReturnsPage = () => {
                 <div className="flex-1 flex flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-md border border-red-100 dark:border-red-900/50 overflow-hidden relative z-20 transition-colors">
                     <div className="absolute top-0 left-0 w-full h-1.5 bg-red-500"></div>
                     <div className="p-4 md:p-5 bg-red-50/80 dark:bg-red-900/20 border-b border-red-100 dark:border-red-900/50 shrink-0">
-                        <h3 className="font-black text-red-800 dark:text-red-400 flex items-center mb-4 text-sm uppercase tracking-widest"><ArrowLeft className="mr-2" size={18} /> Devolución</h3>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-black text-red-800 dark:text-red-400 flex items-center text-sm uppercase tracking-widest"><ArrowLeft className="mr-2" size={18} /> Devolución</h3>
+                            <button onClick={() => { setCustomModalType('IN'); setCustomItemData({ description: '', price: '' }); setIsCustomModalOpen(true); }} className="text-[10px] px-3 py-1.5 rounded-lg border font-bold flex items-center bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800 hover:bg-red-200 dark:hover:bg-red-900/50 transition-colors">
+                                <Plus size={14} className="mr-1" /> Anotador
+                            </button>
+                        </div>
                         <div className="relative" ref={containerInRef}>
                             <form onSubmit={(e) => handleScan(e, 'IN')}>
                                 <input
@@ -587,23 +679,40 @@ const ReturnsPage = () => {
                         ) : itemsIn.map((item) => {
                             const estampaReal = getRealEstampa(item.estampa);
                             return (
-                                <div key={item.uid} className="bg-white dark:bg-slate-800 p-3 md:p-4 rounded-2xl shadow-sm border border-red-100 dark:border-red-900/50 flex justify-between items-center animate-fade-in-left group hover:border-red-300 dark:hover:border-red-800 transition-all">
-                                    <div className="flex items-center gap-3 md:gap-4">
-                                        <div className="w-12 h-12 bg-slate-50 dark:bg-slate-700 rounded-xl border dark:border-slate-600 shrink-0 overflow-hidden cursor-zoom-in relative" onClick={() => item.imagen && setZoomImage(`${api.defaults.baseURL}/static/uploads/${item.imagen}`)}>
-                                            {item.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${item.imagen}`} className="w-full h-full object-cover" /> : <Shirt size={20} className="text-slate-300 dark:text-slate-500 m-auto mt-3" />}
-                                            {item.imagen && <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center backdrop-blur-[1px]"><Maximize2 size={16} className="text-white" /></div>}
-                                        </div>
-                                        <div className="min-w-0 pr-4">
-                                            <p className="font-bold text-slate-800 dark:text-white text-sm leading-tight truncate">{item.nombre}</p>
-                                            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                                <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-600 shadow-sm">Talle {item.talle}</span>
-                                                {estampaReal && <span className="text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800 shadow-sm">{estampaReal}</span>}
+                                <div key={item.uid} className="bg-white dark:bg-slate-800 p-3 md:p-4 rounded-2xl shadow-sm border border-red-100 dark:border-red-900/50 flex flex-col gap-3 animate-fade-in-left group hover:border-red-300 dark:hover:border-red-800 transition-all">
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex items-center gap-3 md:gap-4">
+                                            <div className="w-12 h-12 bg-slate-50 dark:bg-slate-700 rounded-xl border dark:border-slate-600 shrink-0 overflow-hidden cursor-zoom-in relative" onClick={() => item.imagen && setZoomImage(`${api.defaults.baseURL}/static/uploads/${item.imagen}`)}>
+                                                {item.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${item.imagen}`} className="w-full h-full object-cover" /> : <Shirt size={20} className="text-slate-300 dark:text-slate-500 m-auto mt-3" />}
+                                                {item.imagen && <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center backdrop-blur-[1px]"><Maximize2 size={16} className="text-white" /></div>}
+                                            </div>
+                                            <div className="min-w-0 pr-4">
+                                                <p className="font-bold text-slate-800 dark:text-white text-sm leading-tight truncate">{item.nombre}</p>
+                                                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-600 shadow-sm">Talle {item.talle}</span>
+                                                    {estampaReal && <span className="text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800 shadow-sm">{estampaReal}</span>}
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                    <div className="flex flex-col items-end gap-2 shrink-0">
                                         <button onClick={() => removeItemIn(item.uid)} className="text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors p-1"><Trash2 size={18} /></button>
-                                        <span className="font-black text-red-600 dark:text-red-400 font-mono tracking-tighter text-lg">$ {item.precio.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-end items-center pt-2 border-t border-red-50 dark:border-slate-700/50">
+                                        <span className="text-[10px] text-red-400 dark:text-red-500 uppercase tracking-widest font-black mr-3">VALOR</span>
+                                        {editingItemId === item.uid ? (
+                                            <input 
+                                                autoFocus 
+                                                type="number" 
+                                                className="w-24 text-right font-black text-sm border-b-2 outline-none px-1 rounded-t transition-all shadow-inner border-red-500 bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400" 
+                                                defaultValue={item.precio} 
+                                                onBlur={(e) => { updateItemPrice(item.uid, 'IN', e.target.value); setEditingItemId(null); }} 
+                                                onKeyDown={(e) => { if (e.key === 'Enter') { updateItemPrice(item.uid, 'IN', e.target.value); setEditingItemId(null); } }} 
+                                            />
+                                        ) : (
+                                            <div onClick={() => setEditingItemId(item.uid)} className="flex items-center cursor-pointer px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors" title="Editar valor de devolución">
+                                                <span className="font-black text-red-600 dark:text-red-400 font-mono tracking-tighter text-lg">$ {item.precio.toLocaleString()}</span>
+                                                <Edit3 size={12} className="ml-1.5 text-red-300 group-hover:text-red-500" />
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )
@@ -621,7 +730,6 @@ const ReturnsPage = () => {
                     <div className="bg-slate-900 dark:bg-black text-white p-6 rounded-3xl shadow-2xl flex flex-col relative overflow-hidden border border-slate-800 h-full">
                         <div className="absolute top-0 right-0 p-4 opacity-5"><Calculator size={140} /></div>
 
-                        {/* Contenedor central con scroll */}
                         <div className="relative z-10 flex-1 overflow-y-auto custom-scrollbar pr-2 pb-2 block">
                             <h3 className="text-slate-400 text-[11px] font-black uppercase tracking-widest mb-4 border-b border-slate-800 pb-3 flex items-center"><ArrowRightLeft size={16} className="mr-2"/> Balance</h3>
                             
@@ -630,7 +738,6 @@ const ReturnsPage = () => {
                                 <span className="font-mono font-black text-emerald-400 text-lg tracking-tighter">+ {rawTotalOut.toLocaleString()}</span>
                             </div>
 
-                            {/* RECARGOS Y DESCUENTOS ESTILO POS */}
                             {(itemsOut.length > 0 || itemsIn.length > 0) && (
                                 <div className="grid grid-cols-2 gap-3 mb-4 mt-2">
                                     <div className="bg-orange-500/10 p-2.5 rounded-xl border border-orange-500/30">
@@ -686,7 +793,6 @@ const ReturnsPage = () => {
                             )}
                         </div>
 
-                        {/* Botón confirmar anclado abajo */}
                         <button onClick={handleProcess} disabled={itemsIn.length === 0 && itemsOut.length === 0} className={`w-full py-4 rounded-2xl font-black text-sm tracking-widest uppercase shadow-xl transition-all active:scale-95 flex items-center justify-center relative z-10 mt-4 shrink-0 ${itemsIn.length === 0 && itemsOut.length === 0 ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-500/30'}`}><FileCheck size={20} className="mr-2" /> CONFIRMAR</button>
                     </div>
                 </div>
@@ -695,7 +801,12 @@ const ReturnsPage = () => {
                 <div className="flex-1 flex flex-col bg-white dark:bg-slate-900 rounded-3xl shadow-md border border-emerald-100 dark:border-emerald-900/50 overflow-hidden relative z-20 transition-colors">
                     <div className="absolute top-0 left-0 w-full h-1.5 bg-emerald-500"></div>
                     <div className="p-4 md:p-5 bg-emerald-50/80 dark:bg-emerald-900/20 border-b border-emerald-100 dark:border-emerald-900/50 shrink-0">
-                        <h3 className="font-black text-emerald-800 dark:text-emerald-400 flex items-center mb-4 text-sm uppercase tracking-widest"><ArrowRight className="mr-2" size={18} /> Cliente Lleva (Nuevo)</h3>
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-black text-emerald-800 dark:text-emerald-400 flex items-center text-sm uppercase tracking-widest"><ArrowRight className="mr-2" size={18} /> Cliente Lleva</h3>
+                            <button onClick={() => { setCustomModalType('OUT'); setCustomItemData({ description: '', price: '' }); setIsCustomModalOpen(true); }} className="text-[10px] px-3 py-1.5 rounded-lg border font-bold flex items-center bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 hover:bg-emerald-200 dark:hover:bg-emerald-900/50 transition-colors">
+                                <Plus size={14} className="mr-1" /> Anotador
+                            </button>
+                        </div>
                         <div className="relative" ref={containerOutRef}>
                             <form onSubmit={(e) => handleScan(e, 'OUT')}>
                                 <input
@@ -723,23 +834,41 @@ const ReturnsPage = () => {
                         ) : itemsOut.map((item) => {
                             const estampaReal = getRealEstampa(item.estampa);
                             return (
-                                <div key={item.uid} className="bg-white dark:bg-slate-800 p-3 md:p-4 rounded-2xl shadow-sm border border-emerald-100 dark:border-emerald-900/50 flex justify-between items-center animate-fade-in-right group hover:border-emerald-300 dark:hover:border-emerald-800 transition-all">
-                                    <div className="flex items-center gap-3 md:gap-4">
-                                        <div className="w-12 h-12 bg-slate-50 dark:bg-slate-700 rounded-xl border dark:border-slate-600 shrink-0 overflow-hidden cursor-zoom-in relative" onClick={() => item.imagen && setZoomImage(`${api.defaults.baseURL}/static/uploads/${item.imagen}`)}>
-                                            {item.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${item.imagen}`} className="w-full h-full object-cover" /> : <Shirt size={20} className="text-slate-300 dark:text-slate-500 m-auto mt-3" />}
-                                            {item.imagen && <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center backdrop-blur-[1px]"><Maximize2 size={16} className="text-white" /></div>}
-                                        </div>
-                                        <div className="min-w-0 pr-4">
-                                            <p className="font-bold text-slate-800 dark:text-white text-sm leading-tight truncate">{item.nombre}</p>
-                                            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                                                <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-600 shadow-sm">Talle {item.talle}</span>
-                                                {estampaReal && <span className="text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800 shadow-sm">{estampaReal}</span>}
+                                <div key={item.uid} className="bg-white dark:bg-slate-800 p-3 md:p-4 rounded-2xl shadow-sm border border-emerald-100 dark:border-emerald-900/50 flex flex-col gap-3 animate-fade-in-right group hover:border-emerald-300 dark:hover:border-emerald-800 transition-all">
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex items-center gap-3 md:gap-4">
+                                            <div className="w-12 h-12 bg-slate-50 dark:bg-slate-700 rounded-xl border dark:border-slate-600 shrink-0 overflow-hidden cursor-zoom-in relative" onClick={() => item.imagen && setZoomImage(`${api.defaults.baseURL}/static/uploads/${item.imagen}`)}>
+                                                {item.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${item.imagen}`} className="w-full h-full object-cover" /> : <Shirt size={20} className="text-slate-300 dark:text-slate-500 m-auto mt-3" />}
+                                                {item.imagen && <div className="absolute inset-0 bg-black/40 hidden group-hover:flex items-center justify-center backdrop-blur-[1px]"><Maximize2 size={16} className="text-white" /></div>}
+                                            </div>
+                                            <div className="min-w-0 pr-4">
+                                                <p className="font-bold text-slate-800 dark:text-white text-sm leading-tight truncate">{item.nombre}</p>
+                                                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                                    <span className="text-[9px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-600 shadow-sm">Talle {item.talle}</span>
+                                                    {estampaReal && <span className="text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-800 shadow-sm">{estampaReal}</span>}
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                    <div className="flex flex-col items-end gap-2 shrink-0">
                                         <button onClick={() => removeItemOut(item.uid)} className="text-slate-300 dark:text-slate-600 hover:text-red-500 dark:hover:text-red-400 transition-colors p-1"><Trash2 size={18} /></button>
-                                        <span className="font-black text-emerald-600 dark:text-emerald-400 font-mono tracking-tighter text-lg">$ {item.precio.toLocaleString()}</span>
+                                    </div>
+                                    
+                                    <div className="flex justify-end items-center pt-2 border-t border-emerald-50 dark:border-slate-700/50">
+                                        <span className="text-[10px] text-emerald-400 dark:text-emerald-500 uppercase tracking-widest font-black mr-3">VALOR</span>
+                                        {editingItemId === item.uid ? (
+                                            <input 
+                                                autoFocus 
+                                                type="number" 
+                                                className="w-24 text-right font-black text-sm border-b-2 outline-none px-1 rounded-t transition-all shadow-inner border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400" 
+                                                defaultValue={item.precio} 
+                                                onBlur={(e) => { updateItemPrice(item.uid, 'OUT', e.target.value); setEditingItemId(null); }} 
+                                                onKeyDown={(e) => { if (e.key === 'Enter') { updateItemPrice(item.uid, 'OUT', e.target.value); setEditingItemId(null); } }} 
+                                            />
+                                        ) : (
+                                            <div onClick={() => setEditingItemId(item.uid)} className="flex items-center cursor-pointer px-2 py-1 rounded-lg hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition-colors" title="Editar valor del artículo nuevo">
+                                                <span className="font-black text-emerald-600 dark:text-emerald-400 font-mono tracking-tighter text-lg">$ {item.precio.toLocaleString()}</span>
+                                                <Edit3 size={12} className="ml-1.5 text-emerald-300 group-hover:text-emerald-500" />
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )
