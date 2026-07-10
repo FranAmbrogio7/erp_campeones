@@ -7,8 +7,21 @@ import {
   Calendar, DollarSign, CreditCard, ShoppingBag,
   Printer, Eye, X, Package, Search, FilterX,
   ChevronLeft, ChevronRight, Edit, Clock, Store, Tag, Receipt, Trash2,
-  CheckSquare, Square, ListChecks
+  CheckSquare, Square, ListChecks, Cloud, CalendarCheck, CheckCircle2, AlertCircle
 } from 'lucide-react';
+
+// Utilidad para normalizar fechas de BD (soporta YYYY-MM-DD y DD/MM/YYYY)
+const normalizeDateToYYYYMMDD = (dateStr) => {
+  if (!dateStr) return '1970-01-01';
+  const justDate = dateStr.split(' ')[0];
+  if (justDate.includes('/')) {
+    const parts = justDate.split('/');
+    if (parts[0].length === 2) {
+      return `${parts[2]}-${parts[1]}-${parts[0]}`; // Convierte DD/MM/YYYY a YYYY-MM-DD
+    }
+  }
+  return justDate;
+};
 
 const SalesHistoryPage = () => {
   const { token } = useAuth();
@@ -34,6 +47,12 @@ const SalesHistoryPage = () => {
   // --- ESTADOS PARA MODALES ---
   const [viewingSale, setViewingSale] = useState(null);
   const [ticketData, setTicketData] = useState(null);
+  const [isRendicionModalOpen, setIsRendicionModalOpen] = useState(false);
+
+  // --- ESTADO RENDICIÓN TIENDA NUBE (Fecha de Corte) ---
+  const [rendicionDate, setRendicionDate] = useState(() => {
+    return localStorage.getItem('tienda_nube_fecha_corte') || '';
+  });
 
   // --- ESTADOS DE EDICIÓN ---
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -83,6 +102,11 @@ const SalesHistoryPage = () => {
       setSales(resSales.data.history);
       setPaymentMethods(resMethods.data);
       setSelectedSales(new Set());
+      
+      // Opcional: Si luego guardás la fecha de corte en BD, descomentá esto:
+      // const resConfig = await api.get('/config/rendicion');
+      // if (resConfig.data?.fecha_corte) setRendicionDate(resConfig.data.fecha_corte);
+
     } catch (error) {
       toast.error('Error al cargar historial');
     } finally {
@@ -121,6 +145,42 @@ const SalesHistoryPage = () => {
 
     setDateRange({ start, end });
   };
+
+  // --- LÓGICA DE RENDICIÓN POR FECHA (TIENDA NUBE) ---
+  const handleUpdateRendicionDate = async (newDate) => {
+    setRendicionDate(newDate);
+    localStorage.setItem('tienda_nube_fecha_corte', newDate);
+    toast.success('Fecha de corte actualizada');
+    
+    // Opcional: Persistencia en Backend para el futuro
+    // try {
+    //   await api.put('/config/rendicion', { fecha_corte: newDate });
+    // } catch (e) {
+    //   console.error("No se pudo guardar la config en BD");
+    // }
+  };
+
+  const tnMetrics = useMemo(() => {
+    const tnSales = sales.filter(s => (s.metodo || '').toLowerCase().includes('nube') || (s.metodo || '').toLowerCase().includes('tienda'));
+    const pendingSales = [];
+    const settledSales = [];
+
+    tnSales.forEach(s => {
+      const saleDateISO = normalizeDateToYYYYMMDD(s.fecha);
+      // Si no hay fecha seteada, o la fecha de la venta es mayor a la de corte, está pendiente.
+      if (!rendicionDate || saleDateISO > rendicionDate) {
+        pendingSales.push(s);
+      } else {
+        settledSales.push(s);
+      }
+    });
+
+    const pendingTotal = pendingSales.reduce((sum, s) => sum + s.total, 0);
+    const settledTotal = settledSales.reduce((sum, s) => sum + s.total, 0);
+
+    return { tnSales, pendingSales, settledSales, pendingTotal, settledTotal };
+  }, [sales, rendicionDate]);
+
 
   // --- LÓGICA DE EDICIÓN ---
   const openEditModal = (venta) => {
@@ -174,7 +234,7 @@ const SalesHistoryPage = () => {
     setSelectedSales(newSet);
   };
 
-  // --- GENERACIÓN DE LISTA DE ARMADO (PICKING LIST) BLINDADA ---
+  // --- GENERACIÓN DE LISTA DE ARMADO (PICKING LIST) ---
   const handleGeneratePickingList = () => {
     const selected = sales.filter(s => selectedSales.has(s.id));
     const aggregated = {};
@@ -198,8 +258,6 @@ const SalesHistoryPage = () => {
     setPickingListData(sortedList);
 
     const toastId = toast.loading("Generando y acomodando lista...");
-
-    // Le damos casi un segundo al navegador para que dibuje todo el HTML en el fondo
     setTimeout(() => {
       toast.dismiss(toastId);
       if (pickingListPrintFn) pickingListPrintFn();
@@ -221,7 +279,9 @@ const SalesHistoryPage = () => {
       let searchMatch = true;
       if (searchTerm) {
         const term = searchTerm.toLowerCase();
-        searchMatch = venta.id.toString().includes(term) || (venta.items || '').toLowerCase().includes(term);
+        searchMatch = venta.id.toString().includes(term) || 
+                      (venta.orden_tienda_nube && venta.orden_tienda_nube.toString().includes(term)) ||
+                      (venta.items || '').toLowerCase().includes(term);
       }
 
       return methodMatch && searchMatch;
@@ -276,19 +336,10 @@ const SalesHistoryPage = () => {
     <div className="flex flex-col h-[calc(100vh-4rem)] bg-slate-50 dark:bg-slate-950 transition-colors duration-300 overflow-hidden">
       <Toaster position="top-center" />
 
-      {/* 
-        OCULTO: PLANTILLA DE TICKET Y LISTA DE ARMADO 
-        Usamos overflow-hidden y height-0 para esconderlo sin usar display:none,
-        así react-to-print lo puede "ver" perfectamente.
-      */}
+      {/* REFS DE IMPRESIÓN (OCULTOS) */}
       <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', width: '80mm' }}>
-
-        {/* Ticket normal */}
         <Ticket ref={ticketRef} saleData={ticketData} />
-
-        {/* REPORTE: LISTA DE ARMADO PDF - Con anchos y colores estrictos para evitar colapsos */}
         <div ref={pickingListRef} className="font-sans" style={{ backgroundColor: '#ffffff', color: '#000000', width: '210mm', padding: '15mm', boxSizing: 'border-box' }}>
-
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', borderBottom: '3px solid #000', paddingBottom: '16px', marginBottom: '24px' }}>
             <div>
               <h2 style={{ fontSize: '24px', fontWeight: '900', textTransform: 'uppercase', margin: 0 }}>Lista de Armado (Picking)</h2>
@@ -296,15 +347,12 @@ const SalesHistoryPage = () => {
             </div>
             <div style={{ textAlign: 'right' }}>
               <p style={{ fontSize: '18px', fontWeight: '900', margin: 0 }}>{new Date().toLocaleDateString('es-AR')}</p>
-              <p style={{ fontSize: '10px', fontWeight: 'bold', color: '#6b7280', textTransform: 'uppercase', margin: '4px 0 0 0' }}>Generado desde ERP</p>
             </div>
           </div>
-
           <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
             <thead>
               <tr style={{ borderBottom: '2px solid #000', borderTop: '2px solid #000', backgroundColor: '#f3f4f6' }}>
                 <th style={{ width: '60px', textAlign: 'center', padding: '12px', fontWeight: '900', textTransform: 'uppercase', fontSize: '11px' }}>Cant.</th>
-                <th style={{ width: '80px', textAlign: 'center', padding: '12px', fontWeight: '900', textTransform: 'uppercase', fontSize: '11px' }}>Foto</th>
                 <th style={{ padding: '12px', fontWeight: '900', textTransform: 'uppercase', fontSize: '11px' }}>Producto / Descripción</th>
                 <th style={{ width: '150px', padding: '12px', fontWeight: '900', textTransform: 'uppercase', fontSize: '11px' }}>Variante / Talle</th>
                 <th style={{ width: '60px', textAlign: 'center', padding: '12px', fontWeight: '900', textTransform: 'uppercase', fontSize: '11px' }}>Check</th>
@@ -315,13 +363,6 @@ const SalesHistoryPage = () => {
                 <tr key={idx} style={{ borderBottom: '1px solid #d1d5db' }}>
                   <td style={{ textAlign: 'center', padding: '12px', verticalAlign: 'middle' }}>
                     <span style={{ fontSize: '28px', fontWeight: '900' }}>{item.cantidad}</span>
-                  </td>
-                  <td style={{ textAlign: 'center', padding: '12px', verticalAlign: 'middle' }}>
-                    {item.imagen ? (
-                      <img src={`${api.defaults.baseURL}/static/uploads/${item.imagen}`} style={{ width: '60px', height: '60px', objectFit: 'cover', borderRadius: '6px', border: '1px solid #e5e7eb', margin: '0 auto' }} />
-                    ) : (
-                      <div style={{ width: '60px', height: '60px', backgroundColor: '#f3f4f6', borderRadius: '6px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '9px', fontWeight: 'bold', color: '#9ca3af', border: '1px solid #e5e7eb', margin: '0 auto' }}>SIN FOTO</div>
-                    )}
                   </td>
                   <td style={{ padding: '12px', verticalAlign: 'middle' }}>
                     <p style={{ fontWeight: '900', fontSize: '14px', textTransform: 'uppercase', margin: 0, lineHeight: '1.2' }}>{item.nombre}</p>
@@ -341,15 +382,108 @@ const SalesHistoryPage = () => {
         </div>
       </div>
 
+      {/* --- MODAL RENDICIONES TIENDA NUBE (POR FECHA) --- */}
+      {isRendicionModalOpen && (
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[250] flex items-center justify-center p-4 animate-fade-in" onClick={() => setIsRendicionModalOpen(false)}>
+          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] transition-colors border border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
+            <div className="bg-sky-50 dark:bg-sky-900/20 p-6 border-b border-sky-100 dark:border-sky-800/50 flex justify-between items-center text-sky-800 dark:text-sky-300 shrink-0">
+              <div>
+                <h3 className="font-black text-2xl flex items-center tracking-tight"><Cloud className="mr-3 text-sky-500" size={28} /> Control de Rendiciones</h3>
+                <p className="text-[10px] font-bold uppercase tracking-widest text-sky-600 dark:text-sky-400 mt-1">Saldos de Tienda Nube gestionados por fecha de corte</p>
+              </div>
+              <button onClick={() => setIsRendicionModalOpen(false)} className="hover:text-red-500 bg-white dark:bg-slate-800 p-2 rounded-full shadow-sm transition-colors"><X size={20} /></button>
+            </div>
+
+            <div className="p-6 bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
+               <label className="block text-[11px] font-black text-slate-500 uppercase tracking-widest mb-3 flex items-center">
+                  <CalendarCheck size={16} className="mr-1.5" /> Dinero de TN Rendido hasta el día inclusive:
+               </label>
+               <input
+                  type="date"
+                  value={rendicionDate}
+                  onChange={e => handleUpdateRendicionDate(e.target.value)}
+                  className="w-full md:w-1/2 p-4 border-2 border-sky-200 dark:border-sky-700 bg-white dark:bg-slate-800 rounded-2xl font-black text-slate-800 dark:text-white outline-none focus:border-sky-500 transition-all shadow-inner cursor-pointer"
+               />
+               <p className="text-xs text-slate-400 mt-2 font-medium">Toda venta de Tienda Nube posterior a esta fecha aparecerá como pendiente.</p>
+            </div>
+
+            <div className="p-6 grid grid-cols-2 gap-4 shrink-0 bg-slate-50 dark:bg-slate-900/50">
+              <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-emerald-200 dark:border-emerald-800/50 shadow-sm relative overflow-hidden">
+                <div className="absolute right-0 top-0 h-full w-1 bg-emerald-500"></div>
+                <div className="flex items-center text-emerald-500 mb-2">
+                  <CheckCircle2 size={20} className="mr-2" />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Saldado (Histórico)</span>
+                </div>
+                <p className="text-3xl font-black font-mono text-slate-800 dark:text-white">$ {tnMetrics.settledTotal.toLocaleString()}</p>
+                <p className="text-xs text-slate-400 font-bold mt-1">{tnMetrics.settledSales.length} órdenes liquidadas</p>
+              </div>
+
+              <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-orange-200 dark:border-orange-800/50 shadow-sm relative overflow-hidden">
+                <div className="absolute right-0 top-0 h-full w-1 bg-orange-500"></div>
+                <div className="flex items-center text-orange-500 mb-2">
+                  <AlertCircle size={20} className="mr-2" />
+                  <span className="text-[10px] font-black uppercase tracking-widest">Pendiente a Rendir</span>
+                </div>
+                <p className="text-3xl font-black font-mono text-slate-800 dark:text-white">$ {tnMetrics.pendingTotal.toLocaleString()}</p>
+                <p className="text-xs text-slate-400 font-bold mt-1">{tnMetrics.pendingSales.length} órdenes posteriores al corte</p>
+              </div>
+            </div>
+
+            <div className="px-6 pb-2 pt-2 bg-slate-50 dark:bg-slate-900 flex justify-between items-center border-b border-slate-200 dark:border-slate-800 shrink-0">
+               <h4 className="font-black text-xs uppercase tracking-widest text-slate-500">Ventas Pendientes de Cobro</h4>
+               <button 
+                  onClick={() => {
+                    setFilterMethod('Tienda'); 
+                    setIsRendicionModalOpen(false);
+                  }}
+                  className="text-[10px] font-bold text-sky-600 hover:text-sky-800 dark:text-sky-400 underline"
+               >
+                 Ver todas en la tabla
+               </button>
+            </div>
+
+            <div className="p-0 overflow-y-auto flex-1 custom-scrollbar bg-white dark:bg-slate-800">
+              {tnMetrics.pendingSales.length === 0 ? (
+                <div className="p-12 text-center text-slate-400 flex flex-col items-center">
+                  <CheckCircle2 size={48} className="text-emerald-400 mb-3 opacity-50" />
+                  <p className="font-bold text-sm uppercase tracking-widest">¡Todo al día!</p>
+                  <p className="text-xs mt-1">No tienes dinero posterior a tu fecha de corte.</p>
+                </div>
+              ) : (
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-slate-50 dark:bg-slate-900/50 text-slate-400 text-[10px] uppercase font-black sticky top-0">
+                    <tr>
+                      <th className="p-4 pl-6">Fecha Original</th>
+                      <th className="p-4">Orden TN</th>
+                      <th className="p-4 text-right pr-6">Monto Pendiente</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-700/50">
+                    {/* Ordenamos las pendientes para mostrar las más antiguas primero */}
+                    {[...tnMetrics.pendingSales].sort((a,b) => normalizeDateToYYYYMMDD(a.fecha).localeCompare(normalizeDateToYYYYMMDD(b.fecha))).map(s => (
+                      <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-700/30 transition-colors">
+                        <td className="p-4 pl-6 text-xs font-bold text-slate-500">{s.fecha}</td>
+                        <td className="p-4 font-mono font-bold text-sky-600 dark:text-sky-400">#{s.orden_tienda_nube || s.id}</td>
+                        <td className="p-4 text-right pr-6 font-black font-mono text-slate-800 dark:text-white">$ {s.total.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* --- MODAL EDITAR VENTA --- */}
       {isEditModalOpen && saleToEdit && (
         <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-[200] flex items-center justify-center p-4 animate-fade-in" onClick={() => setIsEditModalOpen(false)}>
-          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col transition-colors border border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
+           <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col transition-colors border border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
             <div className="bg-amber-50 dark:bg-amber-900/20 p-5 border-b border-amber-200 dark:border-amber-800/50 flex justify-between items-center text-amber-700 dark:text-amber-400">
               <div>
                 <h3 className="font-black text-xl flex items-center tracking-tight"><Edit className="mr-3" size={24} /> Corregir Venta #{saleToEdit.id}</h3>
               </div>
-              <button onClick={() => setIsEditModalOpen(false)} className="hover:text-red-500 hover:bg-white dark:hover:bg-slate-800 p-2 rounded-full transition-colors"><X size={20} /></button>
+              <button onClick={() => setIsEditModalOpen(false)} className="hover:text-red-500 hover:bg-white dark:bg-slate-800 p-2 rounded-full transition-colors"><X size={20} /></button>
             </div>
 
             <form onSubmit={handleEditSubmit} className="p-6 space-y-5">
@@ -464,14 +598,13 @@ const SalesHistoryPage = () => {
                 <Search className="absolute left-4 top-3.5 text-slate-400" size={18} />
                 <input
                   type="text"
-                  placeholder="Buscar ticket o producto..."
+                  placeholder="Buscar ticket, producto o n° orden TN..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
                   className="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 focus:border-indigo-500 focus:bg-white dark:focus:bg-slate-900 rounded-xl outline-none transition-all font-bold text-slate-700 dark:text-white placeholder-slate-400 text-sm shadow-inner"
                 />
               </div>
 
-              {/* SELECTOR DE TERMINAL */}
               <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-inner w-full md:w-auto overflow-x-auto">
                 <button
                   onClick={() => setTipoCajaFiltro('PRINCIPAL')}
@@ -492,10 +625,7 @@ const SalesHistoryPage = () => {
           {/* Fila 2: Selector de Fechas Original y Filtros Rápidos */}
           <div className="flex flex-col lg:flex-row justify-between items-center gap-4 border-t border-slate-100 dark:border-slate-800 pt-4 mt-2">
 
-            {/* Controles de Fecha */}
             <div className="flex flex-wrap md:flex-nowrap items-center gap-4 w-full lg:w-auto">
-
-              {/* Botones Rápidos */}
               <div className="flex items-center bg-slate-100 dark:bg-slate-800/50 p-1.5 rounded-xl shrink-0 border border-slate-200 dark:border-slate-700">
                 <button onClick={() => setQuickDate('hoy')} className="px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 hover:shadow-sm transition-colors flex items-center"><Clock size={14} className="mr-1.5" /> Hoy</button>
                 <button onClick={() => setQuickDate('7dias')} className="px-4 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-700 hover:shadow-sm transition-colors">7 Días</button>
@@ -504,7 +634,6 @@ const SalesHistoryPage = () => {
 
               <div className="hidden md:block w-px h-8 bg-slate-200 dark:bg-slate-700 mx-1"></div>
 
-              {/* Selector de Rango */}
               <div className="flex gap-3 shrink-0">
                 <div className="relative w-36 md:w-40">
                   <span className="absolute -top-2.5 left-3 bg-white dark:bg-slate-900 px-1 text-[9px] font-black text-slate-400 uppercase tracking-widest rounded-md border border-slate-100 dark:border-slate-800">Desde</span>
@@ -528,7 +657,14 @@ const SalesHistoryPage = () => {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-3 w-full lg:w-auto items-center">
-              {/* BOTÓN LISTA DE ARMADO */}
+              {/* BOTÓN: CONTROL DE RENDICIONES TIENDA NUBE */}
+              <button 
+                onClick={() => setIsRendicionModalOpen(true)} 
+                className="shrink-0 w-full sm:w-auto bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 px-5 py-3 rounded-xl hover:bg-sky-100 dark:hover:bg-sky-900/40 transition-colors flex items-center justify-center font-black text-[10px] uppercase tracking-widest border border-sky-200 dark:border-sky-800/50 shadow-sm"
+              >
+                <Cloud size={16} className="mr-2" /> Control Rendiciones
+              </button>
+
               {selectedSales.size > 0 && (
                 <div className="flex items-center w-full sm:w-auto gap-2 bg-indigo-50 dark:bg-indigo-900/30 p-1.5 rounded-xl border border-indigo-200 dark:border-indigo-800 animate-fade-in shadow-inner">
                   <span className="text-[10px] font-black text-indigo-700 dark:text-indigo-400 uppercase tracking-widest px-2 whitespace-nowrap">{selectedSales.size} sel.</span>
@@ -538,7 +674,6 @@ const SalesHistoryPage = () => {
                 </div>
               )}
 
-              {/* Limpiar Filtros */}
               {(searchTerm || dateRange.start || dateRange.end || filterMethod) && (
                 <button onClick={clearFilters} className="shrink-0 w-full sm:w-auto bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-5 py-3 rounded-xl hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors flex items-center justify-center font-black text-[10px] uppercase tracking-widest border border-red-100 dark:border-red-800/50 shadow-sm">
                   <FilterX size={16} className="mr-2" /> Limpiar Filtros
@@ -601,7 +736,7 @@ const SalesHistoryPage = () => {
           </div>
         </div>
 
-        {/* TABLA PRINCIPAL CON PAGINACIÓN APLICADA */}
+        {/* TABLA PRINCIPAL */}
         <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 flex-1 flex flex-col overflow-hidden transition-colors">
           <div className="overflow-auto flex-1 custom-scrollbar">
             <table className="min-w-full divide-y divide-slate-100 dark:divide-slate-700">
@@ -612,7 +747,7 @@ const SalesHistoryPage = () => {
                       {selectedSales.size > 0 && selectedSales.size === paginatedSales.length ? <CheckSquare size={18} /> : <Square size={18} />}
                     </button>
                   </th>
-                  <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-24">Ticket</th>
+                  <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-32">Ticket / Orden</th>
                   <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-40">Fecha</th>
                   <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest">Resumen Items</th>
                   <th className="px-6 py-4 text-left text-[10px] font-black text-slate-400 uppercase tracking-widest w-48">Método Pago</th>
@@ -632,7 +767,14 @@ const SalesHistoryPage = () => {
                           {selectedSales.has(venta.id) ? <CheckSquare size={18} /> : <Square size={18} />}
                         </button>
                       </td>
-                      <td className="px-6 py-4 font-black text-slate-800 dark:text-white font-mono text-sm">#{venta.id}</td>
+                      <td className="px-6 py-4">
+                        <div className="font-black text-slate-800 dark:text-white font-mono text-sm">#{venta.id}</div>
+                        {venta.orden_tienda_nube && (
+                          <div className="mt-1 flex items-center text-[10px] bg-sky-50 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 px-1.5 py-0.5 rounded border border-sky-100 dark:border-sky-800 font-bold w-fit">
+                            <Cloud size={10} className="mr-1" /> TN #{venta.orden_tienda_nube}
+                          </div>
+                        )}
+                      </td>
                       <td className="px-6 py-4 text-xs font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap">{venta.fecha}</td>
                       <td className="px-6 py-4">
                         <div className="flex items-center text-sm font-bold text-slate-700 dark:text-slate-300 max-w-sm">
@@ -644,7 +786,7 @@ const SalesHistoryPage = () => {
                         <span className={`px-3 py-1.5 rounded-lg text-[9px] font-black uppercase tracking-wider border shadow-sm inline-block
                             ${(venta.metodo || '').includes('Efectivo') ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800/50' :
                             (venta.metodo || '').includes('Tarjeta') ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800/50' :
-                              (venta.metodo || '').includes('Nube') || (venta.metodo || '').includes('Tienda') ? 'bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-800/50' :
+                              (venta.metodo || '').toLowerCase().includes('nube') || (venta.metodo || '').toLowerCase().includes('tienda') ? 'bg-sky-50 dark:bg-sky-900/20 text-sky-700 dark:text-sky-400 border-sky-200 dark:border-sky-800/50' :
                                 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600'
                           }`}>
                           {venta.metodo}
