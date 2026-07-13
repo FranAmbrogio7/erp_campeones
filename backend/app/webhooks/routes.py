@@ -95,6 +95,13 @@ def handle_tn_order():
                         if variante.inventario:
                             variante.inventario.stock_actual -= cantidad
                             print(f"      ⬇️ DESCONTADO. Nuevo stock: {variante.inventario.stock_actual}")
+                            
+                            # --- NUEVO: CONTROL DE SOBREVENTA ---
+                            if variante.inventario.stock_actual < 0:
+                                print("\n🚨 ¡ALERTA ROJA DE SOBREVENTA! 🚨")
+                                print(f"👉 El producto '{name}' (SKU: {sku}) acaba de quedar con stock en negativo ({variante.inventario.stock_actual}).")
+                                print(f"👉 Esto significa que Tienda Nube vendió sin stock. Revisa la orden #{order_id} urgente.\n")
+                                # Si a futuro armamos una tabla de notificaciones para el panel de React, el INSERT iría acá.
                         else:
                             print("      ❌ Error: El producto existe pero no tiene registro de inventario asociado.")
                     else:

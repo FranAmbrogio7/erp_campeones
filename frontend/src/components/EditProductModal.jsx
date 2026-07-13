@@ -126,11 +126,25 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
     const handleUpdateVariant = useCallback(async (variantId, newStock, newSku, newEstampa) => {
         try {
             await axios.put(`/api/products/variants/${variantId}`,
-                { stock: newStock, sku: newSku, estampa: newEstampa }, // Ya no forzamos 'Standard' acá
+                { stock: newStock, sku: newSku, estampa: newEstampa },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
-        } catch (e) { console.error("Error updating variant", e); }
-    }, [token]);
+
+            // 1. Actualizamos la memoria interna del modal para evitar saltos visuales
+            setVariants(prev => prev.map(v =>
+                v.id_variante === variantId
+                    ? { ...v, stock: parseInt(newStock), sku: newSku, estampa: newEstampa }
+                    : v
+            ));
+
+            // 2. Le avisamos a InventoryPage que vuelva a cargar el inventario de fondo
+            if (onUpdate) onUpdate();
+
+        } catch (e) {
+            console.error("Error updating variant", e);
+            toast.error("Error al guardar el cambio de stock"); // Opcional: feedback visual si falla
+        }
+    }, [token, onUpdate]);
 
     const handleDeleteVariant = useCallback(async (id) => {
         if (!window.confirm("¿Borrar este talle?")) return;

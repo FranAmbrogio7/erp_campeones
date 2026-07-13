@@ -1,6 +1,7 @@
 import os
 import requests
 import json
+import time # NUEVO: Importamos time para los reintentos
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -239,6 +240,7 @@ class TiendaNubeService:
         except Exception as e:
             print(f"⚠️ Error actualizando precio en TN: {e}")
 
+    # --- NUEVO: SISTEMA DE REINTENTOS PARA ACTUALIZAR STOCK ---
     def update_variant_stock(self, tn_product_id, tn_variant_id, new_stock):
         if not self.access_token or not self.api_url: return
         
@@ -247,11 +249,25 @@ class TiendaNubeService:
         
         if not data: return
 
-        try:
-            requests.put(url, json=data, headers=self._get_headers())
-            print(f"✅ TN Sync: Stock actualizado a {new_stock} (ID: {tn_variant_id})")
-        except Exception as e:
-            print(f"⚠️ Error actualizando stock en TN: {e}")
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                # Le agregamos un timeout por las dudas para que no se quede colgado
+                response = requests.put(url, json=data, headers=self._get_headers(), timeout=10)
+                
+                if response.status_code in [200, 201]:
+                    print(f"✅ TN Sync: Stock actualizado a {new_stock} (ID: {tn_variant_id})")
+                    return # Si sale bien, cortamos la función acá
+                else:
+                    print(f"⚠️ Intento {attempt + 1} fallido TN Sync: Status {response.status_code} - {response.text}")
+            except Exception as e:
+                print(f"⚠️ Intento {attempt + 1} fallido actualizando stock en TN: {e}")
+            
+            # Si llegamos acá es porque falló. Si no es el último intento, esperamos 2 segundos.
+            if attempt < max_retries - 1:
+                time.sleep(2)
+                
+        print(f"❌ ERROR CRÍTICO: No se pudo actualizar el stock en TN de la variante {tn_variant_id} después de {max_retries} intentos.")
 
     def update_product_data(self, local_prod):
         """Actualiza SOLO nombre y descripción en TN para evitar conflictos estructurales en la API"""
