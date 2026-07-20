@@ -1,5 +1,6 @@
 # backend/app/products/models.py
 from app.extensions import db
+from datetime import datetime
 
 class Categoria(db.Model):
     __tablename__ = 'categorias'
@@ -59,3 +60,22 @@ class Inventario(db.Model):
     id_deposito = db.Column(db.Integer, default=1)
     stock_actual = db.Column(db.Integer, default=0)
     stock_minimo = db.Column(db.Integer, default=2)
+
+
+class SyncQueue(db.Model):
+    __tablename__ = 'sync_queue'
+
+    id = db.Column(db.Integer, primary_key=True)
+    tn_product_id = db.Column(db.String(100), nullable=False)
+    tn_variant_id = db.Column(db.String(100), nullable=False)
+    new_stock = db.Column(db.Integer, nullable=False)
+    
+    # Control de estado y reintentos
+    status = db.Column(db.String(20), default='pending') # Estados: pending, completed, failed
+    retries = db.Column(db.Integer, default=0)
+    
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def __repr__(self):
+        return f"<SyncQueue Var:{self.tn_variant_id} Stock:{self.new_stock}>"

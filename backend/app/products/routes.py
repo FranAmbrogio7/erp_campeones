@@ -516,7 +516,7 @@ def update_variant(id):
                 if clean_estampa not in ['', 'STANDARD', 'SIN ESTAMPA', 'N/A']:
                     estampa_final = clean_estampa
                     
-            var.color = estampa_final # Guardamos el valor limpio o nulo
+            var.color = estampa_final 
         # -------------------------------
 
         if 'stock' in data:
@@ -529,7 +529,7 @@ def update_variant(id):
         db.session.commit()
 
         # 2. Sincronización con Tienda Nube (Stock)
-        if var.tiendanube_variant_id and var.producto.tiendanube_id:
+        if getattr(var, 'tiendanube_variant_id', None) and getattr(var.producto, 'tiendanube_id', None):
             app = current_app._get_current_object()
             sync_data = {
                 'tn_product_id': var.producto.tiendanube_id,
@@ -542,7 +542,8 @@ def update_variant(id):
                     from app.services.tiendanube_service import tn_service
                     try:
                         tn_service.update_variant_stock(s_data['tn_product_id'], s_data['tn_variant_id'], s_data['new_stock'])
-                    except: pass
+                    except Exception as e:
+                        print(f"🔥 Error Crítico Sync TN (Variante {s_data['tn_variant_id']}): {e}")
 
             thread = threading.Thread(target=background_sync_variant, args=(app, sync_data))
             thread.start()
@@ -740,6 +741,8 @@ def bulk_stock_update():
 
     try:
         updated_count = 0
+        variantes_a_sincronizar = [] # Recolectamos todo para la nube sin bloquear el bucle
+        
         for item in items:
             variante = ProductoVariante.query.filter_by(codigo_sku=item['sku']).first()
             
@@ -747,16 +750,36 @@ def bulk_stock_update():
                 variante.inventario.stock_actual = int(item['cantidad'])
                 updated_count += 1
                 
-                # --- SYNC TIENDA NUBE (IMPORTANTE PARA CARGA MASIVA) ---
-                if variante.tiendanube_variant_id and variante.producto.tiendanube_id:
-                    tn_service.update_variant_stock(
-                        tn_product_id=variante.producto.tiendanube_id,
-                        tn_variant_id=variante.tiendanube_variant_id,
-                        new_stock=variante.inventario.stock_actual
-                    )
-                # -------------------------------------------------------
+                # --- PREPARAMOS LA SYNC TIENDA NUBE ---
+                if getattr(variante, 'tiendanube_variant_id', None) and getattr(variante.producto, 'tiendanube_id', None):
+                    variantes_a_sincronizar.append({
+                        'tn_product_id': variante.producto.tiendanube_id,
+                        'tn_variant_id': variante.tiendanube_variant_id,
+                        'new_stock': variante.inventario.stock_actual
+                    })
         
+        # Confirmamos la transacción local PRIMERO para asegurar la consistencia del ERP
         db.session.commit()
+        
+        # --- LANZAMOS LA SYNC A LA NUBE EN SEGUNDO PLANO ---
+        if variantes_a_sincronizar:
+            app = current_app._get_current_object()
+            def sync_bulk_background(app_context, sync_list):
+                with app_context.app_context():
+                    from app.services.tiendanube_service import tn_service
+                    for sync_item in sync_list:
+                        try:
+                            tn_service.update_variant_stock(
+                                tn_product_id=sync_item['tn_product_id'],
+                                tn_variant_id=sync_item['tn_variant_id'],
+                                new_stock=sync_item['new_stock']
+                            )
+                        except Exception as e:
+                            print(f"⚠️ Error en sync masiva de stock para var {sync_item['tn_variant_id']}: {e}")
+            
+            thread = threading.Thread(target=sync_bulk_background, args=(app, variantes_a_sincronizar))
+            thread.start()
+
         return jsonify({"msg": f"Stock actualizado en {updated_count} productos"}), 200
 
     except Exception as e:

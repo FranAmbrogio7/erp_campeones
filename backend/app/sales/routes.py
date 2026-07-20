@@ -707,7 +707,6 @@ def create_reserva():
     if not items: return jsonify({"msg": "Sin items"}), 400
 
     try:
-        # 1. Crear Reserva (Lógica interna de apartado)
         saldo = total_calculado - sena
         fecha_vencimiento = datetime.now() + timedelta(days=15)
 
@@ -722,10 +721,8 @@ def create_reserva():
             estado='pendiente'
         )
         db.session.add(nueva_reserva)
-        db.session.flush() # Obtenemos ID de reserva
+        db.session.flush()
 
-        # 2. REGISTRAR LA SEÑA COMO UNA VENTA REAL
-        # Esto es lo que hace que aparezca en tu página de Ventas
         if sena > 0:
             if not id_metodo_pago:
                 db.session.rollback()
@@ -737,16 +734,14 @@ def create_reserva():
                 descuento=0,
                 id_metodo_pago=id_metodo_pago,
                 fecha_venta=datetime.now(),
-                # Guardamos referencia en observaciones
                 observaciones=f"Seña Reserva #{nueva_reserva.id_reserva} - {cliente}"
             )
             db.session.add(venta_sena)
             db.session.flush()
 
-            # Creamos un detalle visual para el historial
             detalle_v = DetalleVenta(
                 id_venta=venta_sena.id_venta,
-                id_variante=None, # No descontamos stock aquí (se descuenta abajo)
+                id_variante=None, 
                 producto_nombre=f"SEÑA RESERVA #{nueva_reserva.id_reserva} ({items[0].get('nombre')}...)", 
                 cantidad=1, 
                 precio_unitario=sena,
@@ -754,7 +749,8 @@ def create_reserva():
             )
             db.session.add(detalle_v)
 
-        # 3. Procesar Items y DESCONTAR STOCK FÍSICO
+        items_to_sync = [] # <-- RECOLECTOR PARA SEGUNDO PLANO
+
         for item in items:
             variante = ProductoVariante.query.get(item['id_variante'])
             
@@ -762,21 +758,17 @@ def create_reserva():
                 db.session.rollback()
                 return jsonify({"msg": f"Sin stock suficiente: {variante.producto.nombre}"}), 400
 
-            # Descuento real del inventario
             variante.inventario.stock_actual -= item['cantidad']
 
-            # SYNC TIENDA NUBE (Si corresponde)
-            if variante.tiendanube_variant_id and variante.producto.tiendanube_id:
-                try:
-                    tn_service.update_variant_stock(
-                        tn_product_id=variante.producto.tiendanube_id,
-                        tn_variant_id=variante.tiendanube_variant_id,
-                        new_stock=variante.inventario.stock_actual
-                    )
-                except Exception as e:
-                    print(f"Error Sync TN Reserva: {e}")
+            # PREPARAMOS LA SYNC SIN FRENAR EL CÓDIGO
+            if getattr(variante, 'tiendanube_variant_id', None) and getattr(variante.producto, 'tiendanube_id', None):
+                items_to_sync.append({
+                    'tn_product_id': variante.producto.tiendanube_id,
+                    'tn_variant_id': variante.tiendanube_variant_id,
+                    'new_stock': variante.inventario.stock_actual,
+                    'nombre': variante.producto.nombre
+                })
 
-            # Guardar el detalle real en la tabla de reservas
             detalle_r = DetalleReserva(
                 id_reserva=nueva_reserva.id_reserva,
                 id_variante=variante.id_variante,
@@ -786,12 +778,64 @@ def create_reserva():
             )
             db.session.add(detalle_r)
 
+        # 1. ASEGURAMOS LA DB LOCAL PRIMERO
         db.session.commit()
+        
+        # 2. LANZAMOS LA SYNC A LA NUBE
+        if items_to_sync:
+            app = current_app._get_current_object()
+            thread = threading.Thread(target=sync_tn_background, args=(app, items_to_sync))
+            thread.start()
+
         return jsonify({"msg": "Reserva creada exitosamente", "id": nueva_reserva.id_reserva}), 201
 
     except Exception as e:
         db.session.rollback()
         return jsonify({"msg": str(e)}), 500
+
+
+@bp.route('/<int:id_venta>/anular', methods=['DELETE'])
+@jwt_required()
+def anular_venta(id_venta):
+    try:
+        venta = Venta.query.get_or_404(id_venta)
+        
+        if getattr(venta, 'estado', None) == 'anulada': 
+             return jsonify({"msg": "Esta venta ya está anulada"}), 400
+
+        detalles = DetalleVenta.query.filter_by(id_venta=id_venta).all()
+        items_to_sync = []
+        
+        for d in detalles:
+            variante = ProductoVariante.query.get(d.id_variante)
+            
+            if variante and variante.inventario:
+                variante.inventario.stock_actual += d.cantidad
+                
+                if getattr(variante, 'tiendanube_variant_id', None) and getattr(variante.producto, 'tiendanube_id', None):
+                    items_to_sync.append({
+                        'tn_product_id': variante.producto.tiendanube_id,
+                        'tn_variant_id': variante.tiendanube_variant_id,
+                        'new_stock': variante.inventario.stock_actual,
+                        'nombre': variante.producto.nombre
+                    })
+
+        for d in detalles:
+            db.session.delete(d)
+        db.session.delete(venta)
+
+        db.session.commit()
+        
+        if items_to_sync:
+            app = current_app._get_current_object()
+            thread = threading.Thread(target=sync_tn_background, args=(app, items_to_sync))
+            thread.start()
+
+        return jsonify({"msg": f"Venta #{id_venta} anulada, stock local actualizado."}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"msg": "Error al anular", "error": str(e)}), 500
 
 
 @bp.route('/reservas/<int:id>/retirar', methods=['POST'])
@@ -850,25 +894,34 @@ def cancelar_reserva(id):
     if reserva.estado != 'pendiente':
         return jsonify({"msg": "Solo se pueden cancelar reservas pendientes"}), 400
 
-    # DEVOLVER STOCK
-    for det in reserva.detalles:
-        variante = det.variante
-        variante.inventario.stock_actual += det.cantidad
-        
-        # SYNC TIENDA NUBE (Devolvemos el stock a la web)
-        if variante.tiendanube_variant_id and variante.producto.tiendanube_id:
-            tn_service.update_variant_stock(
-                tn_product_id=variante.producto.tiendanube_id,
-                tn_variant_id=variante.tiendanube_variant_id,
-                new_stock=variante.inventario.stock_actual
-            )
+    try:
+        items_to_sync = []
 
-    # Nota: La seña NO se devuelve automáticamente de la caja. 
-    # Si se devuelve dinero, el cajero debe hacer un "Retiro" manual en caja.
-    
-    reserva.estado = 'cancelada'
-    db.session.commit()
-    return jsonify({"msg": "Reserva cancelada y stock restaurado"}), 200
+        for det in reserva.detalles:
+            variante = det.variante
+            variante.inventario.stock_actual += det.cantidad
+            
+            if getattr(variante, 'tiendanube_variant_id', None) and getattr(variante.producto, 'tiendanube_id', None):
+                items_to_sync.append({
+                    'tn_product_id': variante.producto.tiendanube_id,
+                    'tn_variant_id': variante.tiendanube_variant_id,
+                    'new_stock': variante.inventario.stock_actual,
+                    'nombre': variante.producto.nombre
+                })
+        
+        reserva.estado = 'cancelada'
+        db.session.commit()
+
+        if items_to_sync:
+            app = current_app._get_current_object()
+            thread = threading.Thread(target=sync_tn_background, args=(app, items_to_sync))
+            thread.start()
+
+        return jsonify({"msg": "Reserva cancelada y stock restaurado"}), 200
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"msg": "Error al cancelar", "error": str(e)}), 500
 
 
 
@@ -986,51 +1039,6 @@ def presupuestos():
             return jsonify({"msg": str(e)}), 500
 
 
-@bp.route('/<int:id_venta>/anular', methods=['DELETE'])
-@jwt_required()
-def anular_venta(id_venta):
-    try:
-        venta = Venta.query.get_or_404(id_venta)
-        
-        # Validación de seguridad
-        if getattr(venta, 'estado', None) == 'anulada': 
-             return jsonify({"msg": "Esta venta ya está anulada"}), 400
-
-        detalles = DetalleVenta.query.filter_by(id_venta=id_venta).all()
-        
-        # --- BUCLE DE DEVOLUCIÓN ---
-        for d in detalles:
-            variante = ProductoVariante.query.get(d.id_variante)
-            
-            if variante and variante.inventario:
-                # A. Devolver Stock Local (ERP)
-                variante.inventario.stock_actual += d.cantidad
-                
-                # B. Sincronizar con Tienda Nube (NUEVO)
-                # Verificamos si el producto está conectado a la nube
-                if variante.tiendanube_variant_id and variante.producto.tiendanube_id:
-                    try:
-                        tn_service.update_variant_stock(
-                            tn_product_id=variante.producto.tiendanube_id,
-                            tn_variant_id=variante.tiendanube_variant_id,
-                            new_stock=variante.inventario.stock_actual
-                        )
-                        print(f"✅ TN Sync: Stock restaurado para {variante.producto.nombre}")
-                    except Exception as tn_error:
-                        # Si falla internet o la API, lo logueamos pero NO rompemos la anulación local
-                        print(f"⚠️ Error sincronizando Tienda Nube al anular: {tn_error}")
-
-        # Borrado físico de la venta (o cambio de estado)
-        for d in detalles:
-            db.session.delete(d)
-        db.session.delete(venta)
-
-        db.session.commit()
-        return jsonify({"msg": f"Venta #{id_venta} anulada, stock local y nube actualizados."}), 200
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"msg": "Error al anular", "error": str(e)}), 500
 
 @bp.route('/notas-credito/crear', methods=['POST'])
 @jwt_required()
