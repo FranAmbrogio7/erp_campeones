@@ -1315,3 +1315,54 @@ def manage_tn_margen():
     # Lanzamos el proceso enviando la variable "product_ids"
     Thread(target=background_price_update, args=(app, product_ids)).start()
     return jsonify({'msg': 'Proceso iniciado en segundo plano'}), 200
+
+
+
+@bp.route('/sync/audit-stock', methods=['GET'])
+@jwt_required()
+def audit_stock_discrepancies():
+    try:
+        from app.services.tiendanube_service import tn_service
+        
+        # 1. Traemos todos los productos locales vinculados a la web
+        productos_locales = Producto.query.filter(Producto.tiendanube_id.isnot(None)).all()
+        
+        # 2. Obtenemos el catálogo de Tienda Nube (idealmente tn_service debería tener una función get_all_products)
+        # Asumimos que devuelve una lista de diccionarios con la data de TN
+        tn_catalogo = tn_service.get_all_products() 
+        
+        # Armamos un diccionario rápido de Tienda Nube: { "tn_variant_id": stock_en_nube }
+        tn_stock_map = {}
+        for tn_prod in tn_catalogo:
+            for tn_var in tn_prod.get('variants', []):
+                tn_stock_map[str(tn_var['id'])] = tn_var.get('stock', 0)
+                
+        # 3. Cruzamos los datos
+        discrepancias = []
+        
+        for prod in productos_locales:
+            for var in prod.variantes:
+                if var.tiendanube_variant_id:
+                    tn_id_str = str(var.tiendanube_variant_id)
+                    stock_local = var.inventario.stock_actual if var.inventario else 0
+                    
+                    # Buscamos el stock que tiene la nube para esta variante
+                    stock_nube = tn_stock_map.get(tn_id_str)
+                    
+                    # Si no coincide (o si el stock_nube es None/False porque no lo encontró)
+                    if stock_nube is not None and stock_local != stock_nube:
+                        discrepancias.append({
+                            "producto_nombre": prod.nombre,
+                            "sku": var.codigo_sku,
+                            "talle": var.talla,
+                            "estampa": var.color or "-",
+                            "stock_local": stock_local,
+                            "stock_nube": stock_nube,
+                            "tn_product_id": prod.tiendanube_id,
+                            "tn_variant_id": var.tiendanube_variant_id
+                        })
+
+        return jsonify({"discrepancias": discrepancias, "total": len(discrepancias)}), 200
+
+    except Exception as e:
+        return jsonify({"msg": "Error en la auditoría", "error": str(e)}), 500
