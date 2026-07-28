@@ -346,6 +346,7 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                                 <select disabled={isAddingVariant} className="border border-slate-200 dark:border-slate-700 p-2 rounded-lg text-sm w-40 font-medium text-slate-700 dark:text-slate-300 outline-none focus:border-emerald-400 dark:focus:border-emerald-500 bg-white dark:bg-slate-800 transition-all disabled:opacity-50 cursor-pointer" value={newSize} onChange={e => setNewSize(e.target.value)}>
                                     <optgroup label="⚡ Crear Curva Completa">
                                         <option value="XS,S,M,L,XL,XXL">ADULTOS (XS al XXL)</option>
+                                        <option value="6, 7, 8, 9, 10">TALLE ESPECIAL (6 al 10)</option>
                                         <option value="4,6,8,10,12,14,16">NIÑOS (4 al 16)</option>
                                         <option value="0,1,2,3,4,5">BEBÉS (0 al 5)</option>
                                     </optgroup>

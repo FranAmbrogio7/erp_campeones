@@ -69,6 +69,7 @@ const Topbar = () => {
         { path: '/compras', name: 'Compras', icon: Truck },
         { path: '/etiquetas', name: 'Etiquetas', icon: QrCode },
         { path: '/categorias', name: 'Categorías', icon: Tags },
+        
       ]
     },
     {
