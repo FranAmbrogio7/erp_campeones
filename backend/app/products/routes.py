@@ -1366,3 +1366,31 @@ def audit_stock_discrepancies():
 
     except Exception as e:
         return jsonify({"msg": "Error en la auditoría", "error": str(e)}), 500
+
+
+
+
+@bp.route('/<int:id>/tn-link', methods=['GET'])
+@jwt_required()
+def get_tn_link(id):
+    import requests
+    prod = Producto.query.get_or_404(id)
+    
+    if not prod.tiendanube_id:
+        return jsonify({"msg": "El producto no está vinculado a la nube"}), 400
+        
+    try:
+        # Consultamos la API de Tienda Nube en tiempo real
+        url = f"{tn_service.api_url}/products/{prod.tiendanube_id}"
+        response = requests.get(url, headers=tn_service._get_headers())
+        
+        if response.status_code == 200:
+            data = response.json()
+            # TN devuelve la URL pública exacta y actualizada acá:
+            permalink = data.get('permalink') 
+            if permalink:
+                return jsonify({"url": permalink}), 200
+                
+        return jsonify({"msg": "No se pudo obtener el link de la tienda"}), 404
+    except Exception as e:
+        return jsonify({"msg": "Error de conexión", "error": str(e)}), 500

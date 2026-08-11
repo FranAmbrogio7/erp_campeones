@@ -383,19 +383,24 @@ const InventoryPage = () => {
         e.preventDefault();
         if (!selectedPriceValue) return;
 
-        const toastId = toast.loading("Actualizando precios...");
+        // 1. Cerramos el modal inmediatamente y limpiamos selección para liberar tu pantalla
+        setIsSelectedPriceModalOpen(false);
+        const idsToUpdate = Array.from(selectedItems);
+        setSelectedItems(new Set());
+
+        const toastId = toast.loading("Actualizando precios en segundo plano...");
+
         try {
+            // 2. Enviamos la petición sin bloquear la UI
             await api.put('/products/bulk-price-selected', {
-                ids: Array.from(selectedItems),
+                ids: idsToUpdate,
                 type: selectedPriceType,
                 value: parseFloat(selectedPriceValue)
             });
 
-            toast.success("Precios actualizados", { id: toastId });
+            toast.success("¡Precios locales listos! Tienda Nube se está sincronizando.", { id: toastId, duration: 4000 });
             playSound('success');
-            setIsSelectedPriceModalOpen(false);
             setSelectedPriceValue('');
-            setSelectedItems(new Set());
             fetchProducts(page);
         } catch (error) {
             toast.error("Error al actualizar precios", { id: toastId });
@@ -429,18 +434,24 @@ const InventoryPage = () => {
     };
 
     // Copiar Link de Tienda Nube
-    const handleCopyStoreLink = (product) => {
+    const handleCopyStoreLink = async (product) => {
         if (!product.tiendanube_id) return toast.error("El producto no está publicado en la tienda");
-        const slug = product.nombre
-            .toLowerCase()
-            .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/(^-|-$)+/g, '');
-        const url = `https://www.campeonesindumentaria.com.ar/productos/${slug}/`;
-        navigator.clipboard.writeText(url).then(() => {
+
+        const toastId = toast.loading("Obteniendo link oficial...");
+        try {
+            // Buscamos el link real y actualizado desde tu API
+            const res = await api.get(`/products/${product.id}/tn-link`);
+            await navigator.clipboard.writeText(res.data.url);
+            toast.success("¡Link oficial copiado al portapapeles!", { id: toastId, icon: '🔗' });
             playSound('success');
-            toast.success("¡Link copiado al portapapeles!", { icon: '🔗' });
-        }).catch(() => toast.error("Error al copiar link"));
+        } catch (error) {
+            // Fallback: Si se corta el internet, intenta adivinarlo como lo hacía antes
+            const slug = product.nombre.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+            const fallbackUrl = `https://www.campeonesindumentaria.com.ar/productos/${slug}/`;
+            await navigator.clipboard.writeText(fallbackUrl);
+            toast.success("Link aproximado copiado", { id: toastId });
+            playSound('success');
+        }
     };
 
     const handleDuplicate = (product) => {
