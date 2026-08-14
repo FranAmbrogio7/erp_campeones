@@ -5,7 +5,8 @@ import { forwardRef } from 'react';
 const getImageUrl = (img) => {
     if (!img) return null;
     if (img.startsWith('http')) return img;
-    return `/api/static/uploads/${img}`;
+    // Aseguramos la URL completa sumando el origen actual de tu dominio
+    return `${window.location.origin}/api/static/uploads/${img}`;
 };
 
 const BudgetPrint = forwardRef(({ data }, ref) => {

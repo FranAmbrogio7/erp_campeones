@@ -367,6 +367,7 @@ const BudgetPage = () => {
 
             setPrintData(safeData);
 
+            // Aumentamos a 1000ms para asegurar que la imagen termine de cargar en el DOM oculto
             setTimeout(() => {
                 try {
                     if (reactToPrintFn) reactToPrintFn();
@@ -374,7 +375,7 @@ const BudgetPage = () => {
                     console.error("Error al imprimir:", printError);
                     toast.error("Error al abrir la vista de impresión");
                 }
-            }, 500);
+            }, 1000);
 
             setTimeout(() => {
                 setCart([]);
@@ -447,8 +448,8 @@ const BudgetPage = () => {
         <div className="flex flex-col lg:flex-row h-[calc(100vh-4rem)] bg-gray-50 dark:bg-slate-950 overflow-hidden transition-colors duration-300">
             <Toaster position="top-center" />
 
-            {/* COMPONENTE DE IMPRESIÓN OCULTO */}
-            <div style={{ display: 'none' }}>
+            {/* COMPONENTE DE IMPRESIÓN OCULTO FUERA DE PANTALLA */}
+            <div style={{ position: 'absolute', top: '-9999px', left: '-9999px', width: '100%' }}>
                 <div ref={printRef}>
                     {printData && <BudgetPrint data={printData} />}
                 </div>
