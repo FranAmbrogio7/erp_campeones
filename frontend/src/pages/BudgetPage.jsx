@@ -12,7 +12,7 @@ import {
 } from 'lucide-react';
 
 // =========================================================================
-// UTILERÍA: Normalizador de Estampas
+// UTILERÍA: Normalizador de Estampas y URLs
 // =========================================================================
 const getRealEstampa = (estampaStr) => {
     if (!estampaStr) return null;
@@ -21,6 +21,13 @@ const getRealEstampa = (estampaStr) => {
         return null;
     }
     return estampaStr;
+};
+
+// Generador de link a Tienda Nube basado en el nombre del producto
+const getStoreUrl = (name) => {
+    if (!name) return '#';
+    const slug = name.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+    return `https://www.campeonesindumentaria.com.ar/productos/${slug}/`;
 };
 
 // =========================================================================
@@ -38,18 +45,18 @@ const VariantSelectionModal = ({ product, isOpen, onClose, onSelect, useRealStoc
     }, {});
 
     // Si pasamos un talle preseleccionado, solo mostramos ese. Si no, mostramos todos.
-    const targetTalles = product.preselectedTalle 
-        ? [product.preselectedTalle] 
+    const targetTalles = product.preselectedTalle
+        ? [product.preselectedTalle]
         : Object.keys(groupedVariants);
 
     return (
         <div className="fixed inset-0 z-[200] bg-slate-900/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in" onClick={onClose}>
             <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[85vh]" onClick={e => e.stopPropagation()}>
-                
+
                 <div className="bg-yellow-50 dark:bg-slate-900 p-5 border-b border-yellow-100 dark:border-slate-700 flex justify-between items-center shrink-0">
                     <div>
                         <h3 className="font-black text-xl text-yellow-900 dark:text-white flex items-center">
-                            <Shirt className="mr-2 text-yellow-500" size={24}/> Seleccionar Estampa
+                            <Shirt className="mr-2 text-yellow-500" size={24} /> Seleccionar Estampa
                         </h3>
                         <p className="text-sm text-yellow-700 dark:text-slate-400 mt-1 font-medium">{product.nombre}</p>
                     </div>
@@ -61,7 +68,7 @@ const VariantSelectionModal = ({ product, isOpen, onClose, onSelect, useRealStoc
                 <div className="p-6 overflow-y-auto custom-scrollbar flex-1 bg-slate-50 dark:bg-slate-800/50">
                     <div className="space-y-6">
                         {targetTalles.map(talle => {
-                            const detalles = groupedVariants[talle].sort((a, b) => 
+                            const detalles = groupedVariants[talle].sort((a, b) =>
                                 a.estampaName === 'Sin Estampa' ? -1 : b.estampaName === 'Sin Estampa' ? 1 : 0
                             );
 
@@ -73,15 +80,15 @@ const VariantSelectionModal = ({ product, isOpen, onClose, onSelect, useRealStoc
                                     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                         {detalles.map(det => {
                                             const isClickable = !useRealStock || det.stock > 0;
-                                            
+
                                             return (
                                                 <button
                                                     key={det.id_variante}
                                                     disabled={!isClickable}
                                                     onClick={() => onSelect(product, det)}
                                                     className={`relative flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all active:scale-95 text-center
-                                                        ${isClickable 
-                                                            ? 'border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-900/20 hover:bg-yellow-100 hover:border-yellow-400 dark:hover:bg-yellow-900/50 cursor-pointer' 
+                                                        ${isClickable
+                                                            ? 'border-yellow-200 dark:border-yellow-800 bg-yellow-50/50 dark:bg-yellow-900/20 hover:bg-yellow-100 hover:border-yellow-400 dark:hover:bg-yellow-900/50 cursor-pointer'
                                                             : 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 opacity-50 cursor-not-allowed grayscale'}`}
                                                 >
                                                     <span className={`font-bold text-sm mb-1 ${isClickable ? 'text-yellow-900 dark:text-yellow-100' : 'text-slate-500 dark:text-slate-400 line-through'}`}>
@@ -191,11 +198,9 @@ const BudgetPage = () => {
         const hasOptions = variantsForSize.some(v => getRealEstampa(v.estampa) !== null);
 
         if (!hasOptions) {
-            // Sin estampa real, se agrega directo (buscando el que tenga stock, o el primero)
             const variantToAdd = variantsForSize.find(v => v.stock > 0) || variantsForSize[0];
             addToCart(product, variantToAdd);
         } else {
-            // Tiene opciones reales de estampas, abrimos el modal solo para este talle
             setVariantModalProduct({ ...product, preselectedTalle: talle });
         }
     };
@@ -204,11 +209,11 @@ const BudgetPage = () => {
         if (product.variantes.length === 1 && (!useRealStock || product.variantes[0].stock > 0)) {
             addToCart(product, product.variantes[0]);
         } else {
-            setVariantModalProduct(product); // Abre el modal con TODOS los talles disponibles
+            setVariantModalProduct(product);
         }
     };
 
-    const addToCart = (prod, v) => {
+    const addToCart = async (prod, v) => {
         const exists = cart.find(i => i.id_variante === v.id_variante);
         const currentQty = exists ? exists.cantidad : 0;
 
@@ -218,8 +223,31 @@ const BudgetPage = () => {
         }
 
         if (exists) {
+            // Si ya existe, solo sumamos 1 a la cantidad (el link ya lo tenemos)
             setCart(prev => prev.map(i => i.id_variante === v.id_variante ? { ...i, cantidad: i.cantidad + 1 } : i));
+            const estampaReal = getRealEstampa(v.estampa);
+            const estampaText = estampaReal ? ` - ${estampaReal}` : '';
+            toast.success(`+1 ${prod.nombre} (${v.talle}${estampaText})`, { duration: 1000 });
+            setVariantModalProduct(null);
         } else {
+            // Es un ítem nuevo, buscamos la URL oficial y exacta
+            let officialUrl = null;
+
+            if (prod.tiendanube_id) {
+                const linkToast = toast.loading("Verificando link en la tienda...");
+                try {
+                    const res = await api.get(`/products/${prod.id}/tn-link`);
+                    officialUrl = res.data.url;
+                    toast.dismiss(linkToast);
+                } catch (e) {
+                    toast.dismiss(linkToast);
+                    // Fallback silencioso por si se corta el internet justo en ese segundo
+                    officialUrl = getStoreUrl(prod.nombre);
+                }
+            } else {
+                officialUrl = getStoreUrl(prod.nombre);
+            }
+
             setCart(prev => [...prev, {
                 id_variante: v.id_variante,
                 sku: v.sku || 'GEN',
@@ -229,15 +257,16 @@ const BudgetPage = () => {
                 precio: prod.precio,
                 cantidad: 1,
                 stock_actual: v.stock,
-                imagen: prod.imagen
+                imagen: prod.imagen,
+                url: officialUrl // ¡Acá guardamos la URL 100% real!
             }]);
+
+            const estampaReal = getRealEstampa(v.estampa);
+            const estampaText = estampaReal ? ` - ${estampaReal}` : '';
+            toast.success(`+1 ${prod.nombre} (${v.talle}${estampaText})`, { duration: 1000 });
+
+            setVariantModalProduct(null);
         }
-        
-        const estampaReal = getRealEstampa(v.estampa);
-        const estampaText = estampaReal ? ` - ${estampaReal}` : '';
-        toast.success(`+1 ${prod.nombre} (${v.talle}${estampaText})`, { duration: 1000 });
-        
-        setVariantModalProduct(null); // Cerrar modal si estaba abierto (Mantiene la búsqueda)
     };
 
     const updateQty = (idx, delta) => {
@@ -329,7 +358,9 @@ const BudgetPage = () => {
                         cantidad: item.cantidad || 1,
                         precio: item.precio || 0,
                         precio_unitario: item.precio || 0,
-                        subtotal: (item.precio || 0) * (item.cantidad || 1)
+                        subtotal: (item.precio || 0) * (item.cantidad || 1),
+                        imagen: item.imagen,
+                        url: item.url || getStoreUrl(item.nombre) // Aseguramos URL en la vista de impresión
                     };
                 })
             };
@@ -373,7 +404,6 @@ const BudgetPage = () => {
             setClientName(b.cliente);
             setDiscountPercent(b.descuento);
             setCart(b.items.map(i => {
-                // Al recuperar, intentamos separar el talle de la estampa si se guardó combinado
                 let talleRec = i.talle;
                 let estampaRec = 'Standard';
                 if (i.talle && i.talle.includes(' - ')) {
@@ -390,7 +420,8 @@ const BudgetPage = () => {
                     precio: i.precio_unitario || i.precio || 0,
                     cantidad: i.cantidad,
                     stock_actual: 999,
-                    imagen: i.imagen || null
+                    imagen: i.imagen || null,
+                    url: getStoreUrl(i.nombre) // Regeneramos el link si viene del historial
                 };
             }));
             setIsHistoryOpen(false);
@@ -424,10 +455,10 @@ const BudgetPage = () => {
             </div>
 
             {/* MODAL SELECTOR DE VARIANTE */}
-            <VariantSelectionModal 
-                product={variantModalProduct} 
-                isOpen={!!variantModalProduct} 
-                onClose={() => setVariantModalProduct(null)} 
+            <VariantSelectionModal
+                product={variantModalProduct}
+                isOpen={!!variantModalProduct}
+                onClose={() => setVariantModalProduct(null)}
                 onSelect={addToCart}
                 useRealStock={useRealStock}
             />
@@ -497,20 +528,19 @@ const BudgetPage = () => {
                                                 const variantsForSize = p.variantes.filter(v => v.talle === t);
                                                 const hasStock = variantsForSize.some(v => v.stock > 0);
                                                 const isClickable = !useRealStock || hasStock;
-                                                
+
                                                 return (
-                                                    <button 
-                                                        key={t} 
+                                                    <button
+                                                        key={t}
                                                         disabled={!isClickable}
                                                         onClick={(e) => {
-                                                            e.stopPropagation(); 
+                                                            e.stopPropagation();
                                                             handleSizeClick(p, t);
                                                         }}
-                                                        className={`text-sm font-black px-4 py-2 rounded-xl shadow-sm border-2 transition-all active:scale-95 ${
-                                                            isClickable 
+                                                        className={`text-sm font-black px-4 py-2 rounded-xl shadow-sm border-2 transition-all active:scale-95 ${isClickable
                                                             ? 'bg-white dark:bg-slate-800 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-slate-600 hover:bg-yellow-50 dark:hover:bg-yellow-900/50 hover:border-yellow-400'
                                                             : 'bg-slate-50 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800 line-through opacity-70 cursor-not-allowed'
-                                                        }`}
+                                                            }`}
                                                     >
                                                         {t}
                                                     </button>
@@ -573,7 +603,7 @@ const BudgetPage = () => {
                         </div>
                         <button onClick={clear} className="bg-gray-100 dark:bg-slate-800 text-gray-500 dark:text-slate-400 p-3 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-500 dark:hover:text-red-400 transition-colors" title="Borrar todo"><RotateCcw size={20} /></button>
                     </div>
-                    
+
                     <div className="mb-4">
                         <div className="flex justify-between text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-widest mb-2">
                             <span>Descuento Global</span>
@@ -581,7 +611,7 @@ const BudgetPage = () => {
                         </div>
                         <input type="range" min="0" max="100" step="5" value={discountPercent} onChange={e => setDiscountPercent(parseInt(e.target.value))} className="w-full accent-yellow-500 h-2 bg-gray-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer" />
                     </div>
-                    
+
                     <div className="space-y-3 bg-gray-50 dark:bg-slate-800 p-4 rounded-xl border border-gray-200 dark:border-slate-700">
                         <div className="flex justify-between text-gray-600 dark:text-gray-300 text-sm font-bold">
                             <span>Subtotal</span>
