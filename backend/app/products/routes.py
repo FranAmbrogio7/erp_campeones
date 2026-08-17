@@ -694,6 +694,7 @@ def bulk_update_price():
         
         products = query.all()
         count = 0
+        variantes_a_sincronizar = []
 
         for prod in products:
             current_price = float(prod.precio)
@@ -705,23 +706,41 @@ def bulk_update_price():
             prod.precio = round(new_price, 2)
             count += 1
             
-            # --- SYNC TIENDA NUBE (PRECIO WEB) ---
+            # --- PREPARAMOS LA SYNC TIENDA NUBE (no la disparamos todavía) ---
             if prod.tiendanube_id:
                 for var in prod.variantes:
                     if var.tiendanube_variant_id:
+                        variantes_a_sincronizar.append({
+                            'tn_product_id': prod.tiendanube_id,
+                            'tn_variant_id': var.tiendanube_variant_id,
+                            'precio_local': prod.precio
+                        })
+
+        # 1. Confirmamos primero los cambios locales, sin importar cómo salga la sync a TN
+        db.session.commit()
+
+        # 2. Sincronizamos con Tienda Nube en segundo plano (no bloquea el request
+        #    y evita que un timeout de la request corte la sync a mitad de camino)
+        if variantes_a_sincronizar:
+            app = current_app._get_current_object()
+
+            def sync_background(app_context, vars_data):
+                with app_context.app_context():
+                    from app.services.tiendanube_service import tn_service
+                    for v_data in vars_data:
                         try:
-                            # Enviamos el precio local; el servicio se encarga de sumarle el % extra
                             tn_service.update_variant_price(
-                                tn_product_id=prod.tiendanube_id,
-                                tn_variant_id=var.tiendanube_variant_id,
-                                precio_local=prod.precio
+                                tn_product_id=v_data['tn_product_id'],
+                                tn_variant_id=v_data['tn_variant_id'],
+                                precio_local=v_data['precio_local']
                             )
                         except Exception as e:
-                            print(f"⚠️ Error sync precio {var.codigo_sku}: {e}")
-            # -------------------------------------
+                            print(f"⚠️ Error Background Sync TN (Precio por categoría): {e}")
 
-        db.session.commit()
-        return jsonify({"msg": f"Precios actualizados en {count} productos y sincronizados con la web."}), 200
+            thread = threading.Thread(target=sync_background, args=(app, variantes_a_sincronizar))
+            thread.start()
+
+        return jsonify({"msg": f"Precios actualizados en {count} productos (Sincronizando con Tienda Nube en segundo plano...)"}), 200
 
     except Exception as e:
         db.session.rollback()
@@ -1202,7 +1221,7 @@ def bulk_price_selected():
         
     except Exception as e:
         db.session.rollback()
-        print(f"Error bulk_price: {e}")
+        print(f"Error º: {e}")
         return jsonify({"msg": f"Error al actualizar: {str(e)}"}), 500
 
 

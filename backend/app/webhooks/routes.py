@@ -78,7 +78,7 @@ def handle_tn_order():
                     print(f"❌ Error API: {response.text}")
 
             # Procesar productos
-            print(f"🔄 Procesando {len(products_tn)} productos...") # Checkpoint 7
+            print(f"🔄 Procesando {len(products_tn)} productos...") # Checkpoint 7º
             
             for item in products_tn:
                 sku = item.get('variant_sku') or item.get('sku')

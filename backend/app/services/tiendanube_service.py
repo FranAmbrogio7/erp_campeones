@@ -131,6 +131,18 @@ class TiendaNubeService:
             "Content-Type": "application/json"
         }
 
+    def _throttle(self):
+        """
+        Espaciado mínimo entre requests a la API de TN para no pisar el rate limit,
+        sin importar desde qué endpoint/loop se dispare la sincronización.
+        """
+        min_interval = 0.35  # ~3 req/seg, con margen bajo el límite real de TN
+        now = time.time()
+        elapsed = now - getattr(self, '_last_request_ts', 0)
+        if elapsed < min_interval:
+            time.sleep(min_interval - elapsed)
+        self._last_request_ts = time.time()
+
     # ==========================================
     # LÓGICA DINÁMICA DE MÁRGENES
     # ==========================================
@@ -224,21 +236,39 @@ class TiendaNubeService:
             return {"success": False, "error": str(e)}
 
     def update_variant_price(self, tn_product_id, tn_variant_id, precio_local):
-        if not self.access_token or not self.api_url: return
+        if not self.access_token or not self.api_url: return False
 
         precio_web = self.calcular_precio_web(precio_local)
-        
+
         url = f"{self.api_url}/products/{tn_product_id}/variants/{tn_variant_id}"
         data = {
             "price": precio_web,
-            "promotional_price": None 
+            "promotional_price": None
         }
-        
-        try:
-            requests.put(url, json=data, headers=self._get_headers())
-            print(f"✅ TN Sync: Precio actualizado a ${precio_web} (ID: {tn_variant_id})")
-        except Exception as e:
-            print(f"⚠️ Error actualizando precio en TN: {e}")
+
+        max_retries = 3
+        for attempt in range(max_retries):
+            self._throttle()
+            try:
+                response = requests.put(url, json=data, headers=self._get_headers(), timeout=10)
+
+                if response.status_code in [200, 201]:
+                    print(f"✅ TN Sync: Precio actualizado a ${precio_web} (ID: {tn_variant_id})")
+                    return True
+                elif response.status_code == 429:
+                    # Rate limit de Tienda Nube: esperamos más y reintentamos
+                    print(f"⏳ Rate limit TN (429) en variante {tn_variant_id}, intento {attempt + 1}")
+                    time.sleep(3)
+                else:
+                    print(f"⚠️ Intento {attempt + 1} fallido TN Sync precio: Status {response.status_code} - {response.text}")
+            except Exception as e:
+                print(f"⚠️ Intento {attempt + 1} fallido actualizando precio en TN: {e}")
+
+            if attempt < max_retries - 1:
+                time.sleep(2)
+
+        print(f"❌ ERROR CRÍTICO: No se pudo actualizar el precio en TN de la variante {tn_variant_id} después de {max_retries} intentos.")
+        return False
 
     # --- NUEVO: SISTEMA DE REINTENTOS PARA ACTUALIZAR STOCK ---
     def update_variant_stock(self, tn_product_id, tn_variant_id, new_stock):
@@ -251,6 +281,7 @@ class TiendaNubeService:
 
         max_retries = 3
         for attempt in range(max_retries):
+            self._throttle()
             try:
                 # Le agregamos un timeout por las dudas para que no se quede colgado
                 response = requests.put(url, json=data, headers=self._get_headers(), timeout=10)
