@@ -260,7 +260,7 @@ class TiendaNubeService:
                     print(f"⏳ Rate limit TN (429) en variante {tn_variant_id}, intento {attempt + 1}")
                     time.sleep(3)
                 else:
-                    print(f"⚠️ Intento {attempt + 1} fallido TN Sync precio: Status {response.status_code} - {response.text}")
+                    print(f"⚠️ Intento {attempt + 1} fallido TN Sync precio: Status {response.status_code} (ID: {tn_variant_id}) - {response.text}")
             except Exception as e:
                 print(f"⚠️ Intento {attempt + 1} fallido actualizando precio en TN: {e}")
 
@@ -290,7 +290,7 @@ class TiendaNubeService:
                     print(f"✅ TN Sync: Stock actualizado a {new_stock} (ID: {tn_variant_id})")
                     return # Si sale bien, cortamos la función acá
                 else:
-                    print(f"⚠️ Intento {attempt + 1} fallido TN Sync: Status {response.status_code} - {response.text}")
+                    print(f"⚠️ Intento {attempt + 1} fallido TN Sync: Status {response.status_code} (ID: {tn_variant_id}) - {response.text}")
             except Exception as e:
                 print(f"⚠️ Intento {attempt + 1} fallido actualizando stock en TN: {e}")
             

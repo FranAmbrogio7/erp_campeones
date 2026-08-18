@@ -1018,6 +1018,17 @@ def background_full_sync(app):
 @bp.route('/sync/force-tiendanube', methods=['POST'])
 @jwt_required()
 def force_sync_tiendanube():
+    # Evitamos lanzar una sync completa si ya hay una corriendo
+    # (si se dispara 2 o 3 veces en paralelo, se multiplica la carga contra TN)
+    try:
+        if os.path.exists(SYNC_PROGRESS_FILE):
+            with open(SYNC_PROGRESS_FILE, 'r') as f:
+                current_status = json.load(f)
+                if current_status.get("is_running"):
+                    return jsonify({"msg": "Ya hay una sincronización completa en curso."}), 400
+    except Exception:
+        pass
+
     # Disparamos el hilo secundario para no bloquear al usuario
     app = current_app._get_current_object()
     thread = threading.Thread(target=background_full_sync, args=(app,))
