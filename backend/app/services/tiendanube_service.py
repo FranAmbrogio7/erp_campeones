@@ -272,12 +272,12 @@ class TiendaNubeService:
 
     # --- NUEVO: SISTEMA DE REINTENTOS PARA ACTUALIZAR STOCK ---
     def update_variant_stock(self, tn_product_id, tn_variant_id, new_stock):
-        if not self.access_token or not self.api_url: return
-        
+        if not self.access_token or not self.api_url: return False
+
         url = f"{self.api_url}/products/{tn_product_id}/variants/{tn_variant_id}"
         data = {"stock": int(new_stock)} if new_stock is not None else {}
-        
-        if not data: return
+
+        if not data: return False
 
         max_retries = 3
         for attempt in range(max_retries):
@@ -285,20 +285,21 @@ class TiendaNubeService:
             try:
                 # Le agregamos un timeout por las dudas para que no se quede colgado
                 response = requests.put(url, json=data, headers=self._get_headers(), timeout=10)
-                
+
                 if response.status_code in [200, 201]:
                     print(f"✅ TN Sync: Stock actualizado a {new_stock} (ID: {tn_variant_id})")
-                    return # Si sale bien, cortamos la función acá
+                    return True # Si sale bien, cortamos la función acá
                 else:
                     print(f"⚠️ Intento {attempt + 1} fallido TN Sync: Status {response.status_code} (ID: {tn_variant_id}) - {response.text}")
             except Exception as e:
                 print(f"⚠️ Intento {attempt + 1} fallido actualizando stock en TN: {e}")
-            
+
             # Si llegamos acá es porque falló. Si no es el último intento, esperamos 2 segundos.
             if attempt < max_retries - 1:
                 time.sleep(2)
-                
+
         print(f"❌ ERROR CRÍTICO: No se pudo actualizar el stock en TN de la variante {tn_variant_id} después de {max_retries} intentos.")
+        return False
 
     def update_product_data(self, local_prod):
         """Actualiza SOLO nombre y descripción en TN para evitar conflictos estructurales en la API"""
@@ -492,6 +493,43 @@ class TiendaNubeService:
                     print(f"   ❌ Falló la creación de la variante {var.codigo_sku}")
         
         return hubo_cambios
+
+    def get_all_products(self):
+        """
+        Trae TODO el catálogo de Tienda Nube (paginado), solo con los campos
+        necesarios para comparar stock: id de producto y sus variantes.
+        Lanza una excepción si no hay credenciales o si la API falla, para que
+        el llamador no confunda "no pude consultar" con "no hay diferencias".
+        """
+        if not self.access_token or not self.api_url:
+            raise RuntimeError("Faltan credenciales de Tienda Nube (access_token / store_id)")
+
+        productos = []
+        page = 1
+        per_page = 200
+        max_pages = 200  # tope de seguridad (40.000 productos)
+
+        while page <= max_pages:
+            self._throttle()
+            url = f"{self.api_url}/products"
+            params = {"page": page, "per_page": per_page, "fields": "id,name,variants"}
+
+            response = requests.get(url, headers=self._get_headers(), params=params, timeout=15)
+
+            if response.status_code != 200:
+                raise RuntimeError(f"Error API TN al listar productos (pág. {page}): {response.status_code} - {response.text}")
+
+            batch = response.json()
+            if not batch:
+                break
+
+            productos.extend(batch)
+
+            if len(batch) < per_page:
+                break
+            page += 1
+
+        return productos
 
     def get_first_product_image_url(self, tn_product_id):
         if not self.access_token or not self.api_url: return None

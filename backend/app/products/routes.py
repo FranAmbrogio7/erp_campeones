@@ -1352,50 +1352,98 @@ def manage_tn_margen():
 @jwt_required()
 def audit_stock_discrepancies():
     try:
-        from app.services.tiendanube_service import tn_service
-        
         # 1. Traemos todos los productos locales vinculados a la web
         productos_locales = Producto.query.filter(Producto.tiendanube_id.isnot(None)).all()
-        
-        # 2. Obtenemos el catálogo de Tienda Nube (idealmente tn_service debería tener una función get_all_products)
-        # Asumimos que devuelve una lista de diccionarios con la data de TN
-        tn_catalogo = tn_service.get_all_products() 
-        
+
+        # 2. Obtenemos el catálogo completo de Tienda Nube
+        try:
+            tn_catalogo = tn_service.get_all_products()
+        except Exception as e:
+            return jsonify({"msg": "No se pudo consultar el catálogo de Tienda Nube", "error": str(e)}), 502
+
         # Armamos un diccionario rápido de Tienda Nube: { "tn_variant_id": stock_en_nube }
         tn_stock_map = {}
+        tn_product_ids = set()
         for tn_prod in tn_catalogo:
+            tn_product_ids.add(str(tn_prod.get('id')))
             for tn_var in tn_prod.get('variants', []):
                 tn_stock_map[str(tn_var['id'])] = tn_var.get('stock', 0)
-                
+
         # 3. Cruzamos los datos
         discrepancias = []
-        
-        for prod in productos_locales:
-            for var in prod.variantes:
-                if var.tiendanube_variant_id:
-                    tn_id_str = str(var.tiendanube_variant_id)
-                    stock_local = var.inventario.stock_actual if var.inventario else 0
-                    
-                    # Buscamos el stock que tiene la nube para esta variante
-                    stock_nube = tn_stock_map.get(tn_id_str)
-                    
-                    # Si no coincide (o si el stock_nube es None/False porque no lo encontró)
-                    if stock_nube is not None and stock_local != stock_nube:
-                        discrepancias.append({
-                            "producto_nombre": prod.nombre,
-                            "sku": var.codigo_sku,
-                            "talle": var.talla,
-                            "estampa": var.color or "-",
-                            "stock_local": stock_local,
-                            "stock_nube": stock_nube,
-                            "tn_product_id": prod.tiendanube_id,
-                            "tn_variant_id": var.tiendanube_variant_id
-                        })
+        resumen = {"sin_vincular": 0, "no_encontrado_en_tn": 0, "stock_desincronizado": 0}
 
-        return jsonify({"discrepancias": discrepancias, "total": len(discrepancias)}), 200
+        for prod in productos_locales:
+            producto_existe_en_tn = str(prod.tiendanube_id) in tn_product_ids
+
+            for var in prod.variantes:
+                stock_local = var.inventario.stock_actual if var.inventario else 0
+
+                if not var.tiendanube_variant_id:
+                    causa = "sin_vincular"
+                    causa_detalle = "La variante no tiene tiendanube_variant_id: nunca se creó/vinculó del lado de Tienda Nube."
+                    stock_nube = None
+                elif not producto_existe_en_tn or str(var.tiendanube_variant_id) not in tn_stock_map:
+                    causa = "no_encontrado_en_tn"
+                    causa_detalle = "El producto o la variante ya no existen en Tienda Nube (fue borrado o el ID guardado quedó desactualizado)."
+                    stock_nube = None
+                else:
+                    stock_nube = tn_stock_map[str(var.tiendanube_variant_id)]
+                    if stock_local == stock_nube:
+                        continue
+                    causa = "stock_desincronizado"
+                    if stock_local > stock_nube:
+                        causa_detalle = "ERP > Tienda Nube: probablemente una reposición/compra o devolución que subió el stock local sin empujarse a la web."
+                    else:
+                        causa_detalle = "ERP < Tienda Nube: probablemente una venta en el local (o un ajuste) que bajó el stock local sin reflejarse en la web, o una venta web cuyo webhook no se procesó."
+
+                resumen[causa] += 1
+                discrepancias.append({
+                    "id_variante": var.id_variante,
+                    "producto_nombre": prod.nombre,
+                    "sku": var.codigo_sku,
+                    "talle": var.talla,
+                    "estampa": var.color or "-",
+                    "stock_local": stock_local,
+                    "stock_nube": stock_nube,
+                    "diferencia": (stock_local - stock_nube) if stock_nube is not None else None,
+                    "causa": causa,
+                    "causa_detalle": causa_detalle,
+                    "tn_product_id": prod.tiendanube_id,
+                    "tn_variant_id": var.tiendanube_variant_id
+                })
+
+        return jsonify({
+            "discrepancias": discrepancias,
+            "total": len(discrepancias),
+            "resumen": resumen
+        }), 200
 
     except Exception as e:
         return jsonify({"msg": "Error en la auditoría", "error": str(e)}), 500
+
+
+@bp.route('/sync/force-stock/<int:variant_id>', methods=['POST'])
+@jwt_required()
+def force_stock_sync(variant_id):
+    """Empuja el stock ACTUAL del ERP (fuente de verdad) para una variante puntual a Tienda Nube."""
+    variante = ProductoVariante.query.get_or_404(variant_id)
+
+    if not variante.tiendanube_variant_id or not variante.producto.tiendanube_id:
+        return jsonify({"msg": "Esta variante no está vinculada a Tienda Nube"}), 400
+
+    stock_local = variante.inventario.stock_actual if variante.inventario else 0
+
+    ok = tn_service.update_variant_stock(
+        tn_product_id=variante.producto.tiendanube_id,
+        tn_variant_id=variante.tiendanube_variant_id,
+        new_stock=stock_local
+    )
+
+    if not ok:
+        return jsonify({"msg": "No se pudo actualizar el stock en Tienda Nube (ver logs del servidor)"}), 502
+
+    return jsonify({"msg": "Stock sincronizado con Tienda Nube", "stock_local": stock_local}), 200
 
 
 
