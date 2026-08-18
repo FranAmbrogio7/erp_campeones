@@ -21,6 +21,7 @@ from flask_jwt_extended import jwt_required
 import barcode
 from barcode.writer import ImageWriter
 from sqlalchemy import or_, func, and_
+from sqlalchemy.orm import selectinload
 from reportlab.graphics.barcode import code128
 from reportlab.graphics import renderPDF
 from reportlab.pdfgen import canvas
@@ -33,6 +34,39 @@ from threading import Thread
 
 
 SYNC_PROGRESS_FILE = os.path.join(tempfile.gettempdir(), 'tn_sync_progress.json')
+
+
+def serialize_producto(prod):
+    stock_total = 0
+    lista_variantes = []
+    for var in prod.variantes:
+        cantidad = var.inventario.stock_actual if var.inventario else 0
+        stock_total += cantidad
+        lista_variantes.append({
+            "id_variante": var.id_variante,
+            "talle": var.talla,
+            "estampa": var.color,
+            "sku": var.codigo_sku,
+            "stock": cantidad
+        })
+
+    return {
+        "id": prod.id_producto,
+        "nombre": prod.nombre,
+        "descripcion": prod.descripcion,
+        "precio": float(prod.precio),
+        "stock_total": stock_total,
+        "imagen": prod.imagen,
+        "categoria_id": prod.id_categoria,
+        "categoria_especifica_id": prod.id_categoria_especifica,
+        "categoria": prod.categoria.nombre if prod.categoria else "-",
+        "liga": prod.categoria_especifica.nombre if prod.categoria_especifica else "-",
+        "variantes": lista_variantes,
+        "tiendanube_id": prod.tiendanube_id,
+        "sincronizado_web": prod.sincronizado_web,
+        "activo": prod.activo
+    }
+
 
 # ==========================================
 # 1. CRUD DE CATEGORÍAS
@@ -144,7 +178,12 @@ def get_products():
     sort_by = request.args.get('sort_by', 'recientes') # <--- PARÁMETRO DE ORDEN
 
     # 2. Query Base
-    query = Producto.query.outerjoin(Categoria).outerjoin(CategoriaEspecifica)
+    # selectinload evita el N+1: sin esto, cada producto listado dispara una
+    # query aparte para sus variantes y otra por cada variante para su
+    # inventario (cientos de queries por página de 50 productos).
+    query = Producto.query.outerjoin(Categoria).outerjoin(CategoriaEspecifica).options(
+        selectinload(Producto.variantes).selectinload(ProductoVariante.inventario)
+    )
 
     # 3. Aplicar Filtros
     if active_param == 'true':
@@ -239,37 +278,7 @@ def get_products():
     # 5. Paginación y Respuesta (Removido el order_by viejo de aquí)
     paginated_data = query.paginate(page=page, per_page=per_page, error_out=False)
 
-    resultado = []
-    for prod in paginated_data.items:
-        stock_total = 0
-        lista_variantes = []
-        for var in prod.variantes:
-            cantidad = var.inventario.stock_actual if var.inventario else 0
-            stock_total += cantidad
-            lista_variantes.append({
-                "id_variante": var.id_variante,
-                "talle": var.talla,
-                "estampa": var.color,
-                "sku": var.codigo_sku,
-                "stock": cantidad
-            })
-        
-        resultado.append({
-            "id": prod.id_producto,
-            "nombre": prod.nombre,
-            "descripcion": prod.descripcion,
-            "precio": float(prod.precio),
-            "stock_total": stock_total,
-            "imagen": prod.imagen,
-            "categoria_id": prod.id_categoria,
-            "categoria_especifica_id": prod.id_categoria_especifica,
-            "categoria": prod.categoria.nombre if prod.categoria else "-", 
-            "liga": prod.categoria_especifica.nombre if prod.categoria_especifica else "-", 
-            "variantes": lista_variantes,
-            "tiendanube_id": prod.tiendanube_id,
-            "sincronizado_web": prod.sincronizado_web,
-            "activo": prod.activo
-        })
+    resultado = [serialize_producto(prod) for prod in paginated_data.items]
 
     return jsonify({
         "products": resultado,
@@ -355,6 +364,20 @@ def create_product():
         db.session.rollback()
         print(f"ERROR CREACIÓN: {e}")
         return jsonify({"msg": str(e)}), 500
+
+
+# ==========================================
+# 5.b Obtener un solo producto (para refrescos puntuales, ej. EditProductModal)
+# ==========================================
+@bp.route('/<int:id>', methods=['GET'])
+@jwt_required()
+def get_product(id):
+    prod = Producto.query.options(
+        selectinload(Producto.variantes).selectinload(ProductoVariante.inventario)
+    ).get(id)
+    if not prod:
+        return jsonify({"msg": "Producto no encontrado"}), 404
+    return jsonify(serialize_producto(prod)), 200
 
 
 # ==========================================

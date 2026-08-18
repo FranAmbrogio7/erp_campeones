@@ -1,5 +1,4 @@
 import { useEffect, useState, useRef } from 'react';
-import axios from 'axios';
 import { useAuth, api } from '../context/AuthContext';
 import {
     Package, Search, Edit, ChevronLeft, ChevronRight,
@@ -33,6 +32,23 @@ const SOUNDS = {
     success: new Audio('https://cdn.freesound.org/previews/536/536108_12152864-lq.mp3'),
     error: new Audio('https://cdn.freesound.org/previews/419/419023_8340785-lq.mp3')
 };
+
+// Lista deduplicada de todos los talles usados en cualquier curva, en un
+// orden legible (letras primero, después números, después palabras), para
+// alimentar el filtro de "Talle" del inventario sin depender de que el
+// usuario tipee el valor exacto.
+const ALL_SIZES = (() => {
+    const known = new Set(Object.values(SIZE_GRIDS).flat());
+    const letterOrder = ['XS', 'S', 'M', 'L', 'XL', 'XXL', '3XL', '4XL', '5XL'];
+    const wordOrder = ['NIÑO', 'JUVENIL', 'ADULTO', 'U'];
+    const letters = letterOrder.filter(s => known.has(s));
+    const words = wordOrder.filter(s => known.has(s));
+    const numbers = [...known]
+        .filter(s => !letters.includes(s) && !words.includes(s) && !isNaN(Number(s)))
+        .sort((a, b) => Number(a) - Number(b));
+    const rest = [...known].filter(s => !letters.includes(s) && !words.includes(s) && !numbers.includes(s));
+    return [...letters, ...numbers, ...words, ...rest];
+})();
 
 // =========================================================================
 // SUB-COMPONENTE 1: Agrupador de Variantes
@@ -158,6 +174,7 @@ const InventoryPage = () => {
 
     const [page, setPage] = useState(1);
     const [totalPages, setTotalPages] = useState(1);
+    const [totalItems, setTotalItems] = useState(0);
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedCat, setSelectedCat] = useState('');
     const [selectedSpec, setSelectedSpec] = useState('');
@@ -246,6 +263,7 @@ const InventoryPage = () => {
             if (res.data.meta) {
                 setTotalPages(res.data.meta.total_pages);
                 setPage(res.data.meta.current_page);
+                setTotalItems(res.data.meta.total_items);
             }
             if (!silent) setSelectedItems(new Set());
         } catch (error) {
@@ -255,10 +273,27 @@ const InventoryPage = () => {
         }
     };
 
+    // Evita que la carga inicial dispare dos fetches (uno por cada efecto
+    // de abajo montando a la vez).
+    const isFirstFilterRun = useRef(true);
+
+    // Filtros que se escriben caracter a caracter: se debouncean para no
+    // disparar un fetch por cada tecla.
     useEffect(() => {
+        if (isFirstFilterRun.current) return;
         const delayFn = setTimeout(() => { fetchProducts(1); }, 400);
         return () => clearTimeout(delayFn);
-    }, [searchTerm, selectedCat, selectedSpec, viewMode, hideOutOfStock, filterExactStock, filterSize, filterNoImage, sortBy]);
+    }, [searchTerm, filterExactStock]);
+
+    // Filtros que se eligen con un clic/select: se aplican al instante, sin
+    // el delay artificial de 400ms (antes tocar una categoría o el orden
+    // también esperaba lo mismo que tipear en el buscador). También cubre
+    // la carga inicial del inventario.
+    useEffect(() => {
+        fetchProducts(1);
+        isFirstFilterRun.current = false;
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedCat, selectedSpec, viewMode, hideOutOfStock, filterSize, filterNoImage, sortBy]);
 
     // EFECTO POLLING MEJORADO PARA SYNC DE STOCK
     useEffect(() => {
@@ -412,7 +447,7 @@ const InventoryPage = () => {
         setProcessingId(product.id);
         const toastId = toast.loading("Publicando...");
         try {
-            await axios.post(`/api/products/${product.id}/publish`, {}, { headers: { Authorization: `Bearer ${token}` } });
+            await api.post(`/products/${product.id}/publish`);
             playSound('success');
             toast.success("¡Publicado!", { id: toastId });
             await fetchProducts(page);
@@ -576,10 +611,24 @@ const InventoryPage = () => {
     };
 
     const handlePrintLabelsByFilter = async () => {
-        if (!searchTerm && !selectedCat && !selectedSpec) if (!window.confirm("⚠️ ¿Etiquetas de TODO el stock?")) return;
+        const hasActiveFilters = searchTerm || selectedCat || selectedSpec || filterSize || filterExactStock !== '' || filterNoImage || hideOutOfStock;
+        if (!hasActiveFilters) if (!window.confirm("⚠️ ¿Etiquetas de TODO el stock?")) return;
         const t = toast.loading("Procesando catálogo...");
         try {
-            const params = { search: searchTerm, category_id: selectedCat, specific_id: selectedSpec, active: viewMode === 'active', limit: 5000 };
+            // Mismos filtros que la tabla, para que "Etiquetas" imprima
+            // exactamente lo que se está viendo (antes ignoraba talle,
+            // stock exacto, sin imagen y "ocultar sin stock").
+            const params = {
+                search: searchTerm,
+                category_id: selectedCat || undefined,
+                specific_id: selectedSpec || undefined,
+                size_filter: filterSize || undefined,
+                exact_stock: filterExactStock !== '' ? filterExactStock : undefined,
+                no_image: filterNoImage ? 'true' : undefined,
+                min_stock: hideOutOfStock ? 1 : undefined,
+                active: viewMode === 'active' ? 'true' : 'false',
+                limit: 5000
+            };
             const res = await api.get('/products', { params });
             const items = (res.data.products || []).flatMap(p => p.variantes.filter(v => v.stock > 0).map(v => ({
                 sku: v.sku || `GEN-${v.id_variante}`,
@@ -624,8 +673,13 @@ const InventoryPage = () => {
 
                 {viewMode === 'active' && (
                     <div className="flex flex-wrap items-center gap-2 w-full justify-end border-t border-slate-100 dark:border-slate-800 pt-3">
-                        <button onClick={() => setShowAdvancedFilters(!showAdvancedFilters)} className={`flex items-center px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all mr-auto ${showAdvancedFilters ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 shadow-inner' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50'}`}>
+                        <button onClick={() => setShowAdvancedFilters(!showAdvancedFilters)} className={`flex items-center px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all mr-auto relative ${showAdvancedFilters ? 'bg-indigo-50 dark:bg-indigo-900/30 border-indigo-200 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 shadow-inner' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50'}`}>
                             <ListFilter size={14} className="mr-1.5" /> {showAdvancedFilters ? 'Ocultar' : 'Avanzados'}
+                            {!showAdvancedFilters && (filterExactStock !== '' || filterNoImage) && (
+                                <span className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-indigo-600 text-white text-[9px] font-black flex items-center justify-center shadow-sm" title="Hay filtros avanzados activos">
+                                    {[filterExactStock !== '', filterNoImage].filter(Boolean).length}
+                                </span>
+                            )}
                         </button>
 
                         <button onClick={() => setHideOutOfStock(!hideOutOfStock)} className={`flex items-center px-3 py-1.5 rounded-lg text-[11px] font-bold border transition-all ${hideOutOfStock ? 'bg-orange-50 dark:bg-orange-900/20 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300 shadow-inner' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50'}`}>{hideOutOfStock ? <EyeOff size={14} className="mr-1.5" /> : <Eye size={14} className="mr-1.5" />} {hideOutOfStock ? 'Sin Stock: Oculto' : 'Sin Stock: Visible'}</button>
@@ -694,13 +748,21 @@ const InventoryPage = () => {
                             </select>
                             <ChevronDown size={14} className="absolute right-2 top-2.5 text-slate-400 pointer-events-none" />
                         </div>
+
+                        <div className="flex gap-2 relative">
+                            <select value={filterSize} onChange={e => setFilterSize(e.target.value)} className="w-full md:w-32 bg-slate-50 dark:bg-slate-800 border-transparent focus:bg-white focus:border-indigo-300 focus:ring-2 focus:ring-indigo-50 rounded-lg outline-none px-3 py-2 text-xs font-bold text-slate-600 dark:text-slate-300 cursor-pointer appearance-none">
+                                <option value="">Talle: Todos</option>
+                                {ALL_SIZES.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                            <ChevronDown size={14} className="absolute right-2 top-2.5 text-slate-400 pointer-events-none" />
+                        </div>
                     </div>
 
                     <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-0.5 no-scrollbar px-1">
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mr-2 shrink-0">Cat:</span>
                         <button onClick={() => setSelectedCat('')} className={`px-4 py-1.5 rounded-lg text-[11px] font-bold border transition-all whitespace-nowrap shrink-0 shadow-sm ${selectedCat === '' ? 'bg-slate-800 text-white border-slate-800 dark:bg-slate-200 dark:text-slate-900' : 'bg-white dark:bg-slate-900 text-slate-600 border-slate-200 dark:border-slate-800'}`}>TODAS</button>
                         {categories.map(c => (
-                            <button key={c.id} onClick={() => setSelectedCat(selectedCat === c.id ? '' : c.id)} className={`px-4 py-1.5 rounded-lg text-[11px] font-bold border transition-all duration-300 whitespace-nowrap shrink-0 shadow-sm ${selectedCat == c.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-50'}`}>
+                            <button key={c.id} onClick={() => setSelectedCat(selectedCat === c.id ? '' : c.id)} className={`px-4 py-1.5 rounded-lg text-[11px] font-bold border transition-all duration-300 whitespace-nowrap shrink-0 shadow-sm ${selectedCat === c.id ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:bg-slate-50'}`}>
                                 {c.nombre}
                             </button>
                         ))}
@@ -709,18 +771,14 @@ const InventoryPage = () => {
                     {showAdvancedFilters && (
                         <div className="bg-indigo-50/80 dark:bg-indigo-900/10 p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/30 flex flex-wrap gap-4 items-center animate-fade-in-down transition-colors backdrop-blur-sm shadow-inner">
                             <div className="flex items-center gap-2">
-                                <label className="text-[10px] font-black text-indigo-800 dark:text-indigo-400 uppercase tracking-wider">Stock</label>
+                                <label className="text-[10px] font-black text-indigo-800 dark:text-indigo-400 uppercase tracking-wider">Stock exacto</label>
                                 <input type="number" min="0" placeholder="Ej: 0" className="w-16 p-1.5 rounded-lg border border-indigo-200 text-xs font-bold text-center outline-none focus:ring-2 focus:ring-indigo-400 bg-white dark:bg-slate-800 dark:text-white" value={filterExactStock} onChange={e => setFilterExactStock(e.target.value)} />
-                            </div>
-                            <div className="flex items-center gap-2">
-                                <label className="text-[10px] font-black text-indigo-800 dark:text-indigo-400 uppercase tracking-wider">Talle</label>
-                                <input type="text" placeholder="Ej: S" className="w-16 p-1.5 rounded-lg border border-indigo-200 text-xs font-bold text-center outline-none focus:ring-2 focus:ring-indigo-400 bg-white dark:bg-slate-800 dark:text-white uppercase" value={filterSize} onChange={e => setFilterSize(e.target.value)} />
                             </div>
                             <button onClick={() => setFilterNoImage(!filterNoImage)} className={`flex items-center px-3 py-1.5 rounded-lg text-[10px] font-bold border transition-all shadow-sm ${filterNoImage ? 'bg-red-100 text-red-700 border-red-200' : 'bg-white text-slate-600 border-slate-200'}`}>
                                 <ImageOff size={12} className="mr-1.5" /> {filterNoImage ? 'Sin Imagen' : 'Filtro Imagen'}
                             </button>
-                            {(filterExactStock || filterSize || filterNoImage) && (
-                                <button onClick={() => { setFilterExactStock(''); setFilterSize(''); setFilterNoImage(false); }} className="ml-auto text-[10px] text-indigo-600 hover:text-indigo-800 underline font-bold tracking-wide">Limpiar</button>
+                            {(filterExactStock || filterNoImage) && (
+                                <button onClick={() => { setFilterExactStock(''); setFilterNoImage(false); }} className="ml-auto text-[10px] text-indigo-600 hover:text-indigo-800 underline font-bold tracking-wide">Limpiar</button>
                             )}
                         </div>
                     )}
@@ -847,8 +905,8 @@ const InventoryPage = () => {
                                     <td className="px-5 py-4 text-center"><button onClick={() => toggleSelect(p.id)} className={`transition-transform active:scale-90 ${selectedItems.has(p.id) ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-300 dark:text-slate-600 hover:text-slate-500'}`}>{selectedItems.has(p.id) ? <CheckSquare size={20} /> : <Square size={20} />}</button></td>
 
                                     <td className="px-5 py-4 text-center">
-                                        <div onClick={() => p.imagen && setImageModalSrc(`/api/static/uploads/${p.imagen}`)} className="h-12 w-12 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden cursor-zoom-in relative group/img mx-auto shadow-sm">
-                                            {p.imagen ? <img src={`/api/static/uploads/${p.imagen}`} className="h-full w-full object-cover transform group-hover/img:scale-110 transition-transform duration-300" /> : <Shirt size={20} className="text-slate-300" />}
+                                        <div onClick={() => p.imagen && setImageModalSrc(`${api.defaults.baseURL}/static/uploads/${p.imagen}`)} className="h-12 w-12 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center overflow-hidden cursor-zoom-in relative group/img mx-auto shadow-sm">
+                                            {p.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${p.imagen}`} loading="lazy" className="h-full w-full object-cover transform group-hover/img:scale-110 transition-transform duration-300" /> : <Shirt size={20} className="text-slate-300" />}
                                         </div>
                                     </td>
 
@@ -913,7 +971,10 @@ const InventoryPage = () => {
                 <div className="bg-slate-50 dark:bg-slate-900/80 p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0 transition-colors">
                     {searchTerm.trim() !== '' ? (
                         <span className="text-[11px] text-slate-500 font-bold uppercase tracking-wider">
-                            <span className="text-indigo-600 dark:text-indigo-400 text-base">{products.length}</span> resultados
+                            <span className="text-indigo-600 dark:text-indigo-400 text-base">{totalItems}</span> resultados
+                            {products.length < totalItems && (
+                                <span className="ml-2 text-amber-600 dark:text-amber-400 normal-case font-medium">(mostrando los primeros {products.length}, afiná la búsqueda para ver el resto)</span>
+                            )}
                         </span>
                     ) : (
                         <>
