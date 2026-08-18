@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback, memo } from 'react';
-import axios from 'axios';
-import { useAuth } from '../context/AuthContext';
+import { api } from '../context/AuthContext';
 import { X, Save, Trash2, Plus, Image as ImageIcon, Shirt, Loader2, RefreshCw } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -66,14 +65,22 @@ VariantRow.displayName = 'VariantRow';
 // 2. COMPONENTE PRINCIPAL DEL MODAL
 // =========================================================================
 const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, specificCategories }) => {
-    const { token } = useAuth();
-
     const [formData, setFormData] = useState({
         nombre: '', precio: '', categoria_id: '', categoria_especifica_id: '', descripcion: ''
     });
 
     const [newImageFile, setNewImageFile] = useState(null);
     const [currentImage, setCurrentImage] = useState(null);
+
+    // Object URL de la vista previa: se crea/revoca solo cuando cambia el
+    // archivo elegido, en vez de en cada render (evita filtrar memoria).
+    const [newImagePreview, setNewImagePreview] = useState(null);
+    useEffect(() => {
+        if (!newImageFile) { setNewImagePreview(null); return; }
+        const url = URL.createObjectURL(newImageFile);
+        setNewImagePreview(url);
+        return () => URL.revokeObjectURL(url);
+    }, [newImageFile]);
     const [variants, setVariants] = useState([]);
     const [newSize, setNewSize] = useState('S,M,L,XL,XXL');
     const [newStock, setNewStock] = useState(0);
@@ -82,26 +89,28 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
     const [isSaving, setIsSaving] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isAddingVariant, setIsAddingVariant] = useState(false);
+    // Cuenta reintentos fallidos por variante: al bumpear el contador forzamos
+    // el remount de esa fila (ver key en VariantRow) para que el input
+    // uncontrolled descarte el valor tipeado y vuelva a mostrar el último
+    // valor realmente guardado. Sin esto, si el PUT fallaba, el campo se
+    // quedaba mostrando el valor nuevo como si se hubiese guardado.
+    const [variantErrorTick, setVariantErrorTick] = useState({});
 
     // LÓGICA INTELIGENTE: Detectamos si el producto en general es de tipo "Con Estampa"
     const hasEstampaSupport = variants.some(v => getRealEstampa(v.estampa) !== null);
     const refreshLocalData = useCallback(async () => {
+        if (!product) return;
         setIsRefreshing(true);
         try {
-            const res = await axios.get(`/api/products`, {
-                params: { search: product.nombre, limit: 1 },
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            const updatedProduct = res.data.products.find(p => p.id === product.id);
-            if (updatedProduct) {
-                setVariants(updatedProduct.variantes.map(v => ({ ...v })));
-            }
+            const res = await api.get(`/products/${product.id}`);
+            setVariants(res.data.variantes.map(v => ({ ...v })));
         } catch (err) {
             console.error("Error refrescando variantes:", err);
+            toast.error("No se pudo refrescar el detalle del producto");
         } finally {
             setIsRefreshing(false);
         }
-    }, [product, token]);
+    }, [product?.id]);
 
     useEffect(() => {
         if (product && isOpen) {
@@ -120,14 +129,14 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
             setNewStock(0);
             setIsSaving(false);
             setIsAddingVariant(false);
+            setVariantErrorTick({});
         }
     }, [product, isOpen]);
 
     const handleUpdateVariant = useCallback(async (variantId, newStock, newSku, newEstampa) => {
         try {
-            await axios.put(`/api/products/variants/${variantId}`,
-                { stock: newStock, sku: newSku, estampa: newEstampa },
-                { headers: { Authorization: `Bearer ${token}` } }
+            await api.put(`/products/variants/${variantId}`,
+                { stock: newStock, sku: newSku, estampa: newEstampa }
             );
 
             // 1. Actualizamos la memoria interna del modal para evitar saltos visuales
@@ -142,20 +151,21 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
 
         } catch (e) {
             console.error("Error updating variant", e);
-            toast.error("Error al guardar el cambio de stock"); // Opcional: feedback visual si falla
+            toast.error(e.response?.data?.msg || "Error al guardar el cambio de stock");
+            // Fuerza el remount de la fila para que el input vuelva a mostrar
+            // el último valor guardado en vez del valor tipeado que falló.
+            setVariantErrorTick(prev => ({ ...prev, [variantId]: (prev[variantId] || 0) + 1 }));
         }
-    }, [token, onUpdate]);
+    }, [onUpdate]);
 
     const handleDeleteVariant = useCallback(async (id) => {
         if (!window.confirm("¿Borrar este talle?")) return;
         try {
-            await axios.delete(`/api/products/variants/${id}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            await api.delete(`/products/variants/${id}`);
             setVariants(prev => prev.filter(v => v.id_variante !== id));
             onUpdate();
-        } catch (e) { alert("Atención: " + (e.response?.data?.msg || "Error")); }
-    }, [token, onUpdate]);
+        } catch (e) { toast.error(e.response?.data?.msg || "Error al borrar el talle"); }
+    }, [onUpdate]);
 
     const handleUpdateInfo = async () => {
         setIsSaving(true);
@@ -168,15 +178,13 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
             dataToSend.append('descripcion', formData.descripcion);
             if (newImageFile) dataToSend.append('imagen', newImageFile);
 
-            await axios.put(`/api/products/${product.id}`, dataToSend, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            await api.put(`/products/${product.id}`, dataToSend);
 
             onUpdate();
             onClose();
         } catch (e) {
             setIsSaving(false);
-            alert("Error: " + (e.response?.data?.msg || e.message));
+            toast.error(e.response?.data?.msg || e.message || "Error al guardar los datos base");
         }
     };
 
@@ -186,12 +194,12 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
         const toastId = toast.loading(isMultiple ? "Creando curva y sincronizando con TN..." : "Agregando talle...");
 
         try {
-            await axios.post(`/api/products/variants`, {
+            await api.post(`/products/variants`, {
                 id_producto: product.id,
                 talla: newSize,
                 stock: newStock,
                 estampa: newEstampa // El backend ahora acepta estampa vacía
-            }, { headers: { Authorization: `Bearer ${token}` } });
+            });
 
             toast.success("Variante/s agregada/s correctamente", { id: toastId });
             onUpdate();
@@ -208,8 +216,8 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
     if (!isOpen || !product) return null;
 
     return (
-        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
-            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col border border-slate-200 dark:border-slate-700">
+        <div className="fixed inset-0 bg-slate-900/80 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in" onClick={!isSaving && !isAddingVariant ? onClose : undefined}>
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col border border-slate-200 dark:border-slate-700" onClick={e => e.stopPropagation()}>
 
                 {/* --- HEADER --- */}
                 <div className="flex justify-between items-center p-5 border-b border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900 shrink-0 relative z-20">
@@ -274,7 +282,7 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                             <div className="lg:col-span-1 flex flex-col items-center justify-center p-4 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800">
                                 <label className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-3 block text-center">Foto Principal</label>
                                 <div className={`w-28 h-28 mb-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-600 overflow-hidden bg-white dark:bg-slate-800 flex items-center justify-center relative group transition-all ${isSaving || isAddingVariant ? 'opacity-50' : 'hover:border-indigo-400 dark:hover:border-indigo-500'}`}>
-                                    {newImageFile ? <img src={URL.createObjectURL(newImageFile)} className="w-full h-full object-cover" /> : currentImage ? <img src={`/api/static/uploads/${currentImage}`} className="w-full h-full object-cover" /> : <ImageIcon className="text-slate-300 dark:text-slate-600" size={32} />}
+                                    {newImagePreview ? <img src={newImagePreview} className="w-full h-full object-cover" /> : currentImage ? <img src={`${api.defaults.baseURL}/static/uploads/${currentImage}`} className="w-full h-full object-cover" /> : <ImageIcon className="text-slate-300 dark:text-slate-600" size={32} />}
                                     {!isSaving && !isAddingVariant && (
                                         <label htmlFor="imageUploadEdit" className="absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all cursor-pointer">
                                             <ImageIcon size={20} className="mb-1" />
@@ -315,7 +323,7 @@ const EditProductModal = ({ isOpen, onClose, product, onUpdate, categories, spec
                                 <tbody>
                                     {variants.map((v) => (
                                         <VariantRow
-                                            key={v.id_variante}
+                                            key={`${v.id_variante}-${variantErrorTick[v.id_variante] || 0}`}
                                             v={v}
                                             onUpdateVariant={handleUpdateVariant}
                                             onDeleteVariant={handleDeleteVariant}
