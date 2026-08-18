@@ -24,6 +24,28 @@ const getRealEstampa = (estampaStr) => {
   return estampaStr;
 };
 
+// Cada uno de los 4 clientes en curso mantiene su propio método de pago,
+// descuentos/recargos, nota de crédito aplicada, etc. Sin esto, cambiar de
+// pestaña de cliente pisaba la configuración de cobro del cliente anterior.
+const usePerTabState = (initialValue, activeTab, tabCount = 4) => {
+  const makeInitial = () => Array.from({ length: tabCount }, () => (
+    typeof initialValue === 'function' ? initialValue() : initialValue
+  ));
+  const [all, setAll] = useState(makeInitial);
+
+  const setValue = (valueOrFn) => {
+    setAll(prev => {
+      const next = [...prev];
+      next[activeTab] = typeof valueOrFn === 'function' ? valueOrFn(next[activeTab]) : valueOrFn;
+      return next;
+    });
+  };
+
+  const resetAll = () => setAll(makeInitial());
+
+  return [all[activeTab], setValue, resetAll];
+};
+
 const VariantSelectionModal = ({ product, isOpen, onClose, onSelect }) => {
   if (!isOpen || !product) return null;
 
@@ -104,7 +126,6 @@ const POSPage = () => {
   const [isTerminalModalOpen, setIsTerminalModalOpen] = useState(false);
   const isMerch = tipoCaja === 'MERCHANDISING';
 
-  const [appliedNote, setAppliedNote] = useState(null);
   const [viewingSale, setViewingSale] = useState(null);
 
   const [isRegisterOpen, setIsRegisterOpen] = useState(null);
@@ -149,17 +170,19 @@ const POSPage = () => {
   const [zoomImage, setZoomImage] = useState(null);
 
   const [paymentMethods, setPaymentMethods] = useState([]);
-  const [selectedMethod, setSelectedMethod] = useState(null);
 
-  const [customTotal, setCustomTotal] = useState(null);
+  // Estado de cobro aislado por pestaña de cliente (ver usePerTabState arriba).
+  const [selectedMethod, setSelectedMethod, resetSelectedMethods] = usePerTabState(null, activeTab);
+  const [customTotal, setCustomTotal, resetCustomTotals] = usePerTabState(null, activeTab);
+  const [surchargePercent, setSurchargePercent, resetSurcharges] = usePerTabState(0, activeTab);
+  const [discountPercent, setDiscountPercent, resetDiscounts] = usePerTabState(0, activeTab);
+  const [creditNoteCode, setCreditNoteCode, resetCreditNoteCodes] = usePerTabState('', activeTab);
+  const [appliedNote, setAppliedNote, resetAppliedNotes] = usePerTabState(null, activeTab);
+  const [isSplitPayment, setIsSplitPayment, resetSplitFlags] = usePerTabState(false, activeTab);
+  const [splitPayments, setSplitPayments, resetSplitPayments] = usePerTabState(() => [{ id_metodo: '', monto: '' }], activeTab);
+
   const [isEditingPrice, setIsEditingPrice] = useState(false);
   const [editingItemId, setEditingItemId] = useState(null);
-  const [surchargePercent, setSurchargePercent] = useState(0);
-  const [discountPercent, setDiscountPercent] = useState(0);
-
-  const [creditNoteCode, setCreditNoteCode] = useState('');
-  const [isSplitPayment, setIsSplitPayment] = useState(false);
-  const [splitPayments, setSplitPayments] = useState([{ id_metodo: '', monto: '' }]);
 
   const [recentSales, setRecentSales] = useState([]);
   const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
@@ -205,6 +228,10 @@ const POSPage = () => {
   const restanteMixto = totalFinal - totalPagadoMixto;
 
   useEffect(() => {
+    // Vuelve a mostrar el loader (en vez de la última pantalla conocida)
+    // mientras se resuelve el estado de la nueva terminal.
+    setIsRegisterOpen(null);
+
     const init = async () => {
       if (!token) return;
       try {
@@ -219,7 +246,10 @@ const POSPage = () => {
         setCategories(resCats.data);
         setSpecificCats(resSpecs.data);
         if (resStatus.data.estado === 'abierta') fetchRecentSales();
-      } catch (error) { toast.error("Error de conexión inicial"); }
+      } catch (error) {
+        toast.error("Error de conexión inicial");
+        setIsRegisterOpen(false);
+      }
     };
     init();
   }, [token, tipoCaja]);
@@ -244,10 +274,14 @@ const POSPage = () => {
         return;
       }
       setAllCarts([[], [], [], []]);
-      setCustomTotal(null);
-      setSurchargePercent(0);
-      setDiscountPercent(0);
-      setSplitPayments([{ id_metodo: '', monto: '' }]);
+      resetCustomTotals();
+      resetSurcharges();
+      resetDiscounts();
+      resetSplitPayments();
+      resetSplitFlags();
+      resetSelectedMethods();
+      resetCreditNoteCodes();
+      resetAppliedNotes();
     }
 
     setTipoCaja(newTipo);
@@ -292,7 +326,7 @@ const POSPage = () => {
       } catch (error) { console.error(error); }
     }, 300);
     return () => clearTimeout(delaySearch);
-  }, [manualTerm, isSearchMode, selectedCat, selectedSpec, isMerch]);
+  }, [manualTerm, isSearchMode, selectedCat, selectedSpec]);
 
   const handleSearchKeyDown = (e) => {
     if (e.key === 'Escape') {
@@ -357,10 +391,16 @@ const POSPage = () => {
       if (res.data.found) {
         addToCart(res.data.product);
         toast.success("OK", { position: 'bottom-left', duration: 800 });
-        setSkuInput('');
+      } else {
+        toast.error("Producto NO Encontrado", { position: 'bottom-left' });
       }
     } catch (error) {
-      toast.error("Producto NO Encontrado", { position: 'bottom-left' });
+      if (error.response?.status === 404) {
+        toast.error("Producto NO Encontrado", { position: 'bottom-left' });
+      } else {
+        toast.error("Error de conexión al escanear", { position: 'bottom-left' });
+      }
+    } finally {
       setSkuInput('');
     }
   };
@@ -383,14 +423,23 @@ const POSPage = () => {
 
   const updateQuantity = (id, delta) => {
     setCustomTotal(null);
+    let hitStockLimit = false;
     setCart(prev => prev.map(item => {
       if (item.id_variante === id) {
         const newQty = Math.max(1, item.cantidad + delta);
-        if (newQty < 1 || newQty > item.stock_actual) return item;
+        if (newQty > item.stock_actual) { hitStockLimit = true; return item; }
         return { ...item, cantidad: newQty, subtotal: newQty * item.precio };
       }
       return item;
     }));
+    if (hitStockLimit) toast.error("No hay más stock disponible");
+  };
+
+  // Bajar de 1 con el botón "-" saca el producto del carrito, en vez de
+  // quedar trabado sin hacer nada (antes solo se podía sacar con el tacho).
+  const decrementOrRemove = (item) => {
+    if (item.cantidad <= 1) removeFromCart(item.id_variante);
+    else updateQuantity(item.id_variante, -1);
   };
 
   const updateItemPrice = (id, newPrice) => {
@@ -418,13 +467,12 @@ const POSPage = () => {
   };
 
   const handleSwitchTab = (index) => {
+    // El método de pago, descuentos/recargos y demás quedan intactos por
+    // pestaña: cada cliente conserva su propia configuración de cobro al
+    // volver a su tab (ver usePerTabState).
     setActiveTab(index);
-    setCustomTotal(null);
-    setSurchargePercent(0);
-    setDiscountPercent(0);
     setSkuInput('');
-    setSelectedMethod(null);
-    setIsSplitPayment(false);
+    setShowDropdown(false);
   };
 
   const handleCheckoutClick = () => {
@@ -545,16 +593,19 @@ const POSPage = () => {
 
   const getPaymentIcon = (n) => {
     const name = n.toLowerCase();
-    if (name.includes('58')) return <CreditCard size={18} />;
-    if (name.includes('transferencia')) return <Smartphone size={18} />;
     if (name.includes('credito') || name.includes('crédito')) return <Receipt size={18} />;
+    if (name.includes('transferencia')) return <Smartphone size={18} />;
+    if (name.includes('tarjeta') || name.includes('debito') || name.includes('débito') || name.includes('58')) return <CreditCard size={18} />;
     return <Banknote size={18} />;
   };
 
   const getMethodBadgeColor = (m) => {
     const name = (m || '').toLowerCase();
     if (name.includes('efectivo')) return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300';
-    if (name.includes('tarjeta')) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+    if (name.includes('tarjeta') || name.includes('debito') || name.includes('débito')) return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300';
+    if (name.includes('transferencia')) return 'bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300';
+    if (name.includes('credito') || name.includes('crédito')) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
+    if (name.includes('mixto') || name.includes('combinado')) return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300';
     return 'bg-gray-100 text-gray-600 dark:bg-slate-700 dark:text-slate-300';
   };
 
@@ -622,7 +673,7 @@ const POSPage = () => {
                           </td>
                           <td className="p-4 align-middle">
                             <div className="flex items-center justify-center bg-white dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 w-fit mx-auto shadow-sm">
-                              <button onClick={() => updateQuantity(item.id_variante, -1)} className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"><Minus size={14} /></button>
+                              <button onClick={() => decrementOrRemove(item)} className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"><Minus size={14} /></button>
                               <span className="font-black text-base w-10 text-center text-slate-800 dark:text-white">{item.cantidad}</span>
                               <button onClick={() => updateQuantity(item.id_variante, 1)} className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"><Plus size={14} /></button>
                             </div>
@@ -703,7 +754,7 @@ const POSPage = () => {
             </div>
 
             <div className="p-6 bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-700 flex justify-between items-center shadow-[0_-10px_40px_rgba(0,0,0,0.05)] z-20">
-              <button onClick={() => prepareAndPrint(viewingSale)} className={`flex items-center px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-colors shadow-sm border ${isMerch ? 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800' : 'bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800'}`}>
+              <button onClick={() => handleReprint(viewingSale)} className={`flex items-center px-5 py-3 rounded-xl font-black text-xs uppercase tracking-widest transition-colors shadow-sm border ${isMerch ? 'bg-purple-50 text-purple-600 border-purple-200 hover:bg-purple-100 dark:bg-purple-900/30 dark:text-purple-400 dark:border-purple-800' : 'bg-indigo-50 text-indigo-600 border-indigo-200 hover:bg-indigo-100 dark:bg-indigo-900/30 dark:text-indigo-400 dark:border-indigo-800'}`}>
                 <Printer size={18} className="mr-2" /> Reimprimir
               </button>
               <div className="text-right">
@@ -760,8 +811,14 @@ const POSPage = () => {
         </div>
       )}
 
-      {/* PANTALLA DE BLOQUEO SI LA CAJA ELEGIDA ESTÁ CERRADA */}
-      {isRegisterOpen === false ? (
+      {/* Mientras no sabemos si la caja está abierta, no mostramos la UI operativa:
+          evita el flash de pantalla habilitada que luego se bloquea de golpe. */}
+      {isRegisterOpen === null ? (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 dark:border-indigo-400"></div>
+        </div>
+      ) : /* PANTALLA DE BLOQUEO SI LA CAJA ELEGIDA ESTÁ CERRADA */
+      isRegisterOpen === false ? (
         <div className={`flex-1 flex flex-col items-center justify-center rounded-3xl border shadow-sm transition-colors ${isMerch ? 'bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900/50' : 'bg-indigo-50 dark:bg-slate-900/50 border-indigo-200 dark:border-slate-800'}`}>
           <div className={`p-6 rounded-full mb-6 border shadow-inner ${isMerch ? 'bg-purple-100 dark:bg-purple-900/50 text-purple-500 border-purple-200 dark:border-purple-800' : 'bg-indigo-100 dark:bg-indigo-900/50 text-indigo-500 border-indigo-200 dark:border-indigo-800'}`}>
             <Lock size={64} />
@@ -1056,7 +1113,7 @@ const POSPage = () => {
 
                       <div className={`flex justify-between items-end pt-3 border-t ${isMerch ? 'border-purple-50 dark:border-slate-700/50' : 'border-gray-50 dark:border-slate-700/50'}`}>
                         <div className="flex items-center bg-gray-50 dark:bg-slate-900 rounded-lg border border-gray-200 dark:border-slate-700 p-0.5 shadow-inner">
-                          <button onClick={() => updateQuantity(item.id_variante, -1)} className="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-800 rounded-md transition-colors"><Minus size={14} /></button>
+                          <button onClick={() => decrementOrRemove(item)} className="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-800 rounded-md transition-colors"><Minus size={14} /></button>
                           <span className="font-black text-xs w-8 text-center text-gray-800 dark:text-white">{item.cantidad}</span>
                           <button onClick={() => updateQuantity(item.id_variante, 1)} className="p-1.5 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-white dark:hover:bg-slate-800 rounded-md transition-colors"><Plus size={14} /></button>
                         </div>
@@ -1215,7 +1272,7 @@ const POSPage = () => {
                     </div>
                     <div onClick={() => setIsEditingPrice(true)} className="cursor-pointer group flex items-center relative" title="Editar precio final">
                       {isEditingPrice ? (
-                        <input autoFocus type="number" className={`text-3xl font-black text-right w-36 border-b-2 outline-none bg-transparent dark:text-white ${isMerch ? 'border-fuchsia-500 text-fuchsia-600' : 'border-indigo-500 text-indigo-600'}`} value={customTotal === null ? subtotalCalculado : customTotal} onChange={e => setCustomTotal(e.target.value)} onBlur={() => setIsEditingPrice(false)} onKeyDown={e => { if (e.key === 'Enter') setIsEditingPrice(false) }} />
+                        <input autoFocus type="number" className={`text-3xl font-black text-right w-36 border-b-2 outline-none bg-transparent dark:text-white ${isMerch ? 'border-fuchsia-500 text-fuchsia-600' : 'border-indigo-500 text-indigo-600'}`} value={customTotal === null ? totalWithAdjustments : customTotal} onChange={e => setCustomTotal(e.target.value)} onBlur={() => setIsEditingPrice(false)} onKeyDown={e => { if (e.key === 'Enter') setIsEditingPrice(false) }} />
                       ) : (
                         <>
                           <span className={`text-3xl font-black tracking-tighter transition-colors font-mono ${descuentoVisual !== 0 ? (isMerch ? 'text-fuchsia-600 dark:text-fuchsia-400' : 'text-indigo-600 dark:text-indigo-400') : 'text-slate-800 dark:text-white'}`}>$ {totalFinal.toLocaleString()}</span>
