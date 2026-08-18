@@ -23,6 +23,7 @@ import BudgetPage from './pages/BudgetPage';
 import RegisterPage from './pages/RegisterPage';
 import CreditNotesPage from './pages/CreditNotesPage';
 import StockReportPage from './pages/StockReportPage';
+import StockSyncAuditPage from './pages/StockSyncAuditPage';
 import NotesPage from './pages/NotesPage';
 import ClientsPage from './pages/ClientsPage';
 import { ThemeProvider } from './context/ThemeContext';
@@ -57,6 +58,7 @@ function App() {
                   <Route path="/presupuestos" element={<BudgetPage />} />
                   <Route path="/notas-credito" element={<CreditNotesPage />} />
                   <Route path="/reporte-stock" element={<StockReportPage />} />
+                  <Route path="/auditoria-stock" element={<StockSyncAuditPage />} />
                   <Route path="/notas" element={<NotesPage />} />
                   <Route path="/clientes" element={<ClientsPage />} />
                 </Route>

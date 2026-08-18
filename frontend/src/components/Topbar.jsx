@@ -6,7 +6,7 @@ import {
   LayoutDashboard, ChevronDown, LogOut, Menu, X,
   Store, Package, Users, ShoppingCart, Lock, ScrollText, History, FileText,
   Shirt, ArrowRightLeft, ClipboardCheck, Truck, QrCode, Tags,
-  CalendarClock, FileSpreadsheet, PieChart, Maximize, Minimize
+  CalendarClock, FileSpreadsheet, PieChart, Maximize, Minimize, RefreshCw
 } from 'lucide-react';
 import ThemeToggle from './ThemeToggle'; 
 
@@ -69,7 +69,8 @@ const Topbar = () => {
         { path: '/compras', name: 'Compras', icon: Truck },
         { path: '/etiquetas', name: 'Etiquetas', icon: QrCode },
         { path: '/categorias', name: 'Categorías', icon: Tags },
-        
+        { path: '/auditoria-stock', name: 'Auditoría Tienda Nube', icon: RefreshCw },
+
       ]
     },
     {
