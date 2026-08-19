@@ -108,6 +108,69 @@ const VariantSelectionModal = ({ data, onClose, onSelect }) => {
 };
 
 // =========================================================================
+// SUB-COMPONENTE: Dropdown de resultados de búsqueda
+// =========================================================================
+// Antes vivía declarado DENTRO de ReturnsPage, así que React lo trataba
+// como un componente nuevo en cada render del padre (cada tecla tipeada en
+// el buscador) y lo desmontaba/remontaba entero en vez de solo actualizar
+// sus props. Al vivir afuera, React lo reconoce como el mismo componente
+// entre renders.
+const SearchResultsDropdown = ({ results, type, show, onSelectProduct, onSelectSize, onZoomImage }) => {
+    if (!show || results.length === 0) return null;
+    return (
+        <div className={`absolute top-full left-0 right-0 bg-white dark:bg-slate-800 shadow-2xl border rounded-b-2xl mt-1 max-h-[50vh] overflow-y-auto z-[100] custom-scrollbar ${type === 'IN' ? 'border-red-200 dark:border-red-900/50' : 'border-emerald-200 dark:border-emerald-900/50'}`}>
+            {results.map(prod => {
+                const tallesUnicos = Array.from(new Set(prod.variantes.map(v => v.talle)));
+
+                return (
+                    <div key={prod.id} className="p-4 border-b border-slate-100 dark:border-slate-700/60 hover:bg-slate-50 dark:hover:bg-slate-700/80 flex gap-4 cursor-pointer transition-colors" onClick={() => onSelectProduct(prod, type)}>
+                        <div className="w-16 h-16 bg-slate-100 dark:bg-slate-700 rounded-xl shrink-0 overflow-hidden border border-slate-200 dark:border-slate-600 relative flex items-center justify-center cursor-zoom-in" onClick={(e) => { e.stopPropagation(); if (prod.imagen) onZoomImage(`${api.defaults.baseURL}/static/uploads/${prod.imagen}`); }}>
+                            {prod.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${prod.imagen}`} className="w-full h-full object-cover group-hover:scale-110 transition-transform" /> : <Shirt className="text-slate-300 dark:text-slate-500 w-full h-full p-3" />}
+                        </div>
+                        <div className="flex-1 flex flex-col justify-center">
+                            <div className="flex justify-between items-start mb-2">
+                                <span className="text-base font-black text-slate-800 dark:text-white leading-tight">{prod.nombre}</span>
+                                <span className={`text-base font-black ${type === 'IN' ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>${prod.precio.toLocaleString()}</span>
+                            </div>
+
+                            <div className="mt-1 flex flex-wrap gap-2">
+                                {tallesUnicos.length > 0 ? tallesUnicos.map(t => {
+                                    const variantsForSize = prod.variantes.filter(v => v.talle === t);
+                                    const hasStock = type === 'IN' ? true : variantsForSize.some(v => v.stock > 0);
+
+                                    return (
+                                        <button
+                                            key={t}
+                                            disabled={!hasStock}
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onSelectSize(prod, t, type);
+                                            }}
+                                            className={`text-sm font-black px-4 py-2 rounded-xl shadow-sm border-2 transition-all active:scale-95 ${
+                                                hasStock
+                                                ? (type === 'IN'
+                                                    ? 'bg-white dark:bg-slate-800 text-red-700 dark:text-red-400 border-red-200 dark:border-slate-600 hover:bg-red-50 dark:hover:bg-red-900/50 hover:border-red-400'
+                                                    : 'bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-slate-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/50 hover:border-emerald-400')
+                                                : 'bg-slate-50 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800 line-through opacity-70 cursor-not-allowed'
+                                            }`}
+                                        >
+                                            {t}
+                                        </button>
+                                    );
+                                }) : (
+                                    <span className="text-xs font-bold text-red-500 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded">SIN VARIANTE</span>
+                                )}
+                            </div>
+
+                        </div>
+                    </div>
+                );
+            })}
+        </div>
+    );
+};
+
+// =========================================================================
 // PÁGINA PRINCIPAL
 // =========================================================================
 const ReturnsPage = () => {
@@ -128,6 +191,34 @@ const ReturnsPage = () => {
 
     useEffect(() => { localStorage.setItem('returns_in', JSON.stringify(itemsIn)); }, [itemsIn]);
     useEffect(() => { localStorage.setItem('returns_out', JSON.stringify(itemsOut)); }, [itemsOut]);
+
+    // Los tickets se guardan en localStorage para no perderlos si se
+    // recarga la página, pero eso significa que también pueden sobrevivir
+    // de un turno a otro. Si al entrar ya había ítems guardados de hace
+    // rato, avisamos para que se revisen precios y stock antes de
+    // confirmar (podrían no reflejar la realidad actual).
+    useEffect(() => {
+        if (itemsIn.length === 0 && itemsOut.length === 0) return;
+        const savedAt = Number(localStorage.getItem('returns_saved_at') || 0);
+        const hoursOld = savedAt ? (Date.now() - savedAt) / (1000 * 60 * 60) : null;
+        if (hoursOld === null || hoursOld > 2) {
+            toast(
+                "Hay un cambio sin terminar guardado de antes. Revisá precios y stock antes de confirmar.",
+                { icon: '⚠️', duration: 6000 }
+            );
+        }
+        // Solo al montar: es un aviso único de "bienvenida", no debe repetirse
+        // en cada cambio de itemsIn/itemsOut durante la sesión actual.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+        if (itemsIn.length > 0 || itemsOut.length > 0) {
+            localStorage.setItem('returns_saved_at', String(Date.now()));
+        } else {
+            localStorage.removeItem('returns_saved_at');
+        }
+    }, [itemsIn, itemsOut]);
 
     const [categories, setCategories] = useState([]);
     const [selectedCat, setSelectedCat] = useState('');
@@ -157,6 +248,7 @@ const ReturnsPage = () => {
     const [variantModalData, setVariantModalData] = useState(null);
     const [transactionResult, setTransactionResult] = useState(null);
     const [zoomImage, setZoomImage] = useState(null);
+    const [isProcessing, setIsProcessing] = useState(false);
 
     const inputInRef = useRef(null);
     const inputOutRef = useRef(null);
@@ -180,7 +272,11 @@ const ReturnsPage = () => {
                 setIsRegisterOpen(resStatus.data.estado === 'abierta');
                 setPaymentMethods(resMethods.data);
                 setCategories(resCats.data);
-            } catch (e) { console.error("Error cargando datos iniciales", e); }
+            } catch (e) {
+                console.error("Error cargando datos iniciales", e);
+                toast.error("Error de conexión inicial");
+                setIsRegisterOpen(false);
+            }
         };
         if (token) fetchInitialData();
     }, [token]);
@@ -277,7 +373,7 @@ const ReturnsPage = () => {
             const res = await api.get(`/sales/scan/${term}`);
             if (res.data.found) {
                 const prod = res.data.product;
-                const item = { ...prod, uid: Date.now() };
+                const item = { ...prod, uid: Date.now() + Math.random() };
 
                 if (type === 'IN') {
                     setItemsIn(prev => [...prev, item]); setTermIn(''); setResultsIn([]); setShowDropdownIn(false);
@@ -287,8 +383,16 @@ const ReturnsPage = () => {
                     setItemsOut(prev => [...prev, item]); setTermOut(''); setResultsOut([]); setShowDropdownOut(false);
                     toast.success("Entrega escaneada");
                 }
+            } else {
+                toast.error("Producto NO encontrado");
             }
-        } catch (error) { toast.error("Producto NO encontrado"); }
+        } catch (error) {
+            if (error.response?.status === 404) {
+                toast.error("Producto NO encontrado");
+            } else {
+                toast.error("Error de conexión al escanear");
+            }
+        }
     };
 
     const removeItemIn = (uid) => setItemsIn(prev => prev.filter(i => i.uid !== uid));
@@ -330,7 +434,7 @@ const ReturnsPage = () => {
         if (type === 'IN') {
             setItemsIn(prev => prev.map(item => {
                 if (item.uid === uid) {
-                    const validPrice = isNaN(parsedPrice) ? item.precio : parsedPrice;
+                    const validPrice = (isNaN(parsedPrice) || parsedPrice < 0) ? item.precio : parsedPrice;
                     return { ...item, precio: validPrice };
                 }
                 return item;
@@ -338,7 +442,7 @@ const ReturnsPage = () => {
         } else {
             setItemsOut(prev => prev.map(item => {
                 if (item.uid === uid) {
-                    const validPrice = isNaN(parsedPrice) ? item.precio : parsedPrice;
+                    const validPrice = (isNaN(parsedPrice) || parsedPrice < 0) ? item.precio : parsedPrice;
                     return { ...item, precio: validPrice };
                 }
                 return item;
@@ -364,10 +468,16 @@ const ReturnsPage = () => {
     };
 
     const handleProcess = async () => {
+        // Sin este guard, un clic doble (o un segundo clic mientras la red
+        // está lenta) dispara dos POST /returns/process con el mismo
+        // ticket: stock descontado/sumado dos veces y, potencialmente, dos
+        // notas de crédito o dos cobros por la misma diferencia.
+        if (isProcessing) return;
         if (itemsIn.length === 0 && itemsOut.length === 0) return;
         if (balance > 0 && !selectedPaymentMethod) { toast.error("⚠️ Selecciona un Método de Pago."); return; }
         if (!window.confirm("¿Confirmar operación?")) return;
 
+        setIsProcessing(true);
         const toastId = toast.loading("Procesando transacción...");
         try {
             const multiplier = 1 + (surchargePercent / 100) - (discountPercent / 100);
@@ -395,63 +505,24 @@ const ReturnsPage = () => {
             localStorage.removeItem('returns_in'); localStorage.removeItem('returns_out');
 
             toast.success("¡Movimiento registrado!", { id: toastId });
-        } catch (e) { toast.error(e.response?.data?.msg || "Error", { id: toastId }); }
+        } catch (e) {
+            toast.error(e.response?.data?.msg || "Error", { id: toastId });
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
-    const SearchResultsDropdown = ({ results, type, show }) => {
-        if (!show || results.length === 0) return null;
+    // Mientras no sabemos si la caja está abierta, no mostramos el
+    // workspace operativo: antes se veía la pantalla completa habilitada
+    // (y se podían empezar a escanear ítems) antes de saber si en
+    // realidad iba a bloquearse.
+    if (isRegisterOpen === null) {
         return (
-            <div className={`absolute top-full left-0 right-0 bg-white dark:bg-slate-800 shadow-2xl border rounded-b-2xl mt-1 max-h-[50vh] overflow-y-auto z-[100] custom-scrollbar ${type === 'IN' ? 'border-red-200 dark:border-red-900/50' : 'border-emerald-200 dark:border-emerald-900/50'}`}>
-                {results.map(prod => {
-                    const tallesUnicos = Array.from(new Set(prod.variantes.map(v => v.talle)));
-
-                    return (
-                        <div key={prod.id} className="p-4 border-b border-slate-100 dark:border-slate-700/60 hover:bg-slate-50 dark:hover:bg-slate-700/80 flex gap-4 cursor-pointer transition-colors" onClick={() => handleProductSelectClick(prod, type)}>
-                            <div className="w-16 h-16 bg-slate-100 dark:bg-slate-700 rounded-xl shrink-0 overflow-hidden border border-slate-200 dark:border-slate-600 relative flex items-center justify-center cursor-zoom-in" onClick={(e) => { e.stopPropagation(); if (prod.imagen) setZoomImage(`${api.defaults.baseURL}/static/uploads/${prod.imagen}`); }}>
-                                {prod.imagen ? <img src={`${api.defaults.baseURL}/static/uploads/${prod.imagen}`} className="w-full h-full object-cover group-hover:scale-110 transition-transform" /> : <Shirt className="text-slate-300 dark:text-slate-500 w-full h-full p-3" />}
-                            </div>
-                            <div className="flex-1 flex flex-col justify-center">
-                                <div className="flex justify-between items-start mb-2">
-                                    <span className="text-base font-black text-slate-800 dark:text-white leading-tight">{prod.nombre}</span>
-                                    <span className={`text-base font-black ${type === 'IN' ? 'text-red-600 dark:text-red-400' : 'text-emerald-600 dark:text-emerald-400'}`}>${prod.precio.toLocaleString()}</span>
-                                </div>
-                                
-                                <div className="mt-1 flex flex-wrap gap-2">
-                                    {tallesUnicos.length > 0 ? tallesUnicos.map(t => {
-                                        const variantsForSize = prod.variantes.filter(v => v.talle === t);
-                                        const hasStock = type === 'IN' ? true : variantsForSize.some(v => v.stock > 0);
-                                        
-                                        return (
-                                            <button 
-                                                key={t} 
-                                                disabled={!hasStock}
-                                                onClick={(e) => {
-                                                    e.stopPropagation(); 
-                                                    handleSizeClick(prod, t, type);
-                                                }}
-                                                className={`text-sm font-black px-4 py-2 rounded-xl shadow-sm border-2 transition-all active:scale-95 ${
-                                                    hasStock 
-                                                    ? (type === 'IN'
-                                                        ? 'bg-white dark:bg-slate-800 text-red-700 dark:text-red-400 border-red-200 dark:border-slate-600 hover:bg-red-50 dark:hover:bg-red-900/50 hover:border-red-400'
-                                                        : 'bg-white dark:bg-slate-800 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-slate-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/50 hover:border-emerald-400')
-                                                    : 'bg-slate-50 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 border-slate-200 dark:border-slate-800 line-through opacity-70 cursor-not-allowed'
-                                                }`}
-                                            >
-                                                {t}
-                                            </button>
-                                        );
-                                    }) : (
-                                        <span className="text-xs font-bold text-red-500 bg-red-50 dark:bg-red-900/30 px-2 py-1 rounded">SIN VARIANTE</span>
-                                    )}
-                                </div>
-
-                            </div>
-                        </div>
-                    );
-                })}
+            <div className="h-[calc(100vh-4rem)] flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500 dark:border-indigo-400"></div>
             </div>
         );
-    };
+    }
 
     if (isRegisterOpen === false) {
         return (
@@ -666,7 +737,7 @@ const ReturnsPage = () => {
                                 <Search className="absolute left-4 top-3.5 text-red-400 dark:text-red-600" size={18} />
                                 {termIn && <button type="button" onClick={() => { setTermIn(''); setResultsIn([]); setShowDropdownIn(false); inputInRef.current?.focus(); }} className="absolute right-4 top-3.5 text-slate-400 hover:text-red-500 transition-colors"><X size={18} /></button>}
                             </form>
-                            <SearchResultsDropdown results={resultsIn} type="IN" show={showDropdownIn} />
+                            <SearchResultsDropdown results={resultsIn} type="IN" show={showDropdownIn} onSelectProduct={handleProductSelectClick} onSelectSize={handleSizeClick} onZoomImage={setZoomImage} />
                         </div>
                     </div>
                     
@@ -793,7 +864,10 @@ const ReturnsPage = () => {
                             )}
                         </div>
 
-                        <button onClick={handleProcess} disabled={itemsIn.length === 0 && itemsOut.length === 0} className={`w-full py-4 rounded-2xl font-black text-sm tracking-widest uppercase shadow-xl transition-all active:scale-95 flex items-center justify-center relative z-10 mt-4 shrink-0 ${itemsIn.length === 0 && itemsOut.length === 0 ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-500/30'}`}><FileCheck size={20} className="mr-2" /> CONFIRMAR</button>
+                        <button onClick={handleProcess} disabled={(itemsIn.length === 0 && itemsOut.length === 0) || isProcessing} className={`w-full py-4 rounded-2xl font-black text-sm tracking-widest uppercase shadow-xl transition-all active:scale-95 flex items-center justify-center relative z-10 mt-4 shrink-0 ${(itemsIn.length === 0 && itemsOut.length === 0) || isProcessing ? 'bg-slate-800 text-slate-600 cursor-not-allowed' : 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-blue-500/30'}`}>
+                            {isProcessing ? <RefreshCcw size={20} className="mr-2 animate-spin" /> : <FileCheck size={20} className="mr-2" />}
+                            {isProcessing ? 'PROCESANDO...' : 'CONFIRMAR'}
+                        </button>
                     </div>
                 </div>
 
@@ -821,7 +895,7 @@ const ReturnsPage = () => {
                                 <Search className="absolute left-4 top-3.5 text-emerald-400 dark:text-emerald-600" size={18} />
                                 {termOut && <button type="button" onClick={() => { setTermOut(''); setResultsOut([]); setShowDropdownOut(false); inputOutRef.current?.focus(); }} className="absolute right-4 top-3.5 text-slate-400 hover:text-emerald-500 transition-colors"><X size={18} /></button>}
                             </form>
-                            <SearchResultsDropdown results={resultsOut} type="OUT" show={showDropdownOut} />
+                            <SearchResultsDropdown results={resultsOut} type="OUT" show={showDropdownOut} onSelectProduct={handleProductSelectClick} onSelectSize={handleSizeClick} onZoomImage={setZoomImage} />
                         </div>
                     </div>
                     

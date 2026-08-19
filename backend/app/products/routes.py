@@ -270,7 +270,10 @@ def get_products():
             # Quitamos nulls_first
             query = query.order_by(stock_subq.c.total_stock.asc(), Producto.id_producto.desc())
             
-    else: 
+    elif sort_by == 'az':
+        query = query.order_by(Producto.nombre.asc())
+
+    else:
         # Default: 'recientes'
         query = query.order_by(Producto.id_producto.desc())
 
