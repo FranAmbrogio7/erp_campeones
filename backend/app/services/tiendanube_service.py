@@ -236,6 +236,11 @@ class TiendaNubeService:
             return {"success": False, "error": str(e)}
 
     def update_variant_price(self, tn_product_id, tn_variant_id, precio_local):
+        """
+        Devuelve True si se actualizó, "not_found" si TN respondió 404 (vínculo local
+        desactualizado: el producto/variante ya no existe del lado de Tienda Nube y no
+        tiene sentido reintentar), o False para cualquier otro fallo (red, 5xx, etc).
+        """
         if not self.access_token or not self.api_url: return False
 
         precio_web = self.calcular_precio_web(precio_local)
@@ -259,6 +264,10 @@ class TiendaNubeService:
                     # Rate limit de Tienda Nube: esperamos más y reintentamos
                     print(f"⏳ Rate limit TN (429) en variante {tn_variant_id}, intento {attempt + 1}")
                     time.sleep(3)
+                elif response.status_code == 404:
+                    # No es transitorio: el producto/variante ya no existe en TN, reintentar no sirve.
+                    print(f"❌ TN Sync: Variante {tn_variant_id} (producto {tn_product_id}) no existe en Tienda Nube (404). Se desvinculará localmente.")
+                    return "not_found"
                 else:
                     print(f"⚠️ Intento {attempt + 1} fallido TN Sync precio: Status {response.status_code} (ID: {tn_variant_id}) - {response.text}")
             except Exception as e:

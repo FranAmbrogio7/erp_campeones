@@ -1327,45 +1327,65 @@ def manage_tn_margen():
         with app_context.app_context():
             
             # NUEVO: Lógica de filtrado dinámico
-            query = Producto.query.filter(Producto.tiendanube_id != None)
-            
+            query = Producto.query.filter(Producto.tiendanube_id != None, Producto.activo == True)
+
             # Si el frontend mandó IDs, filtramos solo esos. Si no, tomamos todos.
             if ids_a_sincronizar and len(ids_a_sincronizar) > 0:
                 query = query.filter(Producto.id_producto.in_(ids_a_sincronizar))
-                
+
             productos_en_nube = query.all()
-            
+
             total_variantes = sum(1 for p in productos_en_nube for v in p.variantes if v.tiendanube_variant_id)
-            
+
             # Validación por si la selección no tiene variantes vinculadas
             if total_variantes == 0:
                 update_status(False, 0, 0, "No hay productos vinculados en la selección para actualizar.", 0)
                 return
 
             update_status(True, 0, total_variantes, "Iniciando subida a Tienda Nube...", 0)
-            
+
             procesados = 0
             errores = 0
-            
+            desvinculados = 0
+
             for prod in productos_en_nube:
                 for var in prod.variantes:
                     if var.tiendanube_variant_id:
                         update_status(True, procesados, total_variantes, f"Actualizando: {prod.nombre[:25]}...", errores)
-                        
+
                         try:
-                            tn_service.update_variant_price(prod.tiendanube_id, var.tiendanube_variant_id, prod.precio)
-                            time.sleep(0.1) 
-                            
+                            resultado = tn_service.update_variant_price(prod.tiendanube_id, var.tiendanube_variant_id, prod.precio)
+                            if resultado == "not_found":
+                                # El vínculo local con Tienda Nube quedó desactualizado
+                                # (el producto/variante fue borrado o recreado del lado de TN).
+                                # Lo desvinculamos para que deje de reintentarse en cada sync.
+                                var.tiendanube_variant_id = None
+                                desvinculados += 1
+                                errores += 1
+                            elif resultado is False:
+                                errores += 1
+                            else:
+                                time.sleep(0.1)
+
                         except Exception as e:
                             print(f"⚠️ Error al subir precio de {prod.nombre} (ID: {var.tiendanube_variant_id}): {e}")
                             errores += 1
-                            
+
                         procesados += 1
-                        
+
+            if desvinculados > 0:
+                db.session.commit()
+
             mensaje_final = "¡Precios actualizados con éxito!"
             if errores > 0:
-                mensaje_final = f"Terminado. Fallaron {errores} variantes por red. Intenta de nuevo más tarde."
-                
+                if desvinculados > 0:
+                    mensaje_final = (
+                        f"Terminado. Fallaron {errores} variantes: {desvinculados} ya no existen en Tienda Nube "
+                        f"(se desvincularon y no volverán a intentarse). Revisá esos productos y volvé a vincularlos si corresponde."
+                    )
+                else:
+                    mensaje_final = f"Terminado. Fallaron {errores} variantes por un error de conexión con Tienda Nube. Intenta de nuevo más tarde."
+
             update_status(False, procesados, total_variantes, mensaje_final, errores)
             
     # Lanzamos el proceso enviando la variable "product_ids"
