@@ -332,7 +332,7 @@ const InventoryPage = () => {
                     if (prev && prev.is_running && !res.data.is_running) {
                         if (res.data.errores > 0) {
                             playSound('error');
-                            toast.error(`Atención: El proceso terminó, pero ${res.data.errores} precios no se pudieron subir por problemas de red.`, { duration: 8000 });
+                            toast.error(res.data.message || `Atención: El proceso terminó, pero ${res.data.errores} precios no se pudieron subir.`, { duration: 8000 });
                         } else {
                             playSound('success');
                             toast.success("¡Todos los precios fueron actualizados en Tienda Nube!", { duration: 6000 });
