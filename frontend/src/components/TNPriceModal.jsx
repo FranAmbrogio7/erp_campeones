@@ -9,6 +9,8 @@ const TNPriceModal = ({ isOpen, onClose, selectedItems = [], onComplete }) => {
 
     const [margin, setMargin] = useState('');
     const [isLoadingMargin, setIsLoadingMargin] = useState(false);
+    const [isRunning, setIsRunning] = useState(false);
+    const [isCanceling, setIsCanceling] = useState(false);
 
     const isBulkSelected = selectedItems.length > 0;
 
@@ -16,7 +18,13 @@ const TNPriceModal = ({ isOpen, onClose, selectedItems = [], onComplete }) => {
         if (isOpen) {
             setIsLoadingMargin(true);
 
-            // Si es selección múltiple, no traemos el margen global, 
+            // Chequeamos si ya hay una actualización en curso (o "trabada")
+            // para poder ofrecer cancelarla en vez de bloquear al usuario.
+            api.get('/products/tiendanube/margen/status')
+                .then(res => setIsRunning(!!res.data.is_running))
+                .catch(() => setIsRunning(false));
+
+            // Si es selección múltiple, no traemos el margen global,
             // sugerimos directamente el ESTÁNDAR para que no haya errores.
             if (isBulkSelected) {
                 setMargin(MARGEN_ESTANDAR);
@@ -32,10 +40,26 @@ const TNPriceModal = ({ isOpen, onClose, selectedItems = [], onComplete }) => {
             }
         } else {
             setMargin('');
+            setIsRunning(false);
         }
     }, [isOpen, isBulkSelected]);
 
     if (!isOpen) return null;
+
+    const handleCancelRunning = async () => {
+        setIsCanceling(true);
+        const toastId = toast.loading("Cancelando actualización en curso...");
+        try {
+            await api.post('/products/tiendanube/margen/cancel');
+            toast.success("Actualización cancelada. Ya podés iniciar una nueva.", { id: toastId });
+            setIsRunning(false);
+            if (onComplete) onComplete();
+        } catch (error) {
+            toast.error(error.response?.data?.msg || "No se pudo cancelar", { id: toastId });
+        } finally {
+            setIsCanceling(false);
+        }
+    };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
@@ -83,6 +107,30 @@ const TNPriceModal = ({ isOpen, onClose, selectedItems = [], onComplete }) => {
                     </div>
                 </div>
 
+                {isRunning && (
+                    <div className="p-4 rounded-xl mb-6 border shadow-inner bg-red-50 border-red-100 dark:bg-red-900/20 dark:border-red-800/50">
+                        <div className="flex items-start gap-3">
+                            <AlertTriangle className="shrink-0 mt-0.5 text-red-500" size={18} />
+                            <div className="flex-1">
+                                <p className="text-[11px] font-black uppercase tracking-widest text-red-700 dark:text-red-400">
+                                    Ya hay una actualización en curso
+                                </p>
+                                <p className="text-xs font-medium text-slate-600 dark:text-slate-400 mt-1 leading-relaxed">
+                                    No podés iniciar un nuevo cambio de precios hasta que termine o la canceles.
+                                </p>
+                                <button
+                                    type="button"
+                                    onClick={handleCancelRunning}
+                                    disabled={isCanceling}
+                                    className="mt-3 w-full py-2.5 bg-red-500 hover:bg-red-600 text-white font-black text-xs uppercase tracking-widest rounded-xl shadow transition-all active:scale-95 disabled:opacity-50"
+                                >
+                                    {isCanceling ? 'Cancelando...' : 'Cancelar actualización en curso'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 <form onSubmit={handleSubmit}>
                     <div className="mb-8">
                         <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 flex justify-between items-center">
@@ -105,7 +153,7 @@ const TNPriceModal = ({ isOpen, onClose, selectedItems = [], onComplete }) => {
 
                     <div className="flex gap-4">
                         <button type="button" onClick={onClose} className="flex-1 py-4 text-slate-600 dark:text-slate-300 font-black text-xs uppercase tracking-widest bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 rounded-2xl transition-all active:scale-95">Cancelar</button>
-                        <button type="submit" disabled={isLoadingMargin} className="flex-1 py-4 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-lg shadow-sky-500/30 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">Aplicar</button>
+                        <button type="submit" disabled={isLoadingMargin || isRunning} className="flex-1 py-4 bg-gradient-to-r from-sky-500 to-blue-600 hover:from-sky-600 hover:to-blue-700 text-white font-black text-xs uppercase tracking-widest rounded-2xl shadow-lg shadow-sky-500/30 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">Aplicar</button>
                     </div>
                 </form>
             </div>

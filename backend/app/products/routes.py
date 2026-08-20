@@ -67,6 +67,10 @@ def serialize_producto(prod):
         "activo": prod.activo
     }
 
+# Señal de cancelación para el hilo de actualización de "Margen Nube".
+# Se usa un Event a nivel de módulo porque el hilo en background no guarda
+# ninguna referencia (ni task id) que se pueda usar para abortarlo de otra forma.
+_margen_cancel_event = threading.Event()
 
 # ==========================================
 # 1. CRUD DE CATEGORÍAS
@@ -1274,6 +1278,34 @@ def get_tn_margen_status():
         pass
     return jsonify({"is_running": False, "current": 0, "total": 0, "message": "", "errores": 0}), 200
 
+@bp.route('/tiendanube/margen/cancel', methods=['POST'])
+@jwt_required()
+def cancel_tn_margen():
+    """Cancela la actualización de margen en curso (o limpia un estado
+    "trabado" si el proceso quedó marcado como corriendo pero ya no avanza,
+    por ejemplo tras un reinicio del servidor)."""
+    status_file = os.path.join(os.path.dirname(__file__), 'margin_sync_status.json')
+
+    # Le avisamos al hilo (si sigue vivo) que debe detenerse en la próxima iteración.
+    _margen_cancel_event.set()
+
+    # Y de una forma u otra liberamos el "lock" ya mismo, para que el usuario
+    # pueda iniciar un nuevo proceso sin esperar a que el hilo lo note.
+    try:
+        with open(status_file, 'w') as f:
+            json.dump({
+                "is_running": False,
+                "current": 0,
+                "total": 0,
+                "message": "Proceso cancelado por el usuario.",
+                "errores": 0
+            }, f)
+    except Exception as e:
+        return jsonify({'msg': f'No se pudo cancelar: {str(e)}'}), 500
+
+    return jsonify({'msg': 'Proceso cancelado.'}), 200
+
+
 @bp.route('/tiendanube/margen', methods=['GET', 'POST'])
 @jwt_required()
 def manage_tn_margen():
@@ -1318,7 +1350,10 @@ def manage_tn_margen():
         
     # Establecemos el margen configurado
     tn_service.set_margen_web(nuevo_margen)
-    
+
+    # Limpiamos cualquier señal de cancelación de una corrida anterior
+    _margen_cancel_event.clear()
+
     app = current_app._get_current_object()
     
     # NUEVO: Le pasamos los IDs al hilo secundario
@@ -1347,10 +1382,17 @@ def manage_tn_margen():
             procesados = 0
             errores = 0
             desvinculados = 0
+            cancelado = False
 
             for prod in productos_en_nube:
+                if cancelado:
+                    break
                 for var in prod.variantes:
                     if var.tiendanube_variant_id:
+                        if _margen_cancel_event.is_set():
+                            cancelado = True
+                            break
+
                         update_status(True, procesados, total_variantes, f"Actualizando: {prod.nombre[:25]}...", errores)
 
                         try:
@@ -1375,6 +1417,11 @@ def manage_tn_margen():
 
             if desvinculados > 0:
                 db.session.commit()
+
+            if cancelado:
+                update_status(False, procesados, total_variantes, "Proceso cancelado por el usuario.", errores)
+                _margen_cancel_event.clear()
+                return
 
             mensaje_final = "¡Precios actualizados con éxito!"
             if errores > 0:
