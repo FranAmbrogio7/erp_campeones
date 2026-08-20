@@ -188,6 +188,7 @@ const InventoryPage = () => {
     const [isSyncing, setIsSyncing] = useState(false);
     const [syncProgress, setSyncProgress] = useState(null);
     const [marginProgress, setMarginProgress] = useState(null);
+    const [isCancelingMargin, setIsCancelingMargin] = useState(false);
 
     const [processingId, setProcessingId] = useState(null);
     const [showForm, setShowForm] = useState(false);
@@ -353,6 +354,19 @@ const InventoryPage = () => {
         const interval = setInterval(checkMarginStatus, 4000);
         return () => clearInterval(interval);
     }, [token]);
+
+    const handleCancelMargin = async () => {
+        setIsCancelingMargin(true);
+        try {
+            await api.post('/products/tiendanube/margen/cancel');
+            toast.success("Actualización de precios cancelada.");
+            setMarginProgress(null);
+        } catch (error) {
+            toast.error(error.response?.data?.msg || "No se pudo cancelar la actualización");
+        } finally {
+            setIsCancelingMargin(false);
+        }
+    };
 
     const handleForceSync = async () => {
         if (!window.confirm("⚠️ ¿Sincronizar Stock Masivamente?\nEl proceso se ejecutará en segundo plano y podrás seguir usando el sistema.")) return;
@@ -1042,10 +1056,19 @@ const InventoryPage = () => {
                         <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-2.5 mb-2 overflow-hidden shadow-inner">
                             <div className={`h-full rounded-full transition-all duration-500 ${marginProgress.is_running ? 'bg-emerald-500' : 'bg-emerald-400'}`} style={{ width: `${Math.min(100, (marginProgress.current / marginProgress.total) * 100 || 0)}%` }}></div>
                         </div>
-                        <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">
                             <span>{marginProgress.current} / {marginProgress.total}</span>
                             <span className="text-emerald-500">{Math.round((marginProgress.current / marginProgress.total) * 100 || 0)}%</span>
                         </div>
+                        {marginProgress.is_running && (
+                            <button
+                                onClick={handleCancelMargin}
+                                disabled={isCancelingMargin}
+                                className="w-full mt-2 py-2 text-[10px] font-black uppercase tracking-widest text-red-500 hover:text-white hover:bg-red-500 border border-red-200 dark:border-red-800/50 rounded-xl transition-all disabled:opacity-50"
+                            >
+                                {isCancelingMargin ? 'Cancelando...' : 'Cancelar actualización'}
+                            </button>
+                        )}
                     </div>
                 )}
             </div>
